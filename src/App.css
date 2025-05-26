@@ -1,4 +1,3 @@
-/* Bootstrap Color Override and Custom Colors */
 :root {
   --bs-primary: #2196f3;
   --bs-success: #4caf50;
@@ -12,25 +11,28 @@
   --bs-danger-rgb: 244, 67, 54;
   --bs-info-rgb: 0, 188, 212;
   --bs-purple-rgb: 156, 39, 176;
+  --timeout-success: #28a745;
+  --timeout-warning: #ffc107;
+  --timeout-danger: #dc3545;
+  --timeout-info: #17a2b8;
 }
 
-/* Custom Button Color */
 .btn-purple {
   background-color: var(--bs-purple);
   border-color: var(--bs-purple);
+  color: white;
 }
 
 .btn-purple:hover {
   background-color: #7b1fa2;
   border-color: #7b1fa2;
+  color: white;
 }
 
-/* Cursor pointer utility */
 .cursor-pointer {
   cursor: pointer;
 }
 
-/* Upload Area Animation */
 .upload-area {
   transition: all 0.2s ease;
 }
@@ -40,7 +42,6 @@
   background-color: rgba(33, 150, 243, 0.05);
 }
 
-/* Custom Slider Styles - improve the Bootstrap range inputs */
 .form-range::-webkit-slider-thumb {
   background: var(--bs-primary);
   cursor: pointer;
@@ -55,7 +56,76 @@
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
 }
 
-/* Dark Mode Enhancements */
+.timeout-config-panel {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(156, 39, 176, 0.05));
+  border-radius: 8px;
+  border: 1px solid rgba(33, 150, 243, 0.2);
+}
+
+.timeout-stats-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.timeout-stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.success-rate-excellent {
+  color: var(--timeout-success) !important;
+}
+
+.success-rate-good {
+  color: var(--timeout-warning) !important;
+}
+
+.success-rate-poor {
+  color: var(--timeout-danger) !important;
+}
+
+.timeout-indicator {
+  position: relative;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.timeout-indicator.active {
+  border-color: var(--bs-primary);
+  background-color: rgba(33, 150, 243, 0.1);
+  animation: pulse-timeout 2s infinite;
+}
+
+.timeout-indicator.warning {
+  border-color: var(--bs-warning);
+  background-color: rgba(255, 152, 0, 0.1);
+}
+
+.timeout-indicator.error {
+  border-color: var(--bs-danger);
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+@keyframes pulse-timeout {
+  0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(33, 150, 243, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
+}
+
+.strategy-selector {
+  background: linear-gradient(90deg, rgba(33, 150, 243, 0.1), rgba(76, 175, 80, 0.1));
+  border-radius: 6px;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.timeout-control-group {
+  background: rgba(248, 249, 250, 0.5);
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
 [data-bs-theme="dark"] .card {
   background-color: #2d2d2d;
   border-color: #3d3d3d;
@@ -83,7 +153,33 @@
   background-color: rgba(33, 150, 243, 0.15);
 }
 
-/* Button animation effects */
+[data-bs-theme="dark"] .timeout-config-panel {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(156, 39, 176, 0.1));
+  border-color: rgba(33, 150, 243, 0.3);
+}
+
+[data-bs-theme="dark"] .strategy-selector {
+  background: linear-gradient(90deg, rgba(33, 150, 243, 0.15), rgba(76, 175, 80, 0.15));
+  border-color: rgba(33, 150, 243, 0.4);
+}
+
+[data-bs-theme="dark"] .timeout-control-group {
+  background: rgba(45, 45, 45, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-bs-theme="dark"] .timeout-indicator.active {
+  background-color: rgba(33, 150, 243, 0.2);
+}
+
+[data-bs-theme="dark"] .timeout-indicator.warning {
+  background-color: rgba(255, 152, 0, 0.2);
+}
+
+[data-bs-theme="dark"] .timeout-indicator.error {
+  background-color: rgba(244, 67, 54, 0.2);
+}
+
 .btn {
   transition: all 0.2s ease;
 }
@@ -97,7 +193,59 @@
   transform: translateY(0);
 }
 
-/* Mobile Enhancements */
+.stats-card {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+[data-bs-theme="dark"] .stats-card {
+  background: linear-gradient(135deg, #3a3a3a, #2d2d2d);
+  border-color: #4a4a4a;
+}
+
+.config-section {
+  border-left: 4px solid var(--bs-primary);
+  padding-left: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.timeout-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.realtime-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  animation: blink 2s infinite;
+}
+
+.realtime-indicator.active {
+  background-color: var(--bs-success);
+}
+
+.realtime-indicator.timeout {
+  background-color: var(--bs-danger);
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
 @media (max-width: 576px) {
   .card-header {
     padding: 0.75rem;
@@ -119,9 +267,16 @@
     padding-left: 10px;
     padding-right: 10px;
   }
+  
+  .timeout-control-group {
+    padding: 0.75rem;
+  }
+  
+  .stats-card {
+    margin-bottom: 1rem;
+  }
 }
 
-/* Landscape mode for mobile devices */
 @media (max-height: 500px) and (orientation: landscape) {
   .container {
     max-width: 100%;
@@ -133,5 +288,9 @@
   
   .card-body {
     padding: 0.75rem;
+  }
+  
+  .timeout-config-panel {
+    padding: 0.5rem;
   }
 }

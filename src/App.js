@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 
 function App() {
-  // State variables
   const [darkMode, setDarkMode] = useState(localStorage.getItem('theme') === 'dark');
   const [systemStatus, setSystemStatus] = useState('IDLE');
   const [speedAll, setSpeedAll] = useState(200);
@@ -19,10 +18,33 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [writeStatus, setWriteStatus] = useState(null);
   
+  const [timeoutConfig, setTimeoutConfig] = useState({
+    maxWaitTime: 30000,
+    strategy: 0,
+    maxTimeoutWarning: 5,
+    autoRetryCount: 0,
+    saveToFile: true
+  });
+  const [timeoutStats, setTimeoutStats] = useState({
+    totalTimeouts: 0,
+    successfulWaits: 0,
+    lastTimeoutTime: 0,
+    totalWaitTime: 0,
+    currentRetryCount: 0,
+    successRate: 100.0
+  });
+  const [timeoutConfigStatus, setTimeoutConfigStatus] = useState(null);
+  
   const fileInputRef = useRef(null);
   const eventSourceRef = useRef(null);
 
-  // Toggle dark mode
+  const strategyOptions = [
+    { value: 0, label: 'Skip & Continue' },
+    { value: 1, label: 'Pause System' },
+    { value: 2, label: 'Abort & Reset' },
+    { value: 3, label: 'Retry with Backoff' }
+  ];
+
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
@@ -30,14 +52,11 @@ function App() {
     document.body.setAttribute('data-bs-theme', newMode ? 'dark' : 'light');
   };
 
-  // Set initial theme on mount
   useEffect(() => {
     document.body.setAttribute('data-bs-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // Connect to server events on component mount
   useEffect(() => {
-    // Initial status check
     fetch('/status')
       .then(response => response.json())
       .then(data => {
@@ -47,7 +66,9 @@ function App() {
         console.error('Error fetching status:', error);
       });
 
-    // Connect to server events
+    loadTimeoutConfig();
+    loadTimeoutStats();
+
     const es = new EventSource('/events');
     eventSourceRef.current = es;
 
@@ -56,6 +77,8 @@ function App() {
         const data = JSON.parse(event.data);
         if (data.type === 'status') {
           setSystemStatus(data.value);
+        } else if (data.type === 'timeout') {
+          loadTimeoutStats();
         }
       } catch (error) {
         console.error('Error parsing event data:', error);
@@ -71,7 +94,6 @@ function App() {
       }, 5000);
     };
 
-    // Cleanup
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -79,13 +101,88 @@ function App() {
     };
   }, []);
 
-  // Handle all speeds update from slider
+  const loadTimeoutConfig = () => {
+    fetch('/timeout_config')
+      .then(response => response.json())
+      .then(data => {
+        setTimeoutConfig(data);
+      })
+      .catch(error => {
+        console.error('Error loading timeout config:', error);
+      });
+  };
+
+  const loadTimeoutStats = () => {
+    fetch('/timeout_stats')
+      .then(response => response.json())
+      .then(data => {
+        setTimeoutStats(data);
+      })
+      .catch(error => {
+        console.error('Error loading timeout stats:', error);
+      });
+  };
+
+  const saveTimeoutConfig = () => {
+    const formData = new URLSearchParams();
+    formData.append('maxWaitTime', timeoutConfig.maxWaitTime);
+    formData.append('strategy', timeoutConfig.strategy);
+    formData.append('maxTimeoutWarning', timeoutConfig.maxTimeoutWarning);
+    formData.append('autoRetryCount', timeoutConfig.autoRetryCount);
+    formData.append('saveToFile', timeoutConfig.saveToFile);
+
+    setTimeoutConfigStatus({
+      type: 'info',
+      message: 'Saving timeout configuration...',
+    });
+
+    fetch('/timeout_config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    })
+      .then(response => response.text())
+      .then(data => {
+        setTimeoutConfigStatus({
+          type: 'success',
+          message: 'Timeout configuration saved successfully',
+        });
+        setTimeout(() => setTimeoutConfigStatus(null), 3000);
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        setTimeoutConfigStatus({
+          type: 'danger',
+          message: `Error saving configuration: ${error}`,
+        });
+      });
+  };
+
+  const clearTimeoutStats = () => {
+    fetch('/clear_timeout_stats', {
+      method: 'POST',
+    })
+      .then(response => response.text())
+      .then(data => {
+        loadTimeoutStats();
+        setTimeoutConfigStatus({
+          type: 'success',
+          message: 'Timeout statistics cleared',
+        });
+        setTimeout(() => setTimeoutConfigStatus(null), 3000);
+      })
+      .catch(error => {
+        console.error('Error:', error);
+      });
+  };
+
   const updateAllSpeedsSlider = (e) => {
     const value = parseInt(e.target.value, 10);
     if (isNaN(value)) return;
     
     setSpeedAll(value);
-    // Update all axes except G which might have a different range
     setAxes(prevAxes => 
       prevAxes.map(axis => 
         axis.id !== 'g' ? { ...axis, speed: value } : axis
@@ -93,16 +190,13 @@ function App() {
     );
   };
 
-  // Handle all speeds update from input
   const updateAllSpeedsInput = (e) => {
     const value = parseInt(e.target.value, 10);
     if (isNaN(value)) return;
     
-    // Clamp the value between 10 and 1000
     const clampedValue = Math.max(10, Math.min(1000, value));
     
     setSpeedAll(clampedValue);
-    // Update all axes except G which might have a different range
     setAxes(prevAxes => 
       prevAxes.map(axis => 
         axis.id !== 'g' ? { ...axis, speed: clampedValue } : axis
@@ -110,7 +204,6 @@ function App() {
     );
   };
 
-  // Update a specific axis speed from slider
   const updateAxisSpeedSlider = (id, e) => {
     const value = parseInt(e.target.value, 10);
     if (isNaN(value)) return;
@@ -122,12 +215,10 @@ function App() {
     );
   };
 
-  // Update a specific axis speed from input
   const updateAxisSpeedInput = (id, e) => {
     const value = parseInt(e.target.value, 10);
     if (isNaN(value)) return;
     
-    // Clamp the value between 10 and 1000
     const clampedValue = Math.max(10, Math.min(1000, value));
     
     setAxes(prevAxes => 
@@ -137,7 +228,6 @@ function App() {
     );
   };
 
-  // Set speed for a specific axis
   const setSpeed = (axisId) => {
     const axis = axes.find(a => a.id === axisId);
     if (axis) {
@@ -145,12 +235,10 @@ function App() {
     }
   };
 
-  // Set speed for all axes
   const setAllSpeeds = () => {
     sendCommand(`SPEED;${speedAll}`);
   };
 
-  // Send command to the server
   const sendCommand = (cmd) => {
     fetch('/command', {
       method: 'POST',
@@ -168,19 +256,16 @@ function App() {
       });
   };
 
-  // Handle file selection
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     setSelectedFile(file);
     setFileName(file ? file.name : '');
   };
 
-  // Trigger file input click
   const triggerFileInput = () => {
     fileInputRef.current.click();
   };
 
-  // Upload file to server
   const uploadFile = () => {
     if (!selectedFile) {
       setUploadStatus({
@@ -207,7 +292,7 @@ function App() {
         console.log('Upload result:', data);
         setUploadStatus({
           type: 'success',
-          message: 'File uploaded successfully',
+          message: 'File uploaded successfully. Click PLAY to execute.',
         });
       })
       .catch(error => {
@@ -219,7 +304,6 @@ function App() {
       });
   };
 
-  // Save commands to server
   const saveCommands = () => {
     if (!commandText.trim()) {
       setWriteStatus({
@@ -246,7 +330,7 @@ function App() {
         console.log('Save result:', data);
         setWriteStatus({
           type: 'success',
-          message: 'Commands saved and loaded successfully',
+          message: 'Commands saved successfully. Click PLAY to execute.',
         });
       })
       .catch(error => {
@@ -258,7 +342,6 @@ function App() {
       });
   };
 
-  // Get commands from server
   const getCommands = () => {
     setWriteStatus({
       type: 'info',
@@ -288,12 +371,10 @@ function App() {
       });
   };
 
-  // Download commands
   const downloadCommands = () => {
     window.location.href = '/download_commands';
   };
 
-  // Get status badge class
   const getStatusBadgeClass = () => {
     switch (systemStatus) {
       case 'RUNNING': return 'bg-success';
@@ -303,9 +384,25 @@ function App() {
     }
   };
 
+  const getSuccessRateColor = () => {
+    const rate = timeoutStats.successRate;
+    if (rate >= 95) return 'text-success';
+    if (rate >= 80) return 'text-warning';
+    return 'text-danger';
+  };
+
+  const formatDuration = (ms) => {
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(1) + 's';
+  };
+
+  const formatTimestamp = (timestamp) => {
+    if (timestamp === 0) return 'Never';
+    return new Date(timestamp).toLocaleTimeString();
+  };
+
   return (
     <div className="container py-4">
-      {/* Header */}
       <header className="d-flex justify-content-between align-items-center mb-4 p-3 bg-primary text-white rounded shadow-sm">
         <div className="d-flex align-items-center">
           <span className="fs-3 me-2">🤖</span>
@@ -333,9 +430,7 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main>
-        {/* Control Panel */}
         <div className="card mb-4 shadow-sm">
           <div className="card-header d-flex align-items-center">
             <span className="me-2 fs-5">🎮</span>
@@ -462,7 +557,165 @@ function App() {
           </div>
         </div>
 
-        {/* Upload Command File */}
+        <div className="card mb-4 shadow-sm">
+          <div className="card-header d-flex align-items-center">
+            <span className="me-2 fs-5">⏱️</span>
+            <h2 className="h5 mb-0">Timeout Configuration</h2>
+          </div>
+          
+          <div className="card-body">
+            <div className="row g-3">
+              <div className="col-md-6">
+                <label className="form-label">Wait Timeout</label>
+                <div className="d-flex align-items-center">
+                  <input 
+                    type="range" 
+                    className="form-range me-3" 
+                    min="5000" 
+                    max="300000" 
+                    step="1000"
+                    value={timeoutConfig.maxWaitTime} 
+                    onChange={(e) => setTimeoutConfig({...timeoutConfig, maxWaitTime: parseInt(e.target.value)})}
+                  />
+                  <div className="input-group" style={{width: "120px"}}>
+                    <input 
+                      type="number" 
+                      className="form-control form-control-sm" 
+                      value={timeoutConfig.maxWaitTime / 1000} 
+                      onChange={(e) => setTimeoutConfig({...timeoutConfig, maxWaitTime: parseInt(e.target.value) * 1000})} 
+                      min="5" 
+                      max="300" 
+                    />
+                    <span className="input-group-text">s</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-6">
+                <label className="form-label">Timeout Strategy</label>
+                <select 
+                  className="form-select" 
+                  value={timeoutConfig.strategy}
+                  onChange={(e) => setTimeoutConfig({...timeoutConfig, strategy: parseInt(e.target.value)})}
+                >
+                  {strategyOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-md-6">
+                <label className="form-label">Warning Threshold</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={timeoutConfig.maxTimeoutWarning} 
+                  onChange={(e) => setTimeoutConfig({...timeoutConfig, maxTimeoutWarning: parseInt(e.target.value)})} 
+                  min="1" 
+                  max="20" 
+                />
+                <div className="form-text">Warning after this many consecutive timeouts</div>
+              </div>
+
+              <div className="col-md-6">
+                <label className="form-label">Auto Retry Count</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={timeoutConfig.autoRetryCount} 
+                  onChange={(e) => setTimeoutConfig({...timeoutConfig, autoRetryCount: parseInt(e.target.value)})} 
+                  min="0" 
+                  max="5" 
+                />
+                <div className="form-text">Number of automatic retries (0 = disabled)</div>
+              </div>
+
+              <div className="col-12">
+                <div className="form-check">
+                  <input 
+                    className="form-check-input" 
+                    type="checkbox" 
+                    id="saveToFile"
+                    checked={timeoutConfig.saveToFile}
+                    onChange={(e) => setTimeoutConfig({...timeoutConfig, saveToFile: e.target.checked})}
+                  />
+                  <label className="form-check-label" htmlFor="saveToFile">
+                    Auto-save configuration to file
+                  </label>
+                </div>
+              </div>
+
+              <div className="col-12">
+                <button className="btn btn-primary me-2" onClick={saveTimeoutConfig}>
+                  <span className="me-1">💾</span> Save Configuration
+                </button>
+                <button className="btn btn-outline-secondary" onClick={loadTimeoutConfig}>
+                  <span className="me-1">🔄</span> Reload
+                </button>
+              </div>
+            </div>
+
+            {timeoutConfigStatus && (
+              <div className={`alert alert-${timeoutConfigStatus.type} mt-3`} role="alert">
+                {timeoutConfigStatus.message}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card mb-4 shadow-sm">
+          <div className="card-header d-flex align-items-center justify-content-between">
+            <div className="d-flex align-items-center">
+              <span className="me-2 fs-5">📊</span>
+              <h2 className="h5 mb-0">Timeout Statistics</h2>
+            </div>
+            <button className="btn btn-outline-danger btn-sm" onClick={clearTimeoutStats}>
+              <span className="me-1">🧹</span> Clear
+            </button>
+          </div>
+          
+          <div className="card-body">
+            <div className="row g-3">
+              <div className="col-md-3">
+                <div className="text-center p-3 border rounded">
+                  <div className="h4 text-success">{timeoutStats.successfulWaits}</div>
+                  <div className="small text-muted">Successful Waits</div>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="text-center p-3 border rounded">
+                  <div className="h4 text-danger">{timeoutStats.totalTimeouts}</div>
+                  <div className="small text-muted">Total Timeouts</div>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="text-center p-3 border rounded">
+                  <div className={`h4 ${getSuccessRateColor()}`}>{timeoutStats.successRate.toFixed(1)}%</div>
+                  <div className="small text-muted">Success Rate</div>
+                </div>
+              </div>
+              <div className="col-md-3">
+                <div className="text-center p-3 border rounded">
+                  <div className="h6">{formatDuration(timeoutStats.totalWaitTime)}</div>
+                  <div className="small text-muted">Total Wait Time</div>
+                </div>
+              </div>
+              <div className="col-md-6">
+                <div className="small">
+                  <strong>Last Timeout:</strong> {formatTimestamp(timeoutStats.lastTimeoutTime)}
+                </div>
+              </div>
+              <div className="col-md-6">
+                <div className="small">
+                  <strong>Current Retry Count:</strong> {timeoutStats.currentRetryCount}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="card mb-4 shadow-sm">
           <div className="card-header d-flex align-items-center">
             <span className="me-2 fs-5">📤</span>
@@ -505,7 +758,6 @@ function App() {
           </div>
         </div>
 
-        {/* Write Commands */}
         <div className="card mb-4 shadow-sm">
           <div className="card-header d-flex align-items-center">
             <span className="me-2 fs-5">📝</span>
@@ -549,7 +801,7 @@ SET(1) NEXT WAIT NEXT SET(0)`}
 
             <div className="d-flex flex-wrap gap-2">
               <button className="btn btn-primary" onClick={saveCommands}>
-                <span className="me-1">💾</span> Save & Load Commands
+                <span className="me-1">💾</span> Save Commands
               </button>
               <button className="btn btn-outline-primary" onClick={getCommands}>
                 <span className="me-1">📥</span> Load Current Commands
