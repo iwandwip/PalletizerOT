@@ -4,8 +4,8 @@
 
 #define SLAVE_ADDR Z_AXIS
 
-#define CLK_PIN 10  // 10
-#define CW_PIN 11   // 11
+#define CLK_PIN 10  // LAST: 10
+#define CW_PIN 11   // LAST: 11
 #define RX_PIN 8
 #define TX_PIN 9
 #define SENSOR_PIN 6
@@ -15,7 +15,7 @@
 #define EN_PIN 12
 #define BRAKE_PIN NOT_CONNECTED
 #define INVERT_BRAKE HIGH_LOGIC_BRAKE
-#define INVERT_ENABLE HIGH_LOGIC_BRAKE  // FIX: LOW_LOGIC_ENABLE
+#define INVERT_ENABLE HIGH_LOGIC_BRAKE  // LAST: LOW_LOGIC_ENABLE
 #define BRAKE_ENGAGE_DELAY NO_DELAY
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #elif (SLAVE_ADDR == T_AXIS)
@@ -57,5 +57,9 @@ void setup() {
 }
 
 void loop() {
+  // int sensorState = digitalRead(SENSOR_PIN);
+  // Serial.print("| sensorState: ");
+  // Serial.print(sensorState);
+  // Serial.println();
   slave.update();
 }
