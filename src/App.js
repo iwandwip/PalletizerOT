@@ -1,4 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './GlobalStyles.css';
+import './styles/HeaderStyles.css';
+import './styles/ControlStyles.css';
+import './styles/TimeoutStyles.css';
+import './styles/CommandStyles.css';
+
 import HeaderSection from './components/HeaderSection';
 import ControlSection from './components/ControlSection';
 import TimeoutSection from './components/TimeoutSection';
@@ -13,7 +20,6 @@ import {
   createStatusMessage,
   clearStatusMessage
 } from './utils/Helpers';
-import './GlobalStyles.css';
 
 function App() {
   const [darkMode, setDarkMode] = useState(getThemeFromStorage());
