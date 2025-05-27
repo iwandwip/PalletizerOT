@@ -159,7 +159,7 @@ void PalletizerServer::setupRoutes() {
   server.on(
     "/upload", HTTP_POST,
     [](AsyncWebServerRequest *request) {
-      request->send(200, "text/plain", "File uploaded");
+      request->send(200, "text/plain", "File uploaded successfully. Click PLAY to execute.");
     },
     [this](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
       this->handleUpload(request, filename, index, data, len, final);
@@ -285,32 +285,15 @@ void PalletizerServer::handleUpload(AsyncWebServerRequest *request, String filen
 
   if (!index) {
     tempBuffer = "";
-    if (LittleFS.exists("/queue.txt")) {
-      LittleFS.remove("/queue.txt");
-    }
-    File file = LittleFS.open("/queue.txt", "w");
-    if (!file) {
-      Serial.println("Failed to open file for writing");
-      return;
-    }
-    file.close();
+    ensureFileExists("/queue.txt");
   }
 
   String dataStr = String((char *)data, len);
   tempBuffer += dataStr;
 
   if (final) {
-    File file = LittleFS.open("/queue.txt", "w");
-    if (!file) {
-      Serial.println("Failed to open file for writing");
-      return;
-    }
-
-    file.print(tempBuffer);
-    file.close();
-
+    safeFileWrite("/queue.txt", tempBuffer);
     Serial.println("File uploaded and saved. Use PLAY to execute.");
-
     tempBuffer = "";
   }
 }
@@ -338,20 +321,8 @@ void PalletizerServer::handleWriteCommand(AsyncWebServerRequest *request) {
   }
 
   if (commands.length() > 0) {
-    if (LittleFS.exists("/queue.txt")) {
-      LittleFS.remove("/queue.txt");
-    }
-
-    File file = LittleFS.open("/queue.txt", "w");
-    if (!file) {
-      request->send(500, "text/plain", "Failed to open file for writing");
-      return;
-    }
-
-    file.print(commands);
-    file.close();
-
-    request->send(200, "text/plain", "Commands saved. Use PLAY to execute.");
+    safeFileWrite("/queue.txt", commands);
+    request->send(200, "text/plain", "Commands saved successfully. Click PLAY to execute.");
   } else {
     request->send(400, "text/plain", "No commands provided");
   }
@@ -383,38 +354,36 @@ void PalletizerServer::handleGetStatus(AsyncWebServerRequest *request) {
 }
 
 void PalletizerServer::handleGetCommands(AsyncWebServerRequest *request) {
-  File file = LittleFS.open("/queue.txt", "r");
-  if (!file) {
+  if (!LittleFS.exists("/queue.txt")) {
     request->send(404, "text/plain", "File not found");
     return;
   }
 
-  String content = "";
-  while (file.available()) {
-    content += file.readStringUntil('\n');
-    if (file.available()) {
-      content += "\n";
-    }
+  File file = LittleFS.open("/queue.txt", "r");
+  if (!file) {
+    request->send(404, "text/plain", "Failed to open file");
+    return;
   }
+
+  String content = file.readString();
   file.close();
 
   request->send(200, "text/plain", content);
 }
 
 void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest *request) {
-  File file = LittleFS.open("/queue.txt", "r");
-  if (!file) {
+  if (!LittleFS.exists("/queue.txt")) {
     request->send(404, "text/plain", "File not found");
     return;
   }
 
-  String content = "";
-  while (file.available()) {
-    content += file.readStringUntil('\n');
-    if (file.available()) {
-      content += "\n";
-    }
+  File file = LittleFS.open("/queue.txt", "r");
+  if (!file) {
+    request->send(404, "text/plain", "Failed to open file");
+    return;
   }
+
+  String content = file.readString();
   file.close();
 
   AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", content);
@@ -480,7 +449,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest *request) {
 
   if (configChanged) {
     palletizerMaster->setTimeoutConfig(config);
-    request->send(200, "text/plain", "Timeout configuration updated");
+    request->send(200, "text/plain", "Timeout configuration updated successfully");
   } else {
     request->send(400, "text/plain", "No valid parameters provided");
   }
@@ -504,7 +473,7 @@ void PalletizerServer::handleGetTimeoutStats(AsyncWebServerRequest *request) {
 
 void PalletizerServer::handleClearTimeoutStats(AsyncWebServerRequest *request) {
   palletizerMaster->clearTimeoutStats();
-  request->send(200, "text/plain", "Timeout statistics cleared");
+  request->send(200, "text/plain", "Timeout statistics cleared successfully");
 }
 
 void PalletizerServer::sendStatusEvent(const String &status) {
@@ -515,4 +484,29 @@ void PalletizerServer::sendStatusEvent(const String &status) {
 void PalletizerServer::sendTimeoutEvent(int count, const String &type) {
   String eventData = "{\"type\":\"timeout\",\"count\":" + String(count) + ",\"eventType\":\"" + type + "\",\"time\":" + String(millis()) + "}";
   events.send(eventData.c_str(), "timeout", millis());
+}
+
+void PalletizerServer::safeFileWrite(const String &path, const String &content) {
+  if (LittleFS.exists(path)) {
+    LittleFS.remove(path);
+    delay(10);
+  }
+
+  File file = LittleFS.open(path, "w");
+  if (file) {
+    file.print(content);
+    file.close();
+  }
+}
+
+bool PalletizerServer::ensureFileExists(const String &path) {
+  if (!LittleFS.exists(path)) {
+    File file = LittleFS.open(path, "w");
+    if (file) {
+      file.close();
+      return true;
+    }
+    return false;
+  }
+  return true;
 }

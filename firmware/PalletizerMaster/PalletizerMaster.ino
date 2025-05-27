@@ -11,8 +11,12 @@
 #define INDICATOR_PIN 26
 
 #define WIFI_MODE PalletizerServer::MODE_STA
-#define WIFI_SSID "TIMEOSPACE"
-#define WIFI_PASSWORD "1234Saja"
+#define WIFI_SSID "silenceAndSleep"
+#define WIFI_PASSWORD "11111111"
+
+// #define WIFI_MODE PalletizerServer::MODE_STA
+// #define WIFI_SSID "TIMEOSPACE"
+// #define WIFI_PASSWORD "1234Saja"
 
 // #define WIFI_MODE PalletizerServer::MODE_AP
 // #define WIFI_SSID "PalletizerAP"

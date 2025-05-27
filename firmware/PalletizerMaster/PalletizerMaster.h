@@ -16,7 +16,7 @@
 
 #define QUEUE_MODE_APPEND 0
 #define QUEUE_MODE_OVERWRITE 1
-#define QUEUE_OPERATION_MODE QUEUE_MODE_OVERWRITE
+#define QUEUE_OPERATION_MODE QUEUE_MODE_APPEND
 
 #define SYNC_SET_PIN 25
 #define SYNC_WAIT_PIN 27
@@ -115,8 +115,11 @@ private:
   int indicatorPin;
   bool indicatorEnabled;
   unsigned long lastCheckTime = 0;
+  unsigned long lastYieldTime = 0;
 
   bool requestNextCommand = false;
+  bool scriptProcessing = false;
+  bool queueClearRequested = false;
 
   const String queueFilePath = "/queue.txt";
   const String queueIndexPath = "/queue_index.txt";
@@ -170,6 +173,10 @@ private:
   void handleWaitTimeout();
   void resetTimeoutCounter();
   void updateTimeoutStats(bool success);
+  void processCommandsBatch(const String& commands);
+  void safeYield();
+  bool shouldClearQueue(const String& data);
+  void ensureFileIsClosed(File& file);
 };
 
 #endif

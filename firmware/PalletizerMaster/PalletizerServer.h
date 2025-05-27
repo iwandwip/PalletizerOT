@@ -45,6 +45,8 @@ private:
   void handleClearTimeoutStats(AsyncWebServerRequest* request);
   void sendStatusEvent(const String& status);
   void sendTimeoutEvent(int count, const String& type);
+  void safeFileWrite(const String& path, const String& content);
+  bool ensureFileExists(const String& path);
 };
 
 #endif
