@@ -280,7 +280,8 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   upperData.trim();
   upperData.toUpperCase();
 
-  if (data.indexOf(';') != -1 || data.indexOf('{') != -1 || data.indexOf("FUNC(") != -1 || data.indexOf("CALL(") != -1) {
+  if (data.indexOf("FUNC(") != -1 || data.indexOf("CALL(") != -1 || (data.indexOf(';') != -1 && data.indexOf('{') != -1)) {
+    DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(data);
     return;
   }
@@ -311,6 +312,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
         }
       }
 
+      DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
       processCommandsBatch(data);
     }
   } else if (data != "END_QUEUE") {
@@ -321,6 +323,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
       }
     }
 
+    DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
     processCommandsBatch(data);
   }
 }
@@ -778,8 +781,14 @@ void PalletizerMaster::loadCommandsFromFile() {
   clearQueue();
 
   if (allCommands.length() > 0) {
-    processCommandsBatch(allCommands);
-    processCommand("END_QUEUE");
+    if (allCommands.indexOf("FUNC(") != -1 || allCommands.indexOf("CALL(") != -1) {
+      DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
+      processScriptCommand(allCommands);
+    } else {
+      DEBUG_PRINTLN("MASTER: Detected legacy format - processing as batch");
+      processCommandsBatch(allCommands);
+      processCommand("END_QUEUE");
+    }
     DEBUG_PRINTLN("MASTER: Commands loaded from file successfully");
   } else {
     DEBUG_PRINTLN("MASTER: No valid commands found in file");
