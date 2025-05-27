@@ -115,7 +115,6 @@ private:
   int indicatorPin;
   bool indicatorEnabled;
   unsigned long lastCheckTime = 0;
-  unsigned long lastYieldTime = 0;
 
   bool requestNextCommand = false;
   bool scriptProcessing = false;
@@ -174,7 +173,6 @@ private:
   void resetTimeoutCounter();
   void updateTimeoutStats(bool success);
   void processCommandsBatch(const String& commands);
-  void safeYield();
   bool shouldClearQueue(const String& data);
   void ensureFileIsClosed(File& file);
 };

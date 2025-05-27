@@ -44,7 +44,6 @@ void PalletizerMaster::begin() {
 }
 
 void PalletizerMaster::update() {
-  safeYield();
   checkSlaveData();
 
   if (waitingForSync) {
@@ -60,7 +59,6 @@ void PalletizerMaster::update() {
       handleWaitTimeout();
     }
 
-    safeYield();
     return;
   }
 
@@ -84,7 +82,6 @@ void PalletizerMaster::update() {
           setSystemState(STATE_IDLE);
         }
       }
-      safeYield();
     }
   }
 
@@ -95,8 +92,6 @@ void PalletizerMaster::update() {
   for (int i = 0; i < MAX_LED_INDICATOR_SIZE; i++) {
     ledIndicator[i].update();
   }
-
-  safeYield();
 }
 
 void PalletizerMaster::sendToSlave(const String& data) {
@@ -273,7 +268,6 @@ void PalletizerMaster::checkSlaveData() {
         slavePartialBuffer += c;
       }
       rxIndicatorLed.off();
-      safeYield();
     }
   }
 }
@@ -383,7 +377,6 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
       String command = String(slaveIds[i]) + ";" + String(CMD_SETSPEED) + ";" + params;
       sendToSlave(command);
       DEBUG_PRINTLN("MASTER→SLAVE: " + command);
-      safeYield();
     }
   }
 }
@@ -481,7 +474,6 @@ void PalletizerMaster::sendCommandToAllSlaves(Command cmd) {
     String command = String(slaveIds[i]) + ";" + String(cmd);
     sendToSlave(command);
     DEBUG_PRINTLN("MASTER→SLAVE: " + command);
-    safeYield();
   }
 }
 
@@ -510,7 +502,6 @@ void PalletizerMaster::parseCoordinateData(const String& data) {
 
     pos = data.indexOf(',', closePos);
     pos = (pos == -1) ? data.length() : pos + 1;
-    safeYield();
   }
 }
 
@@ -696,7 +687,6 @@ String PalletizerMaster::readQueueCommandAt(int index) {
       break;
     }
     currentLine++;
-    safeYield();
   }
 
   ensureFileIsClosed(queueFile);
@@ -713,7 +703,6 @@ int PalletizerMaster::getQueueCount() {
   while (queueFile.available()) {
     queueFile.readStringUntil('\n');
     count++;
-    safeYield();
   }
 
   ensureFileIsClosed(queueFile);
@@ -871,8 +860,6 @@ void PalletizerMaster::processCommandsBatch(const String& commands) {
   int nextPos = commands.indexOf("NEXT", startPos);
 
   while (startPos < commands.length()) {
-    safeYield();
-
     if (nextPos == -1) {
       String command = commands.substring(startPos);
       command.trim();
@@ -889,14 +876,6 @@ void PalletizerMaster::processCommandsBatch(const String& commands) {
       startPos = nextPos + 4;
       nextPos = commands.indexOf("NEXT", startPos);
     }
-  }
-}
-
-void PalletizerMaster::safeYield() {
-  unsigned long currentTime = millis();
-  if (currentTime - lastYieldTime >= 5) {
-    yield();
-    lastYieldTime = currentTime;
   }
 }
 

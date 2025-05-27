@@ -33,6 +33,10 @@ void setup() {
   Serial.begin(9600);
   Serial.println("\nPalletizer System Starting...");
 
+  disableLoopWDT();
+  disableCore0WDT();
+  disableCore1WDT();
+
   if (!LittleFS.begin(true)) {
     Serial.println("Error mounting LittleFS! System will continue without file storage.");
   } else {
