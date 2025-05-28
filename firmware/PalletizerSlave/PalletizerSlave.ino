@@ -2,10 +2,10 @@
 
 #include "StepperSlave.h"
 
-// Command reference:  t;1;100;2000;d2000;500;1000
-// CMD_RUN      = 1 // t;1;200    - Start movement to position 200
-// CMD_ZERO     = 2 // t;2        - Home the axis
-// CMD_SETSPEED = 6 // t;6;2000   - Set speed to 2000
+// Command reference:  // t;1;100;2000;d2000;500;1000
+// CMD_RUN      = 1    // t;1;200    - Start movement to position 200
+// CMD_ZERO     = 2    // t;2        - Home the axis
+// CMD_SETSPEED = 6    // t;6;2000   - Set speed to 2000
 
 #define SLAVE_ADDR T_AXIS
 
