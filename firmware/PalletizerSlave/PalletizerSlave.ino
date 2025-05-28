@@ -5,7 +5,7 @@
 // Command reference:  // t;1;100;2000;d2000;500;1000
 // CMD_RUN      = 1    // t;1;200    - Example: t;1;2000;500;1000;0
 // CMD_ZERO     = 2    // t;2        - Home the axis
-// CMD_SETSPEED = 6    // t;6;2000   - Set speed to 2000
+// CMD_SETSPEED = 6    // t;6;1000   - Set speed to 1000
 
 #define SLAVE_ADDR T_AXIS
 
