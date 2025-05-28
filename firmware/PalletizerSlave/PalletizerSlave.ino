@@ -2,7 +2,7 @@
 
 #include "StepperSlave.h"
 
-#define SLAVE_ADDR X_AXIS
+#define SLAVE_ADDR G_AXIS
 
 // Command reference:  // x;1;100;2000;d2000;500;1000
 // CMD_RUN      = 1    // x;1;1000    - Example: x;1;2000;500;1000;0
