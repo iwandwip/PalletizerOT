@@ -2,16 +2,12 @@
 
 #include "StepperSlave.h"
 
-<<<<<<< HEAD
-#define SLAVE_ADDR G_AXIS
-=======
-// Command reference:  // t;1;100;2000;d2000;500;1000
-// CMD_RUN      = 1    // t;1;1000    - Example: t;1;2000;500;1000;0
-// CMD_ZERO     = 2    // t;2         - Home the axis
-// CMD_SETSPEED = 6    // t;6;1000    - Set speed to 1000
->>>>>>> parent of c0f7174 (Update PalletizerSlave.ino)
+#define SLAVE_ADDR Z_AXIS
 
-#define SLAVE_ADDR T_AXIS
+// Command reference:  // z;1;100;2000;d2000;500;1000
+// CMD_RUN      = 1    // z;1;1000    - Example: z;1;2000;500;1000;0
+// CMD_ZERO     = 2    // z;2         - Home the axis
+// CMD_SETSPEED = 6    // z;6;1000    - Set speed to 1000s
 
 #define CLK_PIN 10  // LAST: 10
 #define CW_PIN 11   // LAST: 11
