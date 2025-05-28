@@ -34,7 +34,6 @@ function CommandSection({
 📖 LEGACY FORMAT:
 X(1,10,100),Y(1,10,100),Z(1,10,100) NEXT
 X(2,20,200),Y(2,20,200),Z(2,20,200) NEXT
-SET(1) NEXT WAIT NEXT SET(0)
 
 🚀 NEW SCRIPT FORMAT:
 FUNC(PICK_SEQUENCE) {
@@ -43,79 +42,79 @@ FUNC(PICK_SEQUENCE) {
   Z(10,d1000,50);
 }
 
-FUNC(SYNC_WITH_ARM2) {
-  SET(1);
-  WAIT;
-  SET(0);
-}
-
 CALL(PICK_SEQUENCE);
-CALL(SYNC_WITH_ARM2);
 
-🔧 MIXED FORMAT (both work together):
+🔧 MIXED FORMAT:
 ZERO NEXT SPEED;500 NEXT
-CALL(PICK_SEQUENCE);
-SET(1) NEXT WAIT NEXT SET(0)`;
+CALL(PICK_SEQUENCE);`;
 
   return (
-    <>
-      <div className="card mb-4 shadow-sm">
-        <div className="card-header d-flex align-items-center">
-          <span className="me-2 fs-5">📤</span>
-          <h2 className="h5 mb-0">Upload Command File</h2>
+    <div className="command-interface">
+      <div className="command-card">
+        <div className="command-card-header">
+          <span>📤</span>
+          Upload Command File
         </div>
         
-        <div className="card-body command-section">
-          <div className="upload-container">
-            <div 
-              className="upload-area p-4 mb-3 text-center cursor-pointer"
-              onClick={triggerFileInput}
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".txt"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-              />
+        <div className="command-card-body">
+          <div 
+            className="upload-zone"
+            onClick={triggerFileInput}
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".txt"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
+            <div className="upload-content">
               <div className="upload-icon">📁</div>
-              <p className="upload-text mb-1">Click to select a command file</p>
-              <p className="upload-subtext">
-                {fileName ? (
-                  <span className="file-name">Selected: {fileName}</span>
-                ) : (
-                  'No file selected'
-                )}
-              </p>
-            </div>
-
-            <div className="upload-actions">
-              <button
-                className="btn btn-primary action-btn"
-                disabled={!selectedFile}
-                onClick={uploadFile}
-              >
-                <span className="me-1">📤</span> Upload
-              </button>
-            </div>
-
-            {uploadStatus && (
-              <div className={`command-status ${uploadStatus.type}`}>
-                {uploadStatus.message}
+              <div className="upload-text">Click to select a command file</div>
+              <div className="upload-subtext">
+                Drag & drop your .txt file here or click to browse
               </div>
-            )}
+              {fileName && (
+                <div className="file-selected">
+                  <span>📄</span>
+                  Selected: {fileName}
+                </div>
+              )}
+            </div>
           </div>
+
+          <div className="upload-actions">
+            <button
+              className="btn btn-primary action-btn"
+              disabled={!selectedFile}
+              onClick={uploadFile}
+            >
+              <span>📤</span> Upload File
+            </button>
+            <button
+              className="btn btn-outline-secondary action-btn"
+              onClick={() => fileInputRef.current.click()}
+            >
+              <span>📂</span> Browse
+            </button>
+          </div>
+
+          {uploadStatus && (
+            <div className={`status-message ${uploadStatus.type}`}>
+              {uploadStatus.message}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="card mb-4 shadow-sm">
-        <div className="card-header d-flex align-items-center">
-          <span className="me-2 fs-5">📝</span>
-          <h2 className="h5 mb-0">Write Commands</h2>
+      <div className="command-card">
+        <div className="command-card-header">
+          <span>📝</span>
+          Command Editor
         </div>
         
-        <div className="card-body command-section">
-          <div className="command-editor-container">
+        <div className="command-card-body">
+          <div className="editor-container">
             <div className="editor-toolbar">
               <div className="editor-info">Command Editor</div>
               <div className="format-badges">
@@ -134,24 +133,24 @@ SET(1) NEXT WAIT NEXT SET(0)`;
 
           <div className="command-actions">
             <button className="btn btn-primary action-btn" onClick={saveCommands}>
-              <span className="me-1">💾</span> Save Commands
+              <span>💾</span> Save Commands
             </button>
             <button className="btn btn-outline-primary action-btn" onClick={getCommands}>
-              <span className="me-1">📥</span> Load Current Commands
+              <span>📥</span> Load Commands
             </button>
             <a className="btn btn-outline-primary action-btn" href="/download_commands">
-              <span className="me-1">📥</span> Download Commands
+              <span>📥</span> Download
             </a>
           </div>
 
           {writeStatus && (
-            <div className={`command-status ${writeStatus.type}`}>
+            <div className={`status-message ${writeStatus.type}`}>
               {writeStatus.message}
             </div>
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

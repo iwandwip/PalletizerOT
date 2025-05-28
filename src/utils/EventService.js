@@ -60,12 +60,6 @@ export class EventService {
     }
   }
 
-  handleTimeoutEvent(data, loadTimeoutStats) {
-    if (data.type === 'timeout') {
-      loadTimeoutStats();
-    }
-  }
-
   isConnected() {
     return this.eventSource && this.eventSource.readyState === EventSource.OPEN;
   }

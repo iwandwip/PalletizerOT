@@ -12,13 +12,13 @@ function HeaderSection({ darkMode, toggleDarkMode, systemStatus }) {
   };
 
   return (
-    <header className="header-container d-flex justify-content-between align-items-center mb-4 p-3 text-white shadow-sm">
+    <header className="header-container d-flex justify-content-between align-items-center p-3 text-white">
       <div className="d-flex align-items-center">
         <span className="header-logo me-2">🤖</span>
-        <h1 className="header-title h4 mb-0">ESP32 Palletizer Control</h1>
+        <h1 className="header-title mb-0">ESP32 Palletizer Control</h1>
       </div>
-      <div className="d-flex align-items-center">
-        <div className="theme-toggle-container me-3">
+      <div className="d-flex align-items-center gap-3">
+        <div className="theme-toggle-container">
           <button 
             className="theme-toggle" 
             onClick={toggleDarkMode}
@@ -27,10 +27,10 @@ function HeaderSection({ darkMode, toggleDarkMode, systemStatus }) {
             {darkMode ? '🌙' : '☀️'}
           </button>
         </div>
-        <div className="status-container d-flex align-items-center px-3 py-1 rounded-pill">
+        <div className="status-container d-flex align-items-center px-3 py-2 rounded-pill">
           <span className="connection-indicator connected"></span>
-          <span className="me-2 text-white">Status:</span>
-          <span className={`status-badge ${getStatusBadgeClass()} rounded-pill`}>
+          <span className="me-2 text-white fw-bold">Status:</span>
+          <span className={`status-badge ${getStatusBadgeClass()}`}>
             {systemStatus}
           </span>
         </div>
