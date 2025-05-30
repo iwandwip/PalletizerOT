@@ -94,6 +94,111 @@ export function useRealtime() {
   return { connected, lastEvent, connect, disconnect }
 }
 
+export interface DebugMessage {
+  timestamp: number
+  level: string
+  source: string
+  message: string
+}
+
+export function useDebugMonitor() {
+  const [messages, setMessages] = useState<DebugMessage[]>([])
+  const [connected, setConnected] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [levelFilter, setLevelFilter] = useState('ALL')
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const messagesRef = useRef<DebugMessage[]>([])
+  const maxMessages = 1000
+
+  const connect = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+    }
+
+    const eventSource = new EventSource('/debug')
+    eventSourceRef.current = eventSource
+
+    eventSource.onopen = () => {
+      setConnected(true)
+    }
+
+    eventSource.addEventListener('debug', (event) => {
+      if (!paused) {
+        try {
+          const data: DebugMessage = JSON.parse(event.data)
+          messagesRef.current = [...messagesRef.current, data].slice(-maxMessages)
+          setMessages(messagesRef.current)
+        } catch (err) {
+          console.error('Error parsing debug data:', err)
+        }
+      }
+    })
+
+    eventSource.onerror = () => {
+      setConnected(false)
+      setTimeout(() => connect(), 5000)
+    }
+  }, [paused])
+
+  const disconnect = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+    setConnected(false)
+  }, [])
+
+  const clearMessages = useCallback(() => {
+    messagesRef.current = []
+    setMessages([])
+    api.clearDebugBuffer()
+  }, [])
+
+  const togglePause = useCallback(() => {
+    setPaused(prev => !prev)
+  }, [])
+
+  const exportMessages = useCallback(() => {
+    const data = messages.map(msg => 
+      `[${new Date(msg.timestamp).toLocaleTimeString()}] [${msg.level}] [${msg.source}] ${msg.message}`
+    ).join('\n')
+    
+    const blob = new Blob([data], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `debug_log_${new Date().toISOString()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [messages])
+
+  const filteredMessages = messages.filter(msg => {
+    if (levelFilter !== 'ALL' && msg.level !== levelFilter) return false
+    if (filter && !msg.message.toLowerCase().includes(filter.toLowerCase()) && 
+        !msg.source.toLowerCase().includes(filter.toLowerCase())) return false
+    return true
+  })
+
+  useEffect(() => {
+    connect()
+    return disconnect
+  }, [connect, disconnect])
+
+  return {
+    messages: filteredMessages,
+    connected,
+    paused,
+    filter,
+    levelFilter,
+    setFilter,
+    setLevelFilter,
+    clearMessages,
+    togglePause,
+    exportMessages
+  }
+}
+
 export function useSystemStatus() {
   const [status, setStatus] = useState<SystemStatus>('IDLE')
   const { execute } = useApi()

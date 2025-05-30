@@ -130,12 +130,50 @@ class PalletizerAPI {
     return response.text()
   }
 
+  async getDebugBuffer(startIndex: number = 0): Promise<any> {
+    const response = await fetch(`/debug/buffer?start=${startIndex}`)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
+  async clearDebugBuffer(): Promise<string> {
+    const response = await fetch('/debug/clear', {
+      method: 'POST',
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.text()
+  }
+
+  async toggleDebugCapture(): Promise<any> {
+    const response = await fetch('/debug/toggle', {
+      method: 'POST',
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
   downloadCommands(): void {
     window.location.href = '/download_commands'
   }
 
   createEventSource(): EventSource {
     return new EventSource('/events')
+  }
+
+  createDebugEventSource(): EventSource {
+    return new EventSource('/debug')
   }
 }
 

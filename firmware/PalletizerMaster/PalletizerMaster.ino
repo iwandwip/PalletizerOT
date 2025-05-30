@@ -11,17 +11,17 @@
 #define TX_PIN 17
 #define INDICATOR_PIN 26
 
-#define WIFI_MODE PalletizerServer::MODE_STA
-#define WIFI_SSID "silenceAndSleep"
-#define WIFI_PASSWORD "11111111"
+// #define WIFI_MODE PalletizerServer::MODE_STA
+// #define WIFI_SSID "silenceAndSleep"
+// #define WIFI_PASSWORD "11111111"
 
 // #define WIFI_MODE PalletizerServer::MODE_STA
 // #define WIFI_SSID "TIMEOSPACE"
 // #define WIFI_PASSWORD "1234Saja"
 
-// #define WIFI_MODE PalletizerServer::MODE_AP
-// #define WIFI_SSID "PalletizerAP"
-// #define WIFI_PASSWORD ""
+#define WIFI_MODE PalletizerServer::MODE_AP
+#define WIFI_SSID "PalletizerAP"
+#define WIFI_PASSWORD ""
 
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
@@ -47,7 +47,7 @@ void setup() {
   master.setSlaveDataCallback(onSlaveData);
 
   master.begin();
-  Serial.println("Palletizer master initialized");s
+  Serial.println("Palletizer master initialized");
   server.begin();
   Serial.println("Web server initialized");
 
@@ -77,7 +77,7 @@ void loop() {
   server.update();
 
   static unsigned long lastDebugUpdate = 0;
-  if (millis() - lastDebugUpdate > 30000) {  
+  if (millis() - lastDebugUpdate > 30000) {
     lastDebugUpdate = millis();
     DEBUG_MGR.info("HEARTBEAT", "System running - State: " + String(master.getSystemState()));
   }

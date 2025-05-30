@@ -1,5 +1,3 @@
-// Add this to page.tsx - Error Toast System
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -11,6 +9,7 @@ import SystemControls from '@/components/system-controls'
 import SpeedPanel from '@/components/speed-panel'
 import CommandEditor from '@/components/command-editor'
 import StatusDisplay from '@/components/status-display'
+import DebugTerminal from '@/components/debug-terminal'
 import { useSystemStatus, useTimeoutConfig, useTimeoutStats, useRealtime } from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { Axis } from '@/lib/types'
@@ -34,18 +33,17 @@ export default function PalletizerControl() {
   const [commandText, setCommandText] = useState('')
   const [darkMode, setDarkMode] = useState(false)
   const [errors, setErrors] = useState<ErrorNotification[]>([])
+  const [showDebugTerminal, setShowDebugTerminal] = useState(true)
 
   const { status, setStatus, sendCommand } = useSystemStatus()
   const { config: timeoutConfig, setConfig: setTimeoutConfig, saveConfig } = useTimeoutConfig()
   const { stats: timeoutStats, loadStats, clearStats } = useTimeoutStats()
   const { connected, lastEvent } = useRealtime()
 
-  // Error management
   const addError = (message: string, type: 'error' | 'warning' | 'info' = 'error') => {
     const id = Date.now().toString()
     setErrors(prev => [...prev, { id, message, type }])
     
-    // Auto remove after 5 seconds
     setTimeout(() => {
       setErrors(prev => prev.filter(err => err.id !== id))
     }, 5000)
@@ -55,7 +53,6 @@ export default function PalletizerControl() {
     setErrors(prev => prev.filter(err => err.id !== id))
   }
 
-  // Show connection warning when disconnected
   useEffect(() => {
     if (!connected) {
       addError('ESP32 disconnected - Check device connection', 'warning')
@@ -167,8 +164,7 @@ export default function PalletizerControl() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Error Notifications */}
+    <div className="min-h-screen bg-background text-foreground pb-80">
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
         {errors.map((error) => (
           <Alert
@@ -196,7 +192,6 @@ export default function PalletizerControl() {
         <header className="text-center space-y-2">
           <div className="flex items-center justify-center gap-3">
             <h1 className="text-3xl font-bold">ESP32 Palletizer Control</h1>
-            {/* Connection Status Badge */}
             <div className="flex items-center gap-1">
               {connected ? (
                 <>
@@ -214,7 +209,6 @@ export default function PalletizerControl() {
           <p className="text-muted-foreground">Modern robotics control interface</p>
         </header>
 
-        {/* Connection Warning Banner */}
         {!connected && (
           <Alert variant="destructive">
             <WifiOff className="h-4 w-4" />
@@ -294,6 +288,8 @@ export default function PalletizerControl() {
           ESP32 Palletizer System - Built with Next.js & shadcn/ui
         </footer>
       </div>
+
+      {showDebugTerminal && <DebugTerminal />}
     </div>
   )
 }
