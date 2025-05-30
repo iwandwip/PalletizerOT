@@ -1,8 +1,9 @@
 #include "PalletizerScriptParser.h"
 #include "PalletizerMaster.h"
+#include "DebugManager.h"
 
 PalletizerScriptParser::PalletizerScriptParser(PalletizerMaster* master)
-  : palletizerMaster(master), functionCount(0), commandCounter(0) {
+  : palletizerMaster(master), functionCount(0), commandCounter(0), debugEnabled(true) {
 }
 
 void PalletizerScriptParser::parseScript(const String& script) {
@@ -12,6 +13,27 @@ void PalletizerScriptParser::parseScript(const String& script) {
   if (cleanScript.length() == 0) return;
 
   resetCommandCounter();
+
+  debugLog("INFO", "PARSER", "════════════════════════════════════════");
+  debugLog("INFO", "PARSER", "📥 Received Script (" + String(cleanScript.length()) + " bytes)");
+
+  int funcDefCount = 0;
+  int callCount = 0;
+  int tempPos = 0;
+
+  while ((tempPos = cleanScript.indexOf("FUNC(", tempPos)) != -1) {
+    funcDefCount++;
+    tempPos += 5;
+  }
+
+  tempPos = 0;
+  while ((tempPos = cleanScript.indexOf("CALL(", tempPos)) != -1) {
+    callCount++;
+    tempPos += 5;
+  }
+
+  debugLog("INFO", "PARSER", "Script Type: " + String(funcDefCount > 0 ? "MODERN_SCRIPT" : "INLINE_COMMANDS"));
+  debugLog("INFO", "PARSER", "");
 
   int pos = 0;
   while (pos < cleanScript.length()) {
@@ -50,6 +72,8 @@ void PalletizerScriptParser::parseScript(const String& script) {
       }
     }
   }
+
+  printParsingInfo();
 }
 
 void PalletizerScriptParser::executeStatement(const String& statement) {
@@ -75,6 +99,10 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
 
   for (int i = 0; i < functionCount; i++) {
     if (userFunctions[i].name.equals(trimmedName)) {
+      int cmdCount = getCommandCountInFunction(trimmedName);
+      debugLog("INFO", "EXECUTOR", "🔄 Executing: CALL(" + trimmedName + ")");
+      debugLog("INFO", "EXECUTOR", "└─ Entering function " + trimmedName + " (" + String(cmdCount) + " commands)");
+
       String statements[50];
       int statementCount = 0;
       tokenizeStatements(userFunctions[i].body, statements, statementCount);
@@ -82,12 +110,17 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
       for (int j = 0; j < statementCount; j++) {
         statements[j].trim();
         if (statements[j].length() > 0) {
+          debugLog("INFO", "FUNCTION", "  [" + String(j + 1) + "/" + String(statementCount) + "] " + statements[j]);
           executeStatement(statements[j]);
         }
       }
+
+      debugLog("INFO", "EXECUTOR", "✅ Function " + trimmedName + " completed");
       return true;
     }
   }
+
+  debugLog("ERROR", "EXECUTOR", "❌ Function not found: " + funcName);
   return false;
 }
 
@@ -123,6 +156,35 @@ void PalletizerScriptParser::resetCommandCounter() {
 
 int PalletizerScriptParser::getCommandCounter() {
   return commandCounter;
+}
+
+void PalletizerScriptParser::setDebugEnabled(bool enabled) {
+  debugEnabled = enabled;
+}
+
+int PalletizerScriptParser::getCommandCountInFunction(const String& funcName) {
+  for (int i = 0; i < functionCount; i++) {
+    if (userFunctions[i].name.equals(funcName)) {
+      return countStatementsInBody(userFunctions[i].body);
+    }
+  }
+  return 0;
+}
+
+void PalletizerScriptParser::printParsingInfo() {
+  debugLog("INFO", "PARSER", "📋 PARSING RESULTS:");
+
+  if (functionCount > 0) {
+    debugLog("INFO", "PARSER", "├─ Functions Found: " + String(functionCount));
+    for (int i = 0; i < functionCount; i++) {
+      int cmdCount = countStatementsInBody(userFunctions[i].body);
+      String prefix = (i == functionCount - 1) ? "│  └─ " : "│  ├─ ";
+      debugLog("INFO", "PARSER", prefix + userFunctions[i].name + " (" + String(cmdCount) + " commands)");
+    }
+  }
+
+  debugLog("INFO", "PARSER", "└─ Total Commands: " + String(commandCounter));
+  debugLog("INFO", "PARSER", "════════════════════════════════════════");
 }
 
 void PalletizerScriptParser::parseFunction(const String& script, int startPos) {
@@ -195,16 +257,22 @@ void PalletizerScriptParser::processSingleStatement(const String& statement) {
   if (cleanStatement.length() == 0) return;
 
   if (cleanStatement.startsWith("SET(") || cleanStatement == "WAIT") {
+    debugLog("INFO", "SYNC", "🔄 " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement == "ZERO" || cleanStatement == "IDLE" || cleanStatement == "PLAY" || cleanStatement == "PAUSE" || cleanStatement == "STOP") {
+    debugLog("INFO", "SYSTEM", "⚙️ " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("SPEED;")) {
+    debugLog("INFO", "SPEED", "⚡ " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.indexOf('(') != -1 && (cleanStatement.startsWith("X(") || cleanStatement.startsWith("Y(") || cleanStatement.startsWith("Z(") || cleanStatement.startsWith("T(") || cleanStatement.startsWith("G("))) {
+    debugLog("INFO", "MOTION", "🎯 " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.indexOf(',') != -1) {
+    debugLog("INFO", "MULTI", "🎯 " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("GRIPPER;") || cleanStatement.startsWith("TOOL;")) {
+    debugLog("INFO", "TOOL", "🔧 " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
   }
 }
@@ -257,4 +325,17 @@ bool PalletizerScriptParser::functionExists(const String& name) {
     }
   }
   return false;
+}
+
+void PalletizerScriptParser::debugLog(const String& level, const String& source, const String& message) {
+  if (debugEnabled) {
+    DEBUG_MGR.println(source, message);
+  }
+}
+
+int PalletizerScriptParser::countStatementsInBody(const String& body) {
+  String statements[50];
+  int count = 0;
+  tokenizeStatements(body, statements, count);
+  return count;
 }

@@ -74,6 +74,15 @@ public:
     int currentRetryCount = 0;
   };
 
+  struct ExecutionInfo {
+    int totalCommands = 0;
+    int currentCommand = 0;
+    String currentFunction = "";
+    int functionDepth = 0;
+    unsigned long executionStartTime = 0;
+    bool isExecuting = false;
+  };
+
   typedef void (*DataCallback)(const String& data);
 
   PalletizerMaster(int rxPin, int txPin, int indicatorPin = -1);
@@ -93,6 +102,8 @@ public:
   float getTimeoutSuccessRate();
   bool saveTimeoutConfig();
   bool loadTimeoutConfig();
+  ExecutionInfo getExecutionInfo();
+  PalletizerScriptParser* getScriptParser();
 
 private:
   static PalletizerMaster* instance;
@@ -136,6 +147,7 @@ private:
   unsigned long waitStartTimeForStats;
 
   PalletizerScriptParser scriptParser;
+  ExecutionInfo executionInfo;
 
   void checkSlaveData();
   void onCommandReceived(const String& data);
@@ -175,6 +187,9 @@ private:
   void processCommandsBatch(const String& commands);
   bool shouldClearQueue(const String& data);
   void ensureFileIsClosed(File& file);
+  void updateExecutionInfo(bool start = false);
+  void logExecutionProgress();
+  void logMotionCommand(const String& data);
 };
 
 #endif

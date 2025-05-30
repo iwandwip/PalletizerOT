@@ -47,6 +47,14 @@ public:
   void info(const String& source, const String& message);
   void warning(const String& source, const String& message);
   void error(const String& source, const String& message);
+  void debug(const String& source, const String& message);
+
+  void sequence(const String& source, int current, int total, const String& message);
+  void motion(const String& axis, long position, float speed = 0, unsigned long delay = 0);
+  void sync(const String& type, const String& message);
+  void function(const String& funcName, bool entering, int commandCount = 0);
+  void progress(int current, int total, const String& task);
+  void separator();
 
   DebugPrint& getDebugPrint();
 
@@ -57,6 +65,8 @@ private:
 
   DebugPrint debugPrint;
   bool initialized;
+
+  void sendFormattedMessage(const String& level, const String& source, const String& message);
 };
 
 #define DEBUG_SERIAL DebugManager::getInstance().getDebugPrint()

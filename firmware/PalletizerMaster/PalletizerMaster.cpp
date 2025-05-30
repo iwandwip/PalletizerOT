@@ -1,4 +1,5 @@
 #include "PalletizerMaster.h"
+#include "DebugManager.h"
 
 PalletizerMaster* PalletizerMaster::instance = nullptr;
 
@@ -48,7 +49,7 @@ void PalletizerMaster::update() {
 
   if (waitingForSync) {
     if (digitalRead(syncWaitPin) == HIGH) {
-      DEBUG_PRINTLN("MASTER: WAIT completed - sync signal received");
+      DEBUG_MGR.sync("WAIT", "Sync signal received - continuing execution");
       waitingForSync = false;
       updateTimeoutStats(true);
 
@@ -73,12 +74,16 @@ void PalletizerMaster::update() {
       if (checkAllSlavesCompleted()) {
         sequenceRunning = false;
         waitingForCompletion = false;
-        DEBUG_PRINTLN("MASTER: All slaves completed sequence");
+        DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
 
         if (!isQueueEmpty() && systemState == STATE_RUNNING) {
           DEBUG_PRINTLN("MASTER: Processing next command from queue");
           processNextCommand();
         } else if (isQueueEmpty() && systemState == STATE_RUNNING) {
+          if (executionInfo.isExecuting) {
+            logExecutionProgress();
+            updateExecutionInfo(false);
+          }
           setSystemState(STATE_IDLE);
         }
       }
@@ -249,6 +254,14 @@ bool PalletizerMaster::loadTimeoutConfig() {
   return true;
 }
 
+PalletizerMaster::ExecutionInfo PalletizerMaster::getExecutionInfo() {
+  return executionInfo;
+}
+
+PalletizerScriptParser* PalletizerMaster::getScriptParser() {
+  return &scriptParser;
+}
+
 void PalletizerMaster::checkSlaveData() {
   if (slaveSerial.available() > 0) {
     while (slaveSerial.available() > 0) {
@@ -329,7 +342,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
 }
 
 void PalletizerMaster::onSlaveData(const String& data) {
-  DEBUG_PRINTLN("SLAVE→MASTER: " + data);
+  DEBUG_MGR.info("SLAVE→MASTER", data);
 
   if (!indicatorEnabled && waitingForCompletion && sequenceRunning) {
     if (data.indexOf("SEQUENCE COMPLETED") != -1) {
@@ -341,6 +354,10 @@ void PalletizerMaster::onSlaveData(const String& data) {
         DEBUG_PRINTLN("MASTER: Processing next command from queue");
         processNextCommand();
       } else if (isQueueEmpty() && systemState == STATE_RUNNING) {
+        if (executionInfo.isExecuting) {
+          logExecutionProgress();
+          updateExecutionInfo(false);
+        }
         setSystemState(STATE_IDLE);
       } else if (systemState == STATE_STOPPING) {
         clearQueue();
@@ -348,12 +365,18 @@ void PalletizerMaster::onSlaveData(const String& data) {
       }
     }
   }
+
+  if (data.indexOf("POSITION REACHED") != -1) {
+    String axis = data.substring(0, data.indexOf(";"));
+    axis.toUpperCase();
+    DEBUG_MGR.info("MOTION", "✅ " + axis + " axis reached target position");
+  }
 }
 
 void PalletizerMaster::processStandardCommand(const String& command) {
   if (command == "ZERO") {
     currentCommand = CMD_ZERO;
-    DEBUG_PRINTLN("MASTER: Command set to ZERO");
+    DEBUG_MGR.info("SYSTEM", "⚙️ Executing ZERO (Homing) command");
     sendCommandToAllSlaves(CMD_ZERO);
     sequenceRunning = true;
     waitingForCompletion = indicatorEnabled;
@@ -373,20 +396,22 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
     String command = slaveId + ";" + String(CMD_SETSPEED) + ";" + speedValue;
 
     sendToSlave(command);
-    DEBUG_PRINTLN("MASTER→SLAVE: " + command);
+    slaveId.toUpperCase();
+    DEBUG_MGR.info("SPEED", "⚡ Set " + slaveId + " axis speed to " + speedValue);
   } else {
     const char* slaveIds[] = { "x", "y", "z", "t", "g" };
     for (int i = 0; i < 5; i++) {
       String command = String(slaveIds[i]) + ";" + String(CMD_SETSPEED) + ";" + params;
       sendToSlave(command);
-      DEBUG_PRINTLN("MASTER→SLAVE: " + command);
     }
+    DEBUG_MGR.info("SPEED", "⚡ Set all axes speed to " + params);
   }
 }
 
 void PalletizerMaster::processCoordinateData(const String& data) {
   DEBUG_PRINTLN("MASTER: Processing coordinates");
   currentCommand = CMD_RUN;
+  logMotionCommand(data);
   parseCoordinateData(data);
   sequenceRunning = true;
   waitingForCompletion = true;
@@ -412,6 +437,8 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
       loadCommandsFromFile();
     }
 
+    DEBUG_MGR.info("EXECUTOR", "▶️ EXECUTION STARTED");
+    updateExecutionInfo(true);
     setSystemState(STATE_RUNNING);
     if (!sequenceRunning && !waitingForCompletion && !isQueueEmpty()) {
       processNextCommand();
@@ -446,10 +473,10 @@ void PalletizerMaster::processSetCommand(const String& data) {
 
     if (setValue == 1) {
       digitalWrite(syncSetPin, HIGH);
-      DEBUG_PRINTLN("MASTER: SET(1) - Sync signal HIGH");
+      DEBUG_MGR.sync("SET(1)", "Sync signal HIGH");
     } else if (setValue == 0) {
       digitalWrite(syncSetPin, LOW);
-      DEBUG_PRINTLN("MASTER: SET(0) - Sync signal LOW");
+      DEBUG_MGR.sync("SET(0)", "Sync signal LOW");
     } else {
       DEBUG_PRINTLN("MASTER: Invalid SET value: " + value);
     }
@@ -457,7 +484,7 @@ void PalletizerMaster::processSetCommand(const String& data) {
 }
 
 void PalletizerMaster::processWaitCommand() {
-  DEBUG_PRINTLN("MASTER: WAIT command - waiting for sync signal HIGH");
+  DEBUG_MGR.sync("WAIT", "Waiting for sync signal HIGH");
   waitingForSync = true;
   waitStartTime = millis();
   waitStartTimeForStats = millis();
@@ -524,6 +551,7 @@ void PalletizerMaster::addToQueue(const String& command) {
     queueSize++;
     writeQueueIndex();
     DEBUG_PRINTLN("MASTER: Added command to queue: " + command + " (Queue size: " + String(queueSize) + ")");
+    executionInfo.totalCommands++;
   } else {
     DEBUG_PRINTLN("MASTER: Failed to add command to queue: " + command);
   }
@@ -564,6 +592,10 @@ void PalletizerMaster::processNextCommand() {
   }
 
   String command = getFromQueue();
+  executionInfo.currentCommand++;
+
+  DEBUG_MGR.sequence("EXECUTOR", executionInfo.currentCommand, executionInfo.totalCommands, "Executing: " + command);
+  logExecutionProgress();
 
   String upperData = command;
   upperData.trim();
@@ -615,6 +647,9 @@ void PalletizerMaster::clearQueue() {
   queueHead = 0;
   queueSize = 0;
   writeQueueIndex();
+
+  executionInfo.totalCommands = 0;
+  executionInfo.currentCommand = 0;
 
   DEBUG_PRINTLN("MASTER: Command queue cleared");
 }
@@ -790,6 +825,7 @@ void PalletizerMaster::loadCommandsFromFile() {
       processCommand("END_QUEUE");
     }
     DEBUG_PRINTLN("MASTER: Commands loaded from file successfully");
+    DEBUG_MGR.info("EXECUTOR", "Total Commands in Queue: " + String(executionInfo.totalCommands));
   } else {
     DEBUG_PRINTLN("MASTER: No valid commands found in file");
   }
@@ -800,7 +836,7 @@ void PalletizerMaster::handleWaitTimeout() {
 
   switch (timeoutConfig.strategy) {
     case TIMEOUT_SKIP_CONTINUE:
-      DEBUG_PRINTLN("MASTER: WAIT timeout #" + String(timeoutStats.totalTimeouts) + " - skipping and continuing");
+      DEBUG_MGR.warning("TIMEOUT", "⚠️ WAIT timeout #" + String(timeoutStats.totalTimeouts) + " - skipping and continuing");
       waitingForSync = false;
 
       if (timeoutStats.totalTimeouts >= timeoutConfig.maxTimeoutWarning) {
@@ -819,13 +855,13 @@ void PalletizerMaster::handleWaitTimeout() {
       break;
 
     case TIMEOUT_PAUSE_SYSTEM:
-      DEBUG_PRINTLN("MASTER: WAIT timeout - pausing system for user intervention");
+      DEBUG_MGR.warning("TIMEOUT", "⚠️ WAIT timeout - pausing system for user intervention");
       waitingForSync = false;
       setSystemState(STATE_PAUSED);
       break;
 
     case TIMEOUT_ABORT_RESET:
-      DEBUG_PRINTLN("MASTER: WAIT timeout - aborting sequence and resetting");
+      DEBUG_MGR.error("TIMEOUT", "❌ WAIT timeout - aborting sequence and resetting");
       waitingForSync = false;
       clearQueue();
       setSystemState(STATE_IDLE);
@@ -834,10 +870,10 @@ void PalletizerMaster::handleWaitTimeout() {
     case TIMEOUT_RETRY_BACKOFF:
       if (timeoutStats.currentRetryCount < timeoutConfig.autoRetryCount) {
         timeoutStats.currentRetryCount++;
-        DEBUG_PRINTLN("MASTER: WAIT timeout - retry " + String(timeoutStats.currentRetryCount) + "/" + String(timeoutConfig.autoRetryCount));
+        DEBUG_MGR.warning("TIMEOUT", "⚠️ WAIT timeout - retry " + String(timeoutStats.currentRetryCount) + "/" + String(timeoutConfig.autoRetryCount));
         waitStartTime = millis();
       } else {
-        DEBUG_PRINTLN("MASTER: WAIT timeout - max retries reached, pausing");
+        DEBUG_MGR.error("TIMEOUT", "❌ WAIT timeout - max retries reached, pausing");
         timeoutStats.currentRetryCount = 0;
         waitingForSync = false;
         setSystemState(STATE_PAUSED);
@@ -896,5 +932,46 @@ bool PalletizerMaster::shouldClearQueue(const String& data) {
 void PalletizerMaster::ensureFileIsClosed(File& file) {
   if (file) {
     file.close();
+  }
+}
+
+void PalletizerMaster::updateExecutionInfo(bool start) {
+  if (start) {
+    executionInfo.isExecuting = true;
+    executionInfo.executionStartTime = millis();
+    executionInfo.currentCommand = 0;
+    executionInfo.currentFunction = "";
+    executionInfo.functionDepth = 0;
+  } else {
+    executionInfo.isExecuting = false;
+    unsigned long totalTime = millis() - executionInfo.executionStartTime;
+
+    DEBUG_MGR.separator();
+    DEBUG_MGR.info("PERFORMANCE", "📊 Execution Summary:");
+    DEBUG_MGR.info("PERFORMANCE", "├─ Total Time: " + String(totalTime / 1000) + "s");
+    DEBUG_MGR.info("PERFORMANCE", "├─ Commands: " + String(executionInfo.currentCommand) + "/" + String(executionInfo.totalCommands) + " (100%)");
+    DEBUG_MGR.info("PERFORMANCE", "├─ Success Rate: " + String(getTimeoutSuccessRate(), 1) + "%");
+    DEBUG_MGR.info("PERFORMANCE", "└─ Avg Command Time: " + String(totalTime / executionInfo.totalCommands) + "ms");
+    DEBUG_MGR.separator();
+  }
+}
+
+void PalletizerMaster::logExecutionProgress() {
+  if (executionInfo.totalCommands > 0) {
+    DEBUG_MGR.progress(executionInfo.currentCommand, executionInfo.totalCommands, "Execution Progress");
+  }
+}
+
+void PalletizerMaster::logMotionCommand(const String& data) {
+  int count = 0;
+  int pos = 0;
+
+  while ((pos = data.indexOf('(', pos)) != -1) {
+    count++;
+    pos++;
+  }
+
+  if (count > 1) {
+    DEBUG_MGR.info("MOTION", "🎯 Multi-axis movement (" + String(count) + " axes)");
   }
 }

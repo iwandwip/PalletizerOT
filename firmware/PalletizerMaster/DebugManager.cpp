@@ -64,9 +64,9 @@ String DebugPrint::detectLevel(const String& line) {
   String upperLine = line;
   upperLine.toUpperCase();
 
-  if (upperLine.indexOf("ERROR") != -1 || upperLine.indexOf("FAIL") != -1) {
+  if (upperLine.indexOf("ERROR") != -1 || upperLine.indexOf("FAIL") != -1 || upperLine.indexOf("❌") != -1) {
     return "ERROR";
-  } else if (upperLine.indexOf("WARN") != -1 || upperLine.indexOf("WARNING") != -1) {
+  } else if (upperLine.indexOf("WARN") != -1 || upperLine.indexOf("WARNING") != -1 || upperLine.indexOf("⚠️") != -1) {
     return "WARNING";
   } else if (upperLine.indexOf("DEBUG") != -1) {
     return "DEBUG";
@@ -116,29 +116,93 @@ void DebugManager::println(const String& source, const String& message) {
 }
 
 void DebugManager::info(const String& source, const String& message) {
-  if (debugPrint.getServer()) {
-    debugPrint.getServer()->sendDebugMessage("INFO", source, message);
-  }
-  debugPrint.setSource(source);
-  debugPrint.println("[INFO] " + message);
+  sendFormattedMessage("INFO", source, message);
 }
 
 void DebugManager::warning(const String& source, const String& message) {
-  if (debugPrint.getServer()) {
-    debugPrint.getServer()->sendDebugMessage("WARNING", source, message);
-  }
-  debugPrint.setSource(source);
-  debugPrint.println("[WARNING] " + message);
+  sendFormattedMessage("WARNING", source, message);
 }
 
 void DebugManager::error(const String& source, const String& message) {
-  if (debugPrint.getServer()) {
-    debugPrint.getServer()->sendDebugMessage("ERROR", source, message);
+  sendFormattedMessage("ERROR", source, message);
+}
+
+void DebugManager::debug(const String& source, const String& message) {
+  sendFormattedMessage("DEBUG", source, message);
+}
+
+void DebugManager::sequence(const String& source, int current, int total, const String& message) {
+  String formattedMsg = "🔄 [" + String(current) + "/" + String(total) + "] " + message;
+  sendFormattedMessage("INFO", source, formattedMsg);
+}
+
+void DebugManager::motion(const String& axis, long position, float speed, unsigned long delay) {
+  String msg = "🎯 " + axis + "(" + String(position);
+  if (delay > 0) {
+    msg += ",d" + String(delay);
   }
-  debugPrint.setSource(source);
-  debugPrint.println("[ERROR] " + message);
+  if (speed > 0) {
+    msg += "," + String(speed, 0);
+  }
+  msg += ")";
+  sendFormattedMessage("INFO", "MOTION", msg);
+}
+
+void DebugManager::sync(const String& type, const String& message) {
+  String msg = "🔄 " + type + " - " + message;
+  sendFormattedMessage("INFO", "SYNC", msg);
+}
+
+void DebugManager::function(const String& funcName, bool entering, int commandCount) {
+  if (entering) {
+    String msg = "└─ Entering function " + funcName;
+    if (commandCount > 0) {
+      msg += " (" + String(commandCount) + " commands)";
+    }
+    sendFormattedMessage("INFO", "FUNCTION", msg);
+  } else {
+    String msg = "✅ Function " + funcName + " completed";
+    sendFormattedMessage("INFO", "FUNCTION", msg);
+  }
+}
+
+void DebugManager::progress(int current, int total, const String& task) {
+  int percentage = (total > 0) ? (current * 100 / total) : 0;
+  String progressBar = "[";
+
+  for (int i = 0; i < 20; i++) {
+    if (i < (percentage / 5)) {
+      progressBar += "█";
+    } else {
+      progressBar += "░";
+    }
+  }
+
+  progressBar += "] " + String(current) + "/" + String(total) + " (" + String(percentage) + "%) - " + task;
+  sendFormattedMessage("INFO", "PROGRESS", progressBar);
+}
+
+void DebugManager::separator() {
+  sendFormattedMessage("INFO", "SYSTEM", "════════════════════════════════════════");
 }
 
 DebugPrint& DebugManager::getDebugPrint() {
   return debugPrint;
+}
+
+void DebugManager::sendFormattedMessage(const String& level, const String& source, const String& message) {
+  if (debugPrint.getServer()) {
+    debugPrint.getServer()->sendDebugMessage(level, source, message);
+  }
+  debugPrint.setSource(source);
+
+  if (level == "ERROR") {
+    debugPrint.println("[ERROR] " + message);
+  } else if (level == "WARNING") {
+    debugPrint.println("[WARNING] " + message);
+  } else if (level == "DEBUG") {
+    debugPrint.println("[DEBUG] " + message);
+  } else {
+    debugPrint.println(message);
+  }
 }

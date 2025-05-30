@@ -24,6 +24,10 @@ public:
   void resetCommandCounter();
   int getCommandCounter();
 
+  void setDebugEnabled(bool enabled);
+  int getCommandCountInFunction(const String& funcName);
+  void printParsingInfo();
+
 private:
   static const int MAX_FUNCTIONS = 20;
 
@@ -31,6 +35,7 @@ private:
   Function userFunctions[MAX_FUNCTIONS];
   int functionCount;
   int commandCounter;
+  bool debugEnabled;
 
   void parseFunction(const String& script, int startPos);
   String extractFunctionBody(const String& script, int startPos);
@@ -41,6 +46,8 @@ private:
   void trimWhitespace(String& str);
   bool isValidFunctionName(const String& name);
   bool functionExists(const String& name);
+  void debugLog(const String& level, const String& source, const String& message);
+  int countStatementsInBody(const String& body);
 };
 
 #endif
