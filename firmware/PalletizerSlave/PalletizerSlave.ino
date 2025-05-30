@@ -4,13 +4,8 @@
 
 #define SLAVE_ADDR Z_AXIS
 
-// Command reference:  // z;1;100;2000;d2000;500;1000
-// CMD_RUN      = 1    // z;1;1000    - Example: z;1;2000;500;1000;0
-// CMD_ZERO     = 2    // z;2         - Home the axis
-// CMD_SETSPEED = 6    // z;6;1000    - Set speed to 1000s
-
-#define CLK_PIN 10  // LAST: 10
-#define CW_PIN 11   // LAST: 11
+#define CLK_PIN 10  // 10
+#define CW_PIN 11   // 11
 #define RX_PIN 8
 #define TX_PIN 9
 #define SENSOR_PIN 6
@@ -20,7 +15,7 @@
 #define EN_PIN 12
 #define BRAKE_PIN NOT_CONNECTED
 #define INVERT_BRAKE HIGH_LOGIC_BRAKE
-#define INVERT_ENABLE HIGH_LOGIC_BRAKE  // LAST: LOW_LOGIC_ENABLE
+#define INVERT_ENABLE HIGH_LOGIC_BRAKE  // FIX: LOW_LOGIC_ENABLE
 #define BRAKE_ENGAGE_DELAY NO_DELAY
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #elif (SLAVE_ADDR == T_AXIS)
@@ -38,6 +33,11 @@
 #define BRAKE_ENGAGE_DELAY NO_DELAY
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #endif
+
+// Command reference: z;1;100;2000;d2000;500;1000
+// CMD_RUN      = 1 // z;1;200    - Start movement to position 200
+// CMD_ZERO     = 2 // z;2        - Home the axis
+// CMD_SETSPEED = 6 // z;6;2000   - Set speed to 2000
 
 StepperSlave slave(
   SLAVE_ADDR,
@@ -57,9 +57,5 @@ void setup() {
 }
 
 void loop() {
-  // int sensorState = digitalRead(SENSOR_PIN);
-  // Serial.print("| sensorState: ");
-  // Serial.print(sensorState);
-  // Serial.println();
   slave.update();
 }
