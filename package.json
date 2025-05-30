@@ -5,11 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:esp32": "next build && node scripts/bundle-single-file.mjs",
-    "build:analyze": "next build && node scripts/bundle-single-file.mjs && dir out\\index.html",
-    "build:test": "npm run build:esp32 && cd out && npx http-server -p 3002 -a localhost -o",
-    "test:local": "cd out && npx http-server -p 3002 -a localhost -d false",
-    "test:file": "npm run build:esp32 && start out\\index.html",
+    "build:copy": "next build && node scripts/copy-to-esp32.mjs",
+    "build:test": "npm run build:copy && cd out && npx http-server -p 3002",
     "start": "next start",
     "lint": "next lint"
   },

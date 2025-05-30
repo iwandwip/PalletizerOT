@@ -5,11 +5,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-console.log('🔄 Building single HTML file for ESP32...');
+console.log('🔄 Building comprehensive single HTML file for ESP32...');
 
 const outDir = path.join(__dirname, '../out');
 const htmlPath = path.join(outDir, 'index.html');
-const outputPath = path.join(outDir, 'index.html'); // Output sebagai index.html
+const outputPath = path.join(outDir, 'index.html');
 
 if (!fs.existsSync(htmlPath)) {
   console.error('❌ Build not found. Run "npm run build" first.');
@@ -18,290 +18,375 @@ if (!fs.existsSync(htmlPath)) {
 
 let html = fs.readFileSync(htmlPath, 'utf8');
 
-// ========== CSS INLINING ==========
-console.log('📄 Processing CSS files...');
-const cssDir = path.join(outDir, '_next/static/css');
-if (fs.existsSync(cssDir)) {
-  const cssFiles = fs.readdirSync(cssDir);
-  let cssCount = 0;
-  
-  cssFiles.forEach(file => {
-    if (file.endsWith('.css')) {
-      const cssPath = path.join(cssDir, file);
-      const css = fs.readFileSync(cssPath, 'utf8');
-      
-      // Escape filename untuk regex
-      const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const linkPattern = new RegExp(
-        `<link[^>]*href="[^"]*\\/_next\\/static\\/css\\/${escapedFile}[^"]*"[^>]*>`,
-        'g'
-      );
-      
-      if (linkPattern.test(html)) {
-        html = html.replace(linkPattern, `<style>${css}</style>`);
-        cssCount++;
-      }
-    }
-  });
-  
-  console.log(`✅ Inlined ${cssCount} CSS files`);
-} else {
-  console.log('⚠️  No CSS directory found');
-}
+// ========== COMPREHENSIVE FILE DISCOVERY ==========
+console.log('🔍 Discovering all Next.js assets...');
 
-// ========== JAVASCRIPT INLINING ==========
-console.log('📄 Processing JavaScript files...');
-
-// Helper function untuk inline JavaScript files
-function inlineJavaScript(html, jsDir, dirName) {
-  if (!fs.existsSync(jsDir)) {
-    console.log(`⚠️  No ${dirName} directory found`);
-    return html;
-  }
+function findAllAssets(dir, extensions = ['.css', '.js']) {
+  const assets = [];
   
-  const jsFiles = fs.readdirSync(jsDir);
-  let jsCount = 0;
-  
-  jsFiles.forEach(file => {
-    if (file.endsWith('.js')) {
-      const jsPath = path.join(jsDir, file);
-      let js = fs.readFileSync(jsPath, 'utf8');
-      
-      // Clean line endings dan escape script-breaking content
-      js = js.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      js = js.replace(/<\/script>/gi, '<\\/script>');
-      
-      // Escape filename untuk regex
-      const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const scriptPattern = new RegExp(
-        `<script[^>]*src="[^"]*\\/_next\\/static\\/${dirName}\\/${escapedFile}[^"]*"[^>]*></script>`,
-        'g'
-      );
-      
-      if (scriptPattern.test(html)) {
-        html = html.replace(scriptPattern, `<script>${js}</script>`);
-        jsCount++;
-      }
-    }
-  });
-  
-  if (jsCount > 0) {
-    console.log(`✅ Inlined ${jsCount} ${dirName} files`);
-  }
-  
-  return html;
-}
-
-// Process chunks directory
-html = inlineJavaScript(html, path.join(outDir, '_next/static/chunks'), 'chunks');
-
-// Process js directory
-html = inlineJavaScript(html, path.join(outDir, '_next/static/js'), 'js');
-
-// Handle static manifest files
-const staticManifests = [
-  { file: 'buildManifest.js', name: 'buildManifest.js' },
-  { file: 'ssgManifest.js', name: 'ssgManifest.js' },
-  { file: '_buildManifest.js', name: '_buildManifest.js' },
-  { file: '_ssgManifest.js', name: '_ssgManifest.js' }
-];
-
-staticManifests.forEach(({ file, name }) => {
-  const manifestPath = path.join(outDir, '_next/static', file);
-  if (fs.existsSync(manifestPath)) {
-    const js = fs.readFileSync(manifestPath, 'utf8');
-    const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const scriptPattern = new RegExp(
-      `<script[^>]*src="[^"]*\\/_next\\/static\\/${escapedFile}[^"]*"[^>]*></script>`,
-      'g'
-    );
+  function scanDir(currentDir) {
+    if (!fs.existsSync(currentDir)) return;
     
-    if (scriptPattern.test(html)) {
-      html = html.replace(scriptPattern, `<script>${js}</script>`);
-      console.log(`✅ Inlined ${name}`);
+    const items = fs.readdirSync(currentDir);
+    items.forEach(item => {
+      const itemPath = path.join(currentDir, item);
+      const stat = fs.statSync(itemPath);
+      
+      if (stat.isDirectory()) {
+        scanDir(itemPath);
+      } else if (extensions.some(ext => item.endsWith(ext))) {
+        const relativePath = path.relative(outDir, itemPath);
+        assets.push({
+          file: item,
+          fullPath: itemPath,
+          relativePath: relativePath.replace(/\\/g, '/'),
+          type: item.endsWith('.css') ? 'css' : 'js'
+        });
+      }
+    });
+  }
+  
+  scanDir(dir);
+  return assets;
+}
+
+// Find all assets in _next directory
+const nextDir = path.join(outDir, '_next');
+const allAssets = findAllAssets(nextDir);
+
+console.log(`📦 Found ${allAssets.length} assets to process`);
+allAssets.forEach(asset => {
+  console.log(`   ${asset.type.toUpperCase()}: ${asset.relativePath}`);
+});
+
+// ========== COMPREHENSIVE CSS INLINING ==========
+console.log('📄 Processing ALL CSS files...');
+const cssAssets = allAssets.filter(asset => asset.type === 'css');
+let cssCount = 0;
+
+cssAssets.forEach(asset => {
+  try {
+    const css = fs.readFileSync(asset.fullPath, 'utf8');
+    
+    // Multiple patterns to catch all CSS references
+    const patterns = [
+      // Standard link tags
+      new RegExp(`<link[^>]*href="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>`, 'g'),
+      // With leading slash
+      new RegExp(`<link[^>]*href="[^"]*\\/${asset.relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>`, 'g'),
+      // Preload links
+      new RegExp(`<link[^>]*rel="preload"[^>]*href="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>`, 'g'),
+    ];
+    
+    let replaced = false;
+    patterns.forEach(pattern => {
+      if (pattern.test(html)) {
+        html = html.replace(pattern, `<style>\n${css}\n</style>`);
+        replaced = true;
+      }
+    });
+    
+    if (replaced) {
+      cssCount++;
+      console.log(`✅ Inlined CSS: ${asset.file}`);
     }
+  } catch (error) {
+    console.warn(`⚠️ Failed to inline CSS ${asset.file}:`, error.message);
   }
 });
 
-// ========== CLEANUP EXTERNAL REFERENCES ==========
-console.log('🧹 Cleaning up external references...');
+console.log(`✅ Total CSS files inlined: ${cssCount}`);
 
-const cleanupPatterns = [
-  // Remove any remaining _next references
-  /\/_next\/[^"'\s>]*/g,
-  /_next\/[^"'\s>]*/g,
-  // Remove empty or invalid link/script tags
-  /<link[^>]*href="[^"]*_next[^"]*"[^>]*>/g,
-  /<script[^>]*src="[^"]*_next[^"]*"[^>]*><\/script>/g,
-  /<link[^>]*href=""[^>]*>/g,
-  /<link[^>]*href="\s*"[^>]*>/g,
-  /<script[^>]*src=""[^>]*><\/script>/g,
-  /<script[^>]*src="\s*"[^>]*><\/script>/g,
-  // Remove preload/prefetch links
+// ========== COMPREHENSIVE JAVASCRIPT INLINING ==========
+console.log('📄 Processing ALL JavaScript files...');
+const jsAssets = allAssets.filter(asset => asset.type === 'js');
+let jsCount = 0;
+
+jsAssets.forEach(asset => {
+  try {
+    let js = fs.readFileSync(asset.fullPath, 'utf8');
+    
+    // Clean and validate JavaScript
+    js = js.trim();
+    if (!js) {
+      console.warn(`⚠️ Empty JS file: ${asset.file}`);
+      return;
+    }
+    
+    // Safe JavaScript processing
+    js = js.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    js = js.replace(/<\/script>/gi, '<\\/script>');
+    
+    // Wrap in safe error handling with better error info
+    const safeJS = `
+(function() {
+  try {
+    ${js}
+  } catch(error) {
+    console.error('❌ JS Error in ${asset.file}:', error.message);
+    console.error('Stack:', error.stack);
+  }
+})();`;
+
+    // Multiple patterns to catch all script references
+    const patterns = [
+      // Standard script tags
+      new RegExp(`<script[^>]*src="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*></script>`, 'g'),
+      // With full path
+      new RegExp(`<script[^>]*src="[^"]*\\/${asset.relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*></script>`, 'g'),
+      // Preload script tags
+      new RegExp(`<link[^>]*rel="preload"[^>]*href="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>`, 'g'),
+      // Module preload
+      new RegExp(`<link[^>]*rel="modulepreload"[^>]*href="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*>`, 'g'),
+    ];
+    
+    let replaced = false;
+    patterns.forEach(pattern => {
+      if (pattern.test(html)) {
+        html = html.replace(pattern, `<script>${safeJS}</script>`);
+        replaced = true;
+      }
+    });
+    
+    if (replaced) {
+      jsCount++;
+      console.log(`✅ Inlined JS: ${asset.file}`);
+    } else {
+      // Check if this file is referenced but not found
+      if (html.includes(asset.file)) {
+        console.warn(`⚠️ File ${asset.file} referenced but pattern not matched`);
+        // Try a more aggressive replacement
+        const simplePattern = new RegExp(asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        if (html.includes(asset.file)) {
+          console.log(`🔧 Attempting aggressive inline for ${asset.file}`);
+          // Replace any reference to this file with inline script
+          html = html.replace(
+            new RegExp(`<script[^>]*src="[^"]*${asset.file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^>]*></script>`, 'g'),
+            `<script>${safeJS}</script>`
+          );
+          jsCount++;
+          console.log(`✅ Aggressively inlined JS: ${asset.file}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Failed to inline JS ${asset.file}:`, error.message);
+  }
+});
+
+console.log(`✅ Total JavaScript files inlined: ${jsCount}`);
+
+// ========== AGGRESSIVE CLEANUP ==========
+console.log('🧹 Aggressive cleanup of ALL external references...');
+
+// Remove ALL preload and modulepreload links
+const preloadPatterns = [
   /<link[^>]*rel="preload"[^>]*>/g,
   /<link[^>]*rel="modulepreload"[^>]*>/g,
-  /<link[^>]*rel="prefetch"[^>]*>/g
+  /<link[^>]*rel="prefetch"[^>]*>/g,
+  /<link[^>]*rel="dns-prefetch"[^>]*>/g,
 ];
 
-cleanupPatterns.forEach(pattern => {
+preloadPatterns.forEach(pattern => {
   html = html.replace(pattern, '');
 });
 
-// Remove empty lines created by cleanup
-html = html.replace(/\n\s*\n/g, '\n');
+// Remove ALL _next references
+const nextPatterns = [
+  // Script tags
+  /<script[^>]*src="[^"]*\/_next\/[^"]*"[^>]*><\/script>/g,
+  /<script[^>]*src="[^"]*_next[^"]*"[^>]*><\/script>/g,
+  // Link tags
+  /<link[^>]*href="[^"]*\/_next\/[^"]*"[^>]*>/g,
+  /<link[^>]*href="[^"]*_next[^"]*"[^>]*>/g,
+  // Any remaining _next references
+  /\/_next\/[^"'\s>]*/g,
+  /_next\/[^"'\s>]*/g,
+  // Empty src/href attributes
+  /<script[^>]*src=""[^>]*><\/script>/g,
+  /<link[^>]*href=""[^>]*>/g,
+  /<script[^>]*src="\s*"[^>]*><\/script>/g,
+  /<link[^>]*href="\s*"[^>]*>/g,
+];
 
-// ========== ADD DEBUGGING SCRIPT ==========
-console.log('🔧 Adding ESP32 compatibility and debugging scripts...');
+nextPatterns.forEach(pattern => {
+  html = html.replace(pattern, '');
+});
 
-const debugScript = `
+// Clean up multiple newlines and spaces
+html = html.replace(/\n\s*\n\s*\n/g, '\n\n');
+html = html.replace(/>\s+</g, '><');
+
+// ========== ENHANCED DEBUGGING SCRIPT ==========
+console.log('🔧 Adding enhanced debugging and React initialization...');
+
+const enhancedDebugScript = `
 <script>
-console.log('🚀 Palletizer ESP32 app initializing...');
+console.log('🚀 Palletizer ESP32 app starting (comprehensive build)...');
 
-// ESP32 compatibility checks
-if (typeof fetch === 'undefined') {
-  console.warn('⚠️ Fetch API not available - using XMLHttpRequest fallback');
-}
-
-// Enhanced error handling
+// Enhanced global error handling
 window.addEventListener('error', function(e) {
-  console.error('❌ Runtime error:', e.error || e.message);
-  console.error('Location:', (e.filename || 'unknown') + ':' + (e.lineno || 0) + ':' + (e.colno || 0));
+  console.error('❌ GLOBAL ERROR:', {
+    message: e.message || 'Unknown error',
+    filename: e.filename || 'unknown',
+    lineno: e.lineno || 0,
+    colno: e.colno || 0,
+    stack: e.error ? e.error.stack : 'No stack trace'
+  });
 });
 
 window.addEventListener('unhandledrejection', function(e) {
-  console.error('❌ Unhandled promise rejection:', e.reason);
-  e.preventDefault(); // Prevent default browser handling
+  console.error('❌ UNHANDLED PROMISE REJECTION:', e.reason);
+  e.preventDefault();
 });
 
-// Ensure root element exists for React
-document.addEventListener('DOMContentLoaded', function() {
-  let rootElement = document.getElementById('root');
-  if (!rootElement) {
-    console.log('🔧 Creating missing root element...');
-    rootElement = document.createElement('div');
-    rootElement.id = 'root';
-    document.body.appendChild(rootElement);
-    console.log('✅ Root element created');
-  } else {
-    console.log('✅ Root element found');
+// React initialization check
+let reactCheckCount = 0;
+const maxReactChecks = 10;
+
+function checkReactStatus() {
+  reactCheckCount++;
+  console.log('🔍 React check #' + reactCheckCount);
+  
+  if (typeof React === 'undefined') {
+    console.warn('⚠️ React not available yet');
+    if (reactCheckCount < maxReactChecks) {
+      setTimeout(checkReactStatus, 500);
+    } else {
+      console.error('❌ React failed to load after ' + maxReactChecks + ' attempts');
+      showReactError();
+    }
+    return;
   }
   
-  // Check React mounting
-  setTimeout(function() {
-    if (rootElement.children.length === 0) {
-      console.warn('⚠️ Root element is empty - React may not have mounted');
-      // Try to trigger React initialization
-      if (window.React && window.ReactDOM) {
-        console.log('🔄 Attempting manual React mount...');
-      }
+  if (typeof ReactDOM === 'undefined') {
+    console.warn('⚠️ ReactDOM not available yet');
+    if (reactCheckCount < maxReactChecks) {
+      setTimeout(checkReactStatus, 500);
     } else {
+      console.error('❌ ReactDOM failed to load after ' + maxReactChecks + ' attempts');
+      showReactError();
+    }
+    return;
+  }
+  
+  console.log('✅ React and ReactDOM loaded successfully');
+  
+  // Check if React app mounted
+  setTimeout(function() {
+    const root = document.getElementById('root');
+    if (root && root.children.length > 0) {
       console.log('✅ React app mounted successfully');
+    } else {
+      console.warn('⚠️ React loaded but app not mounted');
+      showMountError();
     }
   }, 2000);
-});
-
-// ESP32 memory management
-if (typeof gc === 'function') {
-  console.log('♻️ Garbage collection available');
-  setInterval(function() {
-    if (Math.random() < 0.1) { // 10% chance every interval
-      gc();
-    }
-  }, 30000); // Every 30 seconds
 }
 
-console.log('📋 ESP32 compatibility setup complete');
+function showReactError() {
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = '<div style="padding: 20px; color: red; font-family: monospace; border: 1px solid red; margin: 20px; border-radius: 4px;"><h3>React Loading Error</h3><p>React library failed to load. This may be due to missing JavaScript chunks.</p><p>Check the browser console for specific errors.</p></div>';
+  }
+}
+
+function showMountError() {
+  const root = document.getElementById('root');
+  if (root && root.children.length === 0) {
+    root.innerHTML = '<div style="padding: 20px; color: orange; font-family: monospace; border: 1px solid orange; margin: 20px; border-radius: 4px;"><h3>React Mount Warning</h3><p>React loaded but the app component did not mount.</p><p>Check console for component errors.</p></div>';
+  }
+}
+
+// DOM ready handler
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('📋 DOM Content Loaded');
+  
+  // Ensure root element exists
+  let root = document.getElementById('root');
+  if (!root) {
+    console.log('🔧 Creating root element');
+    root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+  }
+  
+  // Start React checking
+  setTimeout(checkReactStatus, 100);
+});
+
+console.log('📋 Enhanced error handling and React monitoring setup complete');
 </script>
 `;
 
-// Insert debug script before closing head tag
-html = html.replace('</head>', debugScript + '</head>');
+// Insert enhanced debug script before closing head tag
+html = html.replace('</head>', enhancedDebugScript + '</head>');
 
 // ========== ENSURE ROOT ELEMENT ==========
-console.log('🔧 Ensuring root element exists...');
-if (!html.includes('<div id="root">') && !html.includes('<div id="root"/>')) {
-  console.log('⚠️ Adding missing root element for React mounting');
-  
-  const bodyRegex = /<body[^>]*>/;
-  if (bodyRegex.test(html)) {
-    html = html.replace(bodyRegex, (match) => {
-      return match + '<div id="root"></div>';
-    });
-  } else {
-    html = html.replace('</body>', '<div id="root"></div></body>');
+if (!html.includes('<div id="root">')) {
+  console.log('🔧 Adding root element');
+  const bodyMatch = html.match(/<body[^>]*>/);
+  if (bodyMatch) {
+    html = html.replace(bodyMatch[0], bodyMatch[0] + '\n<div id="root"></div>');
   }
 }
 
-// ========== MINIFY HTML ==========
-console.log('📏 Minifying HTML...');
-html = html
-  .replace(/>\s+</g, '><')           // Remove whitespace between tags
-  .replace(/\s{2,}/g, ' ')           // Replace multiple spaces with single space
-  .replace(/<!--.*?-->/g, '')        // Remove HTML comments (except conditional)
-  .trim();
-
 // ========== WRITE OUTPUT ==========
-console.log('💾 Writing output file...');
+console.log('💾 Writing comprehensive output file...');
 fs.writeFileSync(outputPath, html, 'utf8');
 
-// ========== FILE SIZE ANALYSIS ==========
+// ========== FINAL VALIDATION ==========
 const stats = fs.statSync(outputPath);
 const fileSizeKB = (stats.size / 1024).toFixed(2);
-const fileSizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
 console.log('');
-console.log('🎉 Build completed successfully!');
-console.log('📁 Output file: index.html');
-console.log(`📊 File size: ${fileSizeKB} KB (${fileSizeMB} MB)`);
+console.log('🎉 Comprehensive build completed!');
+console.log('📁 Output: index.html');
+console.log(`📊 Size: ${fileSizeKB} KB`);
 
-// ESP32 size warnings
-if (stats.size > 1024 * 1024) { // > 1MB
-  console.log('⚠️  Warning: File size > 1MB may be too large for some ESP32 configurations');
-  console.log('💡 Consider enabling GZIP compression on ESP32 web server');
-} else if (stats.size > 512 * 1024) { // > 512KB
-  console.log('💡 Note: File size > 512KB - ensure ESP32 has sufficient flash space');
+// Final validation checks
+const finalHtml = fs.readFileSync(outputPath, 'utf8');
+const hasRoot = finalHtml.includes('<div id="root">');
+const hasStyle = finalHtml.includes('<style>');
+const hasScript = finalHtml.includes('<script>');
+const hasNextRefs = finalHtml.includes('_next/');
+const hasPreloads = finalHtml.includes('rel="preload"');
+
+console.log('');
+console.log('🔍 Final validation:');
+console.log(`Root element: ${hasRoot ? '✅' : '❌'}`);
+console.log(`CSS inlined: ${hasStyle ? '✅' : '❌'}`);
+console.log(`JS inlined: ${hasScript ? '✅' : '❌'}`);
+console.log(`Next.js refs: ${hasNextRefs ? '❌ Found' : '✅ Clean'}`);
+console.log(`Preload links: ${hasPreloads ? '❌ Found' : '✅ Clean'}`);
+console.log(`Enhanced debugging: ✅ Added`);
+
+// Size warnings
+if (stats.size < 100 * 1024) {
+  console.log('⚠️  Warning: File size < 100KB, may be incomplete');
+} else if (stats.size > 1024 * 1024) {
+  console.log('⚠️  Warning: File size > 1MB, may be too large for ESP32');
 } else {
-  console.log('✅ File size is optimal for ESP32 deployment');
+  console.log('✅ File size is optimal for ESP32');
 }
 
-// ========== VALIDATION CHECKS ==========
-console.log('');
-console.log('🔍 Final validation checks:');
-
-const hasRootElement = html.includes('<div id="root">') || html.includes('<div id="root"/>');
-const hasReactRefs = html.includes('React') || html.includes('react');
-const hasExternalRefs = html.includes('_next');
-const hasCSSInlined = html.includes('<style>');
-
-// Count script tags
-const scriptTags = html.match(/<script[^>]*>/g) || [];
-const inlineScripts = scriptTags.filter(tag => !tag.includes('src=')).length;
-const externalScripts = scriptTags.filter(tag => tag.includes('src=')).length;
-const hasJSInlined = inlineScripts > 0;
-
-console.log(`Root element: ${hasRootElement ? '✅' : '❌'}`);
-console.log(`React references: ${hasReactRefs ? '✅' : '❌'}`);
-console.log(`External _next refs: ${hasExternalRefs ? '❌ Found' : '✅ Clean'}`);
-console.log(`CSS inlined: ${hasCSSInlined ? '✅' : '❌'}`);
-console.log(`JS inlined: ${hasJSInlined ? '✅' : '❌'} (${inlineScripts} inline, ${externalScripts} external)`);
-
-// Log remaining external references if any
-if (externalScripts > 0) {
-  console.log('🔍 Remaining external scripts:');
-  scriptTags.filter(tag => tag.includes('src=')).forEach(tag => {
-    console.log(`   ${tag}`);
-  });
+// Check for missing files
+if (hasNextRefs) {
+  console.log('');
+  console.log('🔍 Remaining _next references found:');
+  const nextMatches = finalHtml.match(/_next\/[^"'\s>]*/g);
+  if (nextMatches) {
+    const uniqueRefs = [...new Set(nextMatches)];
+    uniqueRefs.forEach(ref => console.log(`   ${ref}`));
+  }
 }
 
-// ========== DEPLOYMENT INSTRUCTIONS ==========
 console.log('');
-console.log('🚀 ESP32 Deployment Instructions:');
-console.log('1. Upload index.html to ESP32 LittleFS root directory');
-console.log('2. Ensure ESP32 web server serves files from LittleFS');
-console.log('3. Access via ESP32 IP address (e.g., http://192.168.4.1)');
+console.log('🧪 Test instructions:');
+console.log('1. start out\\index.html');
+console.log('2. Open F12 console IMMEDIATELY');
+console.log('3. Look for "🚀 Palletizer ESP32 app starting"');
+console.log('4. Check for "✅ React app mounted successfully"');
+console.log('5. Report any ChunkLoadError or missing file errors');
 console.log('');
-console.log('🧪 Local testing:');
-console.log('   cd out && npx http-server -p 3002');
-console.log('   Then open: http://localhost:3002/index.html');
-console.log('');
-console.log('✨ Ready for ESP32 deployment!');
+console.log('✨ Comprehensive build complete!');
