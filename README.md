@@ -100,6 +100,23 @@ Opens `http://localhost:3002` to test the production build.
 ## Project Structure
 
 ```
+┌─────────────────┐
+│  Web Interface  │ (Next.js Static Build)
+│   (React UI)    │
+└────────┬────────┘
+         │ HTTP/SSE
+┌────────▼────────┐
+│  ESP32 Master   │ (PalletizerMaster + Server)
+│  (Coordinator)  │
+└────────┬────────┘
+         │ UART (9600 baud)
+    ┌────┴────┬────┬────┬────┐
+    │         │    │    │    │
+┌───▼───┐┌───▼───┐ ... ┌───▼───┐
+│ESP32-X││ESP32-Y│     │ESP32-G│
+│ Slave ││ Slave │     │ Slave │
+└───────┘└───────┘     └───────┘
+
 PalletizerOT/
 ├── src/
 │   ├── app/

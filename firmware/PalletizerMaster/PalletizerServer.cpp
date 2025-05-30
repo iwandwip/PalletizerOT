@@ -1,7 +1,8 @@
 #include "PalletizerServer.h"
 
 PalletizerServer::PalletizerServer(PalletizerMaster *master, WiFiMode mode, const char *ap_ssid, const char *ap_password)
-  : palletizerMaster(master), server(80), events("/events"), wifiMode(mode), ssid(ap_ssid), password(ap_password), dnsRunning(false) {
+  : palletizerMaster(master), server(80), events("/events"), wifiMode(mode), ssid(ap_ssid), password(ap_password) {
+  cacheMutex = xSemaphoreCreateMutex();
 }
 
 void PalletizerServer::begin() {
@@ -13,18 +14,6 @@ void PalletizerServer::begin() {
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP Mode - IP address: ");
     Serial.println(IP);
-
-    if (MDNS.begin("palletizer")) {
-      Serial.println("mDNS responder started. Access at: http://palletizer.local");
-      MDNS.addService("http", "tcp", 80);
-    } else {
-      Serial.println("Error setting up mDNS responder!");
-    }
-
-    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-    dnsServer.start(53, "*", apIP);
-    dnsRunning = true;
-    Serial.println("DNS Server started");
   } else {
     WiFi.begin(ssid, password);
     int attempts = 0;
@@ -39,13 +28,6 @@ void PalletizerServer::begin() {
       Serial.println();
       Serial.print("STA Mode - Connected to WiFi. IP address: ");
       Serial.println(WiFi.localIP());
-
-      if (MDNS.begin("palletizer")) {
-        Serial.println("mDNS responder started. Access at: http://palletizer.local");
-        MDNS.addService("http", "tcp", 80);
-      } else {
-        Serial.println("Error setting up mDNS responder!");
-      }
     } else {
       Serial.println();
       Serial.println("Failed to connect to WiFi. Falling back to AP mode.");
@@ -58,62 +40,80 @@ void PalletizerServer::begin() {
       IPAddress IP = WiFi.softAPIP();
       Serial.print("Fallback AP Mode - IP address: ");
       Serial.println(IP);
-
-      if (MDNS.begin("palletizer")) {
-        Serial.println("mDNS responder started. Access at: http://palletizer.local");
-        MDNS.addService("http", "tcp", 80);
-      } else {
-        Serial.println("Error setting up mDNS responder!");
-      }
-
-      dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-      dnsServer.start(53, "*", apIP);
-      dnsRunning = true;
-      Serial.println("DNS Server started");
     }
   }
 
+  if (MDNS.begin("palletizer")) {
+    Serial.println("mDNS responder started. Access at: http://palletizer.local");
+    MDNS.addService("http", "tcp", 80);
+  }
+
   setupRoutes();
-  setupCaptivePortal();
   server.begin();
   Serial.println("HTTP server started");
+
+  xTaskCreatePinnedToCore(
+    wifiMonitorTask,
+    "WiFi_Monitor",
+    9216,
+    this,
+    1,
+    &wifiTaskHandle,
+    0);
+
+  xTaskCreatePinnedToCore(
+    stateMonitorTask,
+    "State_Monitor",
+    9216,
+    this,
+    2,
+    &stateTaskHandle,
+    1);
 }
 
 void PalletizerServer::update() {
-  if (dnsRunning) {
-    dnsServer.processNextRequest();
+}
+
+void PalletizerServer::wifiMonitorTask(void *pvParameters) {
+  PalletizerServer *server = (PalletizerServer *)pvParameters;
+
+  while (true) {
+    if (server->wifiMode == MODE_STA && WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi connection lost. Reconnecting...");
+      WiFi.begin(server->ssid, server->password);
+
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        attempts++;
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi reconnected");
+      }
+    }
+
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
   }
+}
 
-  if (wifiMode == MODE_STA && WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost. Reconnecting...");
-    WiFi.begin(ssid, password);
-  }
+void PalletizerServer::stateMonitorTask(void *pvParameters) {
+  PalletizerServer *server = (PalletizerServer *)pvParameters;
 
-  PalletizerMaster::SystemState currentState = palletizerMaster->getSystemState();
-  String statusStr;
+  while (true) {
+    PalletizerMaster::SystemState currentState = server->palletizerMaster->getSystemState();
 
-  switch (currentState) {
-    case PalletizerMaster::STATE_IDLE:
-      statusStr = "IDLE";
-      break;
-    case PalletizerMaster::STATE_RUNNING:
-      statusStr = "RUNNING";
-      break;
-    case PalletizerMaster::STATE_PAUSED:
-      statusStr = "PAUSED";
-      break;
-    case PalletizerMaster::STATE_STOPPING:
-      statusStr = "STOPPING";
-      break;
-    default:
-      statusStr = "UNKNOWN";
-      break;
-  }
+    if (currentState != server->lastReportedState) {
+      unsigned long now = millis();
+      if (now - server->lastStateUpdate >= server->STATE_UPDATE_INTERVAL) {
+        String statusStr = server->getStatusString(currentState);
+        server->sendStatusEvent(statusStr);
+        server->lastReportedState = currentState;
+        server->lastStateUpdate = now;
+      }
+    }
 
-  static PalletizerMaster::SystemState lastState = PalletizerMaster::STATE_IDLE;
-  if (currentState != lastState) {
-    sendStatusEvent(statusStr);
-    lastState = currentState;
+    vTaskDelay(50 / portTICK_PERIOD_MS);
   }
 }
 
@@ -166,29 +166,7 @@ void PalletizerServer::setupRoutes() {
     });
 
   events.onConnect([this](AsyncEventSourceClient *client) {
-    if (client->lastId()) {
-      Serial.printf("Client reconnected! Last message ID: %u\n", client->lastId());
-    }
-
-    String statusStr;
-    switch (palletizerMaster->getSystemState()) {
-      case PalletizerMaster::STATE_IDLE:
-        statusStr = "IDLE";
-        break;
-      case PalletizerMaster::STATE_RUNNING:
-        statusStr = "RUNNING";
-        break;
-      case PalletizerMaster::STATE_PAUSED:
-        statusStr = "PAUSED";
-        break;
-      case PalletizerMaster::STATE_STOPPING:
-        statusStr = "STOPPING";
-        break;
-      default:
-        statusStr = "UNKNOWN";
-        break;
-    }
-
+    String statusStr = getStatusString(palletizerMaster->getSystemState());
     sendStatusEvent(statusStr);
   });
 
@@ -209,73 +187,12 @@ void PalletizerServer::setupRoutes() {
     info += "}";
     request->send(200, "application/json", info);
   });
-}
-
-void PalletizerServer::setupCaptivePortal() {
-  server.on("/generate_204", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: generate_204");
-    request->redirect("http://palletizer.local/");
-  });
-
-  server.on("/gen_204", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: gen_204");
-    request->redirect("http://palletizer.local/");
-  });
-
-  server.on("/mobile/status.php", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: status.php");
-    request->redirect("http://palletizer.local/");
-  });
-
-  server.on("/fwlink", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: fwlink");
-    request->redirect("http://palletizer.local/");
-  });
-
-  server.on("/connecttest.txt", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: connecttest.txt");
-    request->send(200, "text/plain", "Microsoft NCSI");
-  });
-
-  server.on("/redirect", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: redirect");
-    request->redirect("http://palletizer.local/");
-  });
-
-  server.on("/hotspot-detect.html", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: hotspot-detect.html");
-    request->send(200, "text/html", "<!DOCTYPE html><html><head><title>Success</title></head><body>Success</body></html>");
-  });
-
-  server.on("/library/test/success.html", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: library/test/success.html");
-    request->send(200, "text/html", "<!DOCTYPE html><html><head><title>Success</title></head><body>Success</body></html>");
-  });
-
-  server.on("/success.txt", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: success.txt");
-    request->send(200, "text/plain", "success\n");
-  });
-
-  server.on("/ncsi.txt", HTTP_ANY, [](AsyncWebServerRequest *request) {
-    Serial.println("Captive portal: ncsi.txt");
-    request->send(200, "text/plain", "Microsoft NCSI");
-  });
 
   server.onNotFound([](AsyncWebServerRequest *request) {
-    Serial.print("Captive portal - Unknown: ");
-    Serial.print(request->host());
-    Serial.print(" ");
-    Serial.println(request->url());
-
     if (request->method() == HTTP_OPTIONS) {
       request->send(200);
     } else {
-      if (request->host() != "palletizer.local" && request->host() != "192.168.4.1") {
-        request->redirect("http://palletizer.local/");
-      } else {
-        request->send(LittleFS, "/index.html", "text/html");
-      }
+      request->send(404, "text/plain", "Not found");
     }
   });
 }
@@ -293,6 +210,7 @@ void PalletizerServer::handleUpload(AsyncWebServerRequest *request, String filen
 
   if (final) {
     safeFileWrite("/queue.txt", tempBuffer);
+    invalidateCache();
     Serial.println("File uploaded and saved. Use PLAY to execute.");
     tempBuffer = "";
   }
@@ -322,6 +240,7 @@ void PalletizerServer::handleWriteCommand(AsyncWebServerRequest *request) {
 
   if (commands.length() > 0) {
     safeFileWrite("/queue.txt", commands);
+    setCachedCommands(commands);
     request->send(200, "text/plain", "Commands saved successfully. Click PLAY to execute.");
   } else {
     request->send(400, "text/plain", "No commands provided");
@@ -329,64 +248,55 @@ void PalletizerServer::handleWriteCommand(AsyncWebServerRequest *request) {
 }
 
 void PalletizerServer::handleGetStatus(AsyncWebServerRequest *request) {
-  String statusStr;
-
-  switch (palletizerMaster->getSystemState()) {
-    case PalletizerMaster::STATE_IDLE:
-      statusStr = "IDLE";
-      break;
-    case PalletizerMaster::STATE_RUNNING:
-      statusStr = "RUNNING";
-      break;
-    case PalletizerMaster::STATE_PAUSED:
-      statusStr = "PAUSED";
-      break;
-    case PalletizerMaster::STATE_STOPPING:
-      statusStr = "STOPPING";
-      break;
-    default:
-      statusStr = "UNKNOWN";
-      break;
-  }
-
+  String statusStr = getStatusString(palletizerMaster->getSystemState());
   String response = "{\"status\":\"" + statusStr + "\"}";
   request->send(200, "application/json", response);
 }
 
 void PalletizerServer::handleGetCommands(AsyncWebServerRequest *request) {
-  if (!LittleFS.exists("/queue.txt")) {
-    request->send(404, "text/plain", "File not found");
-    return;
+  String commands = getCachedCommands();
+
+  if (commands.length() == 0 && !commandsCacheValid) {
+    if (!LittleFS.exists("/queue.txt")) {
+      request->send(404, "text/plain", "File not found");
+      return;
+    }
+
+    File file = LittleFS.open("/queue.txt", "r");
+    if (!file) {
+      request->send(404, "text/plain", "Failed to open file");
+      return;
+    }
+
+    commands = file.readString();
+    file.close();
+    setCachedCommands(commands);
   }
 
-  File file = LittleFS.open("/queue.txt", "r");
-  if (!file) {
-    request->send(404, "text/plain", "Failed to open file");
-    return;
-  }
-
-  String content = file.readString();
-  file.close();
-
-  request->send(200, "text/plain", content);
+  request->send(200, "text/plain", commands);
 }
 
 void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest *request) {
-  if (!LittleFS.exists("/queue.txt")) {
-    request->send(404, "text/plain", "File not found");
-    return;
+  String commands = getCachedCommands();
+
+  if (commands.length() == 0 && !commandsCacheValid) {
+    if (!LittleFS.exists("/queue.txt")) {
+      request->send(404, "text/plain", "File not found");
+      return;
+    }
+
+    File file = LittleFS.open("/queue.txt", "r");
+    if (!file) {
+      request->send(404, "text/plain", "Failed to open file");
+      return;
+    }
+
+    commands = file.readString();
+    file.close();
+    setCachedCommands(commands);
   }
 
-  File file = LittleFS.open("/queue.txt", "r");
-  if (!file) {
-    request->send(404, "text/plain", "Failed to open file");
-    return;
-  }
-
-  String content = file.readString();
-  file.close();
-
-  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", content);
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", commands);
   response->addHeader("Content-Disposition", "attachment; filename=palletizer_commands.txt");
   request->send(response);
 }
@@ -509,4 +419,41 @@ bool PalletizerServer::ensureFileExists(const String &path) {
     return false;
   }
   return true;
+}
+
+String PalletizerServer::getStatusString(PalletizerMaster::SystemState state) {
+  switch (state) {
+    case PalletizerMaster::STATE_IDLE:
+      return "IDLE";
+    case PalletizerMaster::STATE_RUNNING:
+      return "RUNNING";
+    case PalletizerMaster::STATE_PAUSED:
+      return "PAUSED";
+    case PalletizerMaster::STATE_STOPPING:
+      return "STOPPING";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+void PalletizerServer::invalidateCache() {
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  commandsCacheValid = false;
+  cachedCommands = "";
+  xSemaphoreGive(cacheMutex);
+}
+
+String PalletizerServer::getCachedCommands() {
+  String result;
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  result = cachedCommands;
+  xSemaphoreGive(cacheMutex);
+  return result;
+}
+
+void PalletizerServer::setCachedCommands(const String &commands) {
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  cachedCommands = commands;
+  commandsCacheValid = true;
+  xSemaphoreGive(cacheMutex);
 }

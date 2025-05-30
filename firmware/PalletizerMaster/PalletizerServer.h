@@ -7,7 +7,8 @@
 #include "ESPAsyncWebServer.h"
 #include "LittleFS.h"
 #include "ESPmDNS.h"
-#include "DNSServer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 class PalletizerServer {
 public:
@@ -24,15 +25,26 @@ private:
   PalletizerMaster* palletizerMaster;
   AsyncWebServer server;
   AsyncEventSource events;
-  DNSServer dnsServer;
-  bool dnsRunning;
 
   WiFiMode wifiMode;
   const char* ssid;
   const char* password;
 
+  PalletizerMaster::SystemState lastReportedState = PalletizerMaster::STATE_IDLE;
+  unsigned long lastStateUpdate = 0;
+  const unsigned long STATE_UPDATE_INTERVAL = 100;
+
+  String cachedCommands = "";
+  bool commandsCacheValid = false;
+  SemaphoreHandle_t cacheMutex;
+
+  TaskHandle_t wifiTaskHandle = NULL;
+  TaskHandle_t stateTaskHandle = NULL;
+
+  static void wifiMonitorTask(void* pvParameters);
+  static void stateMonitorTask(void* pvParameters);
+
   void setupRoutes();
-  void setupCaptivePortal();
   void handleUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final);
   void handleCommand(AsyncWebServerRequest* request);
   void handleWriteCommand(AsyncWebServerRequest* request);
@@ -47,6 +59,10 @@ private:
   void sendTimeoutEvent(int count, const String& type);
   void safeFileWrite(const String& path, const String& content);
   bool ensureFileExists(const String& path);
+  String getStatusString(PalletizerMaster::SystemState state);
+  void invalidateCache();
+  String getCachedCommands();
+  void setCachedCommands(const String& commands);
 };
 
 #endif
