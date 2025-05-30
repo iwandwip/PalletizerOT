@@ -1,6 +1,6 @@
 # ESP32 Palletizer Control System
 
-Modern web-based control interface for ESP32 palletizer robotics system with real-time communication and industrial-grade features.
+Modern web-based control interface for ESP32 palletizer robotics system with real-time communication, industrial-grade features, and integrated debug terminal.
 
 ## Prerequisites
 
@@ -134,11 +134,12 @@ PalletizerOT/
 │   │   ├── system-controls.tsx    # PLAY/PAUSE/STOP/ZERO
 │   │   ├── speed-panel.tsx        # Speed control interface
 │   │   ├── command-editor.tsx     # Script editor
-│   │   └── status-display.tsx     # Real-time status
+│   │   ├── status-display.tsx     # Real-time status
+│   │   └── debug-terminal.tsx     # Debug terminal component
 │   └── lib/
-│       ├── api.ts                 # ESP32 API client
+│       ├── api.ts                 # ESP32 API client with debug methods
 │       ├── types.ts               # TypeScript interfaces
-│       ├── hooks.ts               # React hooks
+│       ├── hooks.ts               # React hooks with useDebugMonitor
 │       └── utils.ts               # Utilities
 │
 ├── firmware/
@@ -146,10 +147,12 @@ PalletizerOT/
 │   │   ├── PalletizerMaster.ino
 │   │   ├── PalletizerMaster.cpp
 │   │   ├── PalletizerMaster.h
-│   │   ├── PalletizerServer.cpp   # Web server
+│   │   ├── PalletizerServer.cpp   # Web server with debug stream
 │   │   ├── PalletizerServer.h
 │   │   ├── PalletizerScriptParser.cpp
 │   │   ├── PalletizerScriptParser.h
+│   │   ├── DebugManager.cpp       # Debug serial interceptor
+│   │   ├── DebugManager.h
 │   │   └── data/                  # LittleFS upload folder
 │   ├── PalletizerSlave/           # ESP32 Slave controllers
 │   │   ├── PalletizerSlave.ino
@@ -179,6 +182,7 @@ PalletizerOT/
 - Command parsing and distribution  
 - Inter-arm synchronization
 - Timeout and error handling
+- Debug message streaming
 
 **PalletizerSlave (Motor Controllers):**
 - Individual stepper motor control
@@ -200,6 +204,59 @@ PalletizerOT/
 "x;POSITION REACHED"
 "x;SEQUENCE COMPLETED"  
 "x;ZERO DONE"
+```
+
+## Debug System
+
+### Web-Based Debug Terminal
+
+The system includes an integrated debug terminal accessible from the web interface:
+
+**Features:**
+- Real-time debug message streaming via Server-Sent Events
+- Level-based filtering (ERROR, WARNING, INFO, DEBUG)
+- Text search across messages and sources
+- Export debug logs to file
+- Pause/resume message capture
+- Resizable and minimizable terminal
+- Auto-scroll with manual override
+- Timestamp display with millisecond precision
+
+**Architecture:**
+```
+Serial.println() → DebugManager → PalletizerServer → SSE → React Terminal
+```
+
+### Debug Endpoints
+
+```
+GET  /debug              # SSE stream for real-time messages
+GET  /debug/buffer       # Get buffered messages (max 1000)
+POST /debug/clear        # Clear debug buffer
+POST /debug/toggle       # Enable/disable debug capture
+```
+
+### Using Debug System
+
+**In Firmware:**
+```cpp
+// In setup()
+DEBUG_MGR.begin(&Serial, &server);
+
+// Use debug methods
+DEBUG_MGR.info("MASTER", "System initialized");
+DEBUG_MGR.warning("SLAVE", "Connection timeout");
+DEBUG_MGR.error("PARSER", "Invalid command");
+
+// Or replace Serial with DEBUG_SERIAL
+#define Serial DEBUG_SERIAL
+```
+
+**In React:**
+```typescript
+// Debug terminal automatically connects to SSE stream
+// Messages appear in real-time at bottom of page
+// Use filters and search to find specific messages
 ```
 
 ## API Documentation
@@ -238,10 +295,18 @@ GET /timeout_stats
 POST /clear_timeout_stats
 ```
 
+**Debug System:**
+```
+GET /debug              # SSE stream
+GET /debug/buffer       # Buffered messages
+POST /debug/clear       # Clear buffer
+POST /debug/toggle      # Toggle capture
+```
+
 **Real-time Updates:**
 ```
-GET /events
-Content-Type: text/event-stream
+GET /events             # System events SSE
+GET /debug              # Debug messages SSE
 ```
 
 ### JavaScript API
@@ -259,11 +324,14 @@ const commands = await api.loadCommands()
 // Status monitoring
 const status = await api.getStatus()
 
+// Debug operations
+const debugBuffer = await api.getDebugBuffer()
+await api.clearDebugBuffer()
+await api.toggleDebugCapture()
+
 // Real-time events
 const eventSource = api.createEventSource()
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data)
-}
+const debugSource = api.createDebugEventSource()
 ```
 
 ## Command Language
@@ -368,16 +436,25 @@ npx shadcn@latest init --force
 - Check ESP32 IP address
 - Verify file structure on LittleFS
 - Check serial monitor for errors
+- Use debug terminal for diagnostics
 
 **Connection status disconnected:**
 - Verify ESP32 web server running
 - Check `/events` endpoint accessibility
 - Monitor network connectivity
+- Check debug messages for connection errors
 
 **Commands not executing:**
-- Check slave communication
+- Check slave communication in debug terminal
 - Verify command syntax
 - Monitor timeout statistics
+- Check debug messages for parsing errors
+
+**Debug terminal not showing messages:**
+- Ensure DebugManager is initialized after server
+- Check `/debug` SSE endpoint
+- Verify debug capture is enabled
+- Check browser console for connection errors
 
 ### File Size Issues
 ```bash
@@ -415,6 +492,7 @@ git push origin feature-name
 - Implement error handling
 - Add loading states
 - Document complex logic
+- Add debug messages for new features
 
 ## License
 
