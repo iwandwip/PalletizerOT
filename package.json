@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:esp32": "next build && node scripts/bundle-single-file.js",
+    "build:esp32": "next build && node scripts/bundle-single-file.mjs",
+    "build:analyze": "next build && node scripts/bundle-single-file.mjs && ls -lh out/palletizer.html",
     "start": "next start",
     "lint": "next lint"
   },

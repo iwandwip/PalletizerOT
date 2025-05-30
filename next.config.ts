@@ -12,12 +12,18 @@ const nextConfig: NextConfig = {
     unoptimized: true
   },
   
+  // Optimize for single file
+  experimental: {
+    optimizeCss: true,
+  },
+  
   // Custom webpack config for single file
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Bundle everything into single files
+      // Bundle everything into fewer chunks
       config.optimization.splitChunks = {
         chunks: 'all',
+        minSize: 0,
         cacheGroups: {
           default: {
             chunks: 'all',
