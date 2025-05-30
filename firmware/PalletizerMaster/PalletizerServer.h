@@ -17,14 +17,26 @@ public:
     MODE_STA
   };
 
+  struct DebugMessage {
+    unsigned long timestamp;
+    String level;
+    String source;
+    String message;
+  };
+
   PalletizerServer(PalletizerMaster* master, WiFiMode mode = MODE_AP, const char* ssid = "PalletizerAP", const char* password = "");
   void begin();
   void update();
+  void sendDebugMessage(const String& level, const String& source, const String& message);
+  void enableDebugCapture(bool enable);
 
 private:
+  static const int DEBUG_BUFFER_SIZE = 1000;
+
   PalletizerMaster* palletizerMaster;
   AsyncWebServer server;
   AsyncEventSource events;
+  AsyncEventSource debugEvents;
 
   WiFiMode wifiMode;
   const char* ssid;
@@ -41,6 +53,13 @@ private:
   TaskHandle_t wifiTaskHandle = NULL;
   TaskHandle_t stateTaskHandle = NULL;
 
+  DebugMessage debugBuffer[DEBUG_BUFFER_SIZE];
+  int debugBufferHead = 0;
+  int debugBufferTail = 0;
+  int debugMessageCount = 0;
+  SemaphoreHandle_t debugMutex;
+  bool debugCaptureEnabled = true;
+
   static void wifiMonitorTask(void* pvParameters);
   static void stateMonitorTask(void* pvParameters);
 
@@ -55,14 +74,23 @@ private:
   void handleSetTimeoutConfig(AsyncWebServerRequest* request);
   void handleGetTimeoutStats(AsyncWebServerRequest* request);
   void handleClearTimeoutStats(AsyncWebServerRequest* request);
+  void handleGetDebugBuffer(AsyncWebServerRequest* request);
+  void handleClearDebugBuffer(AsyncWebServerRequest* request);
+  void handleToggleDebugCapture(AsyncWebServerRequest* request);
+
   void sendStatusEvent(const String& status);
   void sendTimeoutEvent(int count, const String& type);
+  void sendDebugEvent(const DebugMessage& msg);
   void safeFileWrite(const String& path, const String& content);
   bool ensureFileExists(const String& path);
   String getStatusString(PalletizerMaster::SystemState state);
   void invalidateCache();
   String getCachedCommands();
   void setCachedCommands(const String& commands);
+
+  void addDebugMessage(const String& level, const String& source, const String& message);
+  String getDebugBufferJSON(int startIndex = 0);
+  String formatDebugMessage(const DebugMessage& msg);
 };
 
 #endif

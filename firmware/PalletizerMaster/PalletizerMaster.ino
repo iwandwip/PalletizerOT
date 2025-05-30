@@ -3,6 +3,7 @@
 
 #include "PalletizerMaster.h"
 #include "PalletizerServer.h"
+#include "DebugManager.h"
 #include "LittleFS.h"
 #include "ESPmDNS.h"
 
@@ -26,7 +27,7 @@ PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
 
 void onSlaveData(const String& data) {
-  Serial.println("SLAVE DATA: " + data);
+  DEBUG_MGR.info("SLAVE_DATA", data);
 }
 
 void setup() {
@@ -46,16 +47,38 @@ void setup() {
   master.setSlaveDataCallback(onSlaveData);
 
   master.begin();
-  Serial.println("Palletizer master initialized");
-
+  Serial.println("Palletizer master initialized");s
   server.begin();
   Serial.println("Web server initialized");
 
-  Serial.println("System ready");
+  DEBUG_MGR.begin(&Serial, &server);
+  DEBUG_MGR.info("SYSTEM", "Debug Manager initialized");
+
+  DEBUG_MGR.info("SYSTEM", "Palletizer System Ready");
+  DEBUG_MGR.info("SYSTEM", "Access at: http://palletizer.local");
+
+  DEBUG_MGR.info("SYSTEM", "This is an info message");
+  DEBUG_MGR.warning("SYSTEM", "This is a warning message");
+  DEBUG_MGR.error("SYSTEM", "This is an error message (test only)");
+
+  Serial.println("\n🔍 DEBUG FEATURES:");
+  Serial.println("  - All Serial output now goes to web interface");
+  Serial.println("  - Access debug stream at: http://palletizer.local/debug");
+  Serial.println("  - View debug buffer at: http://palletizer.local/debug/buffer");
+  Serial.println("  - Clear debug buffer: POST http://palletizer.local/debug/clear");
+  Serial.println("  - Toggle debug capture: POST http://palletizer.local/debug/toggle");
+
+  Serial.println("\nSystem ready");
   Serial.println("Access at: http://palletizer.local");
 }
 
 void loop() {
   master.update();
   server.update();
+
+  static unsigned long lastDebugUpdate = 0;
+  if (millis() - lastDebugUpdate > 30000) {  
+    lastDebugUpdate = millis();
+    DEBUG_MGR.info("HEARTBEAT", "System running - State: " + String(master.getSystemState()));
+  }
 }
