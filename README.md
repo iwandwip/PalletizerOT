@@ -116,7 +116,9 @@ Opens `http://localhost:3002` to test the production build.
 │ESP32-X││ESP32-Y│     │ESP32-G│
 │ Slave ││ Slave │     │ Slave │
 └───────┘└───────┘     └───────┘
+```
 
+```
 PalletizerOT/
 ├── src/
 │   ├── app/
