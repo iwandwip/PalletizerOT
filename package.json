@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:esp32": "next build && node scripts/bundle-single-file.js",
     "start": "next start",
     "lint": "next lint"
   },

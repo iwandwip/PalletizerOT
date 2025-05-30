@@ -1,103 +1,299 @@
-import Image from "next/image";
+// Add this to page.tsx - Error Toast System
 
-export default function Home() {
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { AlertTriangle, X, Wifi, WifiOff } from "lucide-react"
+import SystemControls from '@/components/system-controls'
+import SpeedPanel from '@/components/speed-panel'
+import CommandEditor from '@/components/command-editor'
+import StatusDisplay from '@/components/status-display'
+import { useSystemStatus, useTimeoutConfig, useTimeoutStats, useRealtime } from '@/lib/hooks'
+import { api } from '@/lib/api'
+import { Axis } from '@/lib/types'
+
+interface ErrorNotification {
+  id: string
+  message: string
+  type: 'error' | 'warning' | 'info'
+}
+
+export default function PalletizerControl() {
+  const [axes, setAxes] = useState<Axis[]>([
+    { id: 'x', name: 'X', speed: 200 },
+    { id: 'y', name: 'Y', speed: 200 },
+    { id: 'z', name: 'Z', speed: 200 },
+    { id: 't', name: 'T', speed: 200 },
+    { id: 'g', name: 'G', speed: 364 },
+  ])
+  
+  const [globalSpeed, setGlobalSpeed] = useState(200)
+  const [commandText, setCommandText] = useState('')
+  const [darkMode, setDarkMode] = useState(false)
+  const [errors, setErrors] = useState<ErrorNotification[]>([])
+
+  const { status, setStatus, sendCommand } = useSystemStatus()
+  const { config: timeoutConfig, setConfig: setTimeoutConfig, saveConfig } = useTimeoutConfig()
+  const { stats: timeoutStats, loadStats, clearStats } = useTimeoutStats()
+  const { connected, lastEvent } = useRealtime()
+
+  // Error management
+  const addError = (message: string, type: 'error' | 'warning' | 'info' = 'error') => {
+    const id = Date.now().toString()
+    setErrors(prev => [...prev, { id, message, type }])
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      setErrors(prev => prev.filter(err => err.id !== id))
+    }, 5000)
+  }
+
+  const removeError = (id: string) => {
+    setErrors(prev => prev.filter(err => err.id !== id))
+  }
+
+  // Show connection warning when disconnected
+  useEffect(() => {
+    if (!connected) {
+      addError('ESP32 disconnected - Check device connection', 'warning')
+    }
+  }, [connected])
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme')
+    const isDark = savedTheme === 'dark'
+    setDarkMode(isDark)
+    document.documentElement.classList.toggle('dark', isDark)
+  }, [])
+
+  useEffect(() => {
+    if (lastEvent) {
+      if (lastEvent.type === 'status' && lastEvent.value) {
+        setStatus(lastEvent.value as any)
+      } else if (lastEvent.type === 'timeout') {
+        loadStats()
+      }
+    }
+  }, [lastEvent, setStatus, loadStats])
+
+  const handleToggleDarkMode = () => {
+    const newMode = !darkMode
+    setDarkMode(newMode)
+    localStorage.setItem('theme', newMode ? 'dark' : 'light')
+    document.documentElement.classList.toggle('dark', newMode)
+  }
+
+  const handleGlobalSpeedChange = (speed: number) => {
+    setGlobalSpeed(speed)
+    setAxes(prev => prev.map(axis => 
+      axis.id !== 'g' ? { ...axis, speed } : axis
+    ))
+  }
+
+  const handleAxisSpeedChange = (axisId: string, speed: number) => {
+    setAxes(prev => prev.map(axis => 
+      axis.id === axisId ? { ...axis, speed } : axis
+    ))
+  }
+
+  const handleSetAllSpeeds = async () => {
+    try {
+      await sendCommand(`SPEED;${globalSpeed}`)
+      addError('All speeds set successfully', 'info')
+    } catch (error) {
+      addError('Failed to set speeds - ESP32 connection error', 'error')
+    }
+  }
+
+  const handleSetAxisSpeed = async (axisId: string) => {
+    try {
+      const axis = axes.find(a => a.id === axisId)
+      if (axis) {
+        await sendCommand(`SPEED;${axisId};${axis.speed}`)
+        addError(`${axisId.toUpperCase()} axis speed set to ${axis.speed}`, 'info')
+      }
+    } catch (error) {
+      addError(`Failed to set ${axisId.toUpperCase()} speed - ESP32 connection error`, 'error')
+    }
+  }
+
+  const handleSaveCommands = async () => {
+    try {
+      await api.saveCommands(commandText)
+      addError('Commands saved successfully', 'info')
+    } catch (error) {
+      addError('Failed to save commands - ESP32 connection error', 'error')
+    }
+  }
+
+  const handleLoadCommands = async () => {
+    try {
+      const commands = await api.loadCommands()
+      setCommandText(commands)
+      addError('Commands loaded successfully', 'info')
+    } catch (error) {
+      addError('Failed to load commands - ESP32 connection error', 'error')
+    }
+  }
+
+  const handleUploadFile = async (file: File) => {
+    try {
+      await api.uploadFile(file)
+      addError('File uploaded successfully', 'info')
+    } catch (error) {
+      addError('Failed to upload file - ESP32 connection error', 'error')
+    }
+  }
+
+  const handleSaveTimeoutConfig = async () => {
+    try {
+      await saveConfig()
+      addError('Timeout configuration saved', 'info')
+    } catch (error) {
+      addError('Failed to save timeout config - ESP32 connection error', 'error')
+    }
+  }
+
+  const handleCommandSend = async (command: string) => {
+    try {
+      await sendCommand(command)
+      addError(`Command sent: ${command}`, 'info')
+    } catch (error) {
+      addError(`Failed to send ${command} - ESP32 connection error`, 'error')
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Error Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
+        {errors.map((error) => (
+          <Alert
+            key={error.id}
+            variant={error.type === 'error' ? 'destructive' : 'default'}
+            className="shadow-lg"
+          >
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="flex justify-between items-center">
+              <span>{error.message}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeError(error.id)}
+                className="h-6 w-6 p-0"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ))}
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+      <div className="container mx-auto p-4 space-y-6 max-w-6xl">
+        <header className="text-center space-y-2">
+          <div className="flex items-center justify-center gap-3">
+            <h1 className="text-3xl font-bold">ESP32 Palletizer Control</h1>
+            {/* Connection Status Badge */}
+            <div className="flex items-center gap-1">
+              {connected ? (
+                <>
+                  <Wifi className="w-5 h-5 text-green-600" />
+                  <span className="text-sm text-green-600 font-medium">Connected</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-5 h-5 text-red-600" />
+                  <span className="text-sm text-red-600 font-medium">Disconnected</span>
+                </>
+              )}
+            </div>
+          </div>
+          <p className="text-muted-foreground">Modern robotics control interface</p>
+        </header>
+
+        {/* Connection Warning Banner */}
+        {!connected && (
+          <Alert variant="destructive">
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription>
+              <strong>ESP32 Device Disconnected</strong> - Please check your device connection and network settings.
+              Some features may not work properly.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <StatusDisplay
+          status={status}
+          connected={connected}
+          timeoutStats={timeoutStats}
+          darkMode={darkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <span className="text-2xl">🎮</span>
+              System Controls
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SystemControls
+              onCommand={handleCommandSend}
+              disabled={!connected}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </CardContent>
+        </Card>
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="text-2xl">⚡</span>
+                Speed Control
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SpeedPanel
+                axes={axes}
+                globalSpeed={globalSpeed}
+                onGlobalSpeedChange={handleGlobalSpeedChange}
+                onAxisSpeedChange={handleAxisSpeedChange}
+                onSetAllSpeeds={handleSetAllSpeeds}
+                onSetAxisSpeed={handleSetAxisSpeed}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <span className="text-2xl">📝</span>
+                Command Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CommandEditor
+                commandText={commandText}
+                onCommandTextChange={setCommandText}
+                onSaveCommands={handleSaveCommands}
+                onLoadCommands={handleLoadCommands}
+                onUploadFile={handleUploadFile}
+                timeoutConfig={timeoutConfig}
+                onTimeoutConfigChange={setTimeoutConfig}
+                onSaveTimeoutConfig={handleSaveTimeoutConfig}
+              />
+            </CardContent>
+          </Card>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <footer className="text-center text-sm text-muted-foreground py-4">
+          ESP32 Palletizer System - Built with Next.js & shadcn/ui
+        </footer>
+      </div>
     </div>
-  );
+  )
 }
