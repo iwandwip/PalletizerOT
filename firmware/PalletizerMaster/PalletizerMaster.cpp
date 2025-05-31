@@ -277,6 +277,10 @@ void PalletizerMaster::processGroupCommand(const String& groupCommands) {
   lastCheckTime = millis();
 }
 
+void PalletizerMaster::addCommandToQueue(const String& command) {
+  addToQueue(command);
+}
+
 void PalletizerMaster::checkSlaveData() {
   if (slaveSerial.available() > 0) {
     while (slaveSerial.available() > 0) {

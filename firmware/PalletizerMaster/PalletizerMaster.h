@@ -106,6 +106,7 @@ public:
   ExecutionInfo getExecutionInfo();
   PalletizerScriptParser* getScriptParser();
   void processGroupCommand(const String& groupCommands);
+  void addCommandToQueue(const String& command);
 
 private:
   static PalletizerMaster* instance;

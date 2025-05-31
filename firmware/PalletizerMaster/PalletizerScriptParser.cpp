@@ -3,7 +3,7 @@
 #include "DebugManager.h"
 
 PalletizerScriptParser::PalletizerScriptParser(PalletizerMaster* master)
-  : palletizerMaster(master), functionCount(0), commandCounter(0), debugEnabled(true) {
+  : palletizerMaster(master), functionCount(0), commandCounter(0), debugEnabled(true), parsingMode(false) {
 }
 
 void PalletizerScriptParser::parseScript(const String& script) {
@@ -12,6 +12,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
 
   if (cleanScript.length() == 0) return;
 
+  setParsingMode(true);
   resetCommandCounter();
 
   debugLog("INFO", "PARSER", "════════════════════════════════════════");
@@ -61,7 +62,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
       if (scriptPart.length() > 0) {
         String statements[50];
         int statementCount = 0;
-        tokenizeStatements(scriptPart, statements, statementCount);
+        tokenizeStatementsWithGroupSupport(scriptPart, statements, statementCount);
 
         for (int i = 0; i < statementCount; i++) {
           statements[i].trim();
@@ -73,6 +74,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
     }
   }
 
+  setParsingMode(false);
   printParsingInfo();
 }
 
@@ -107,13 +109,17 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
 
       String statements[50];
       int statementCount = 0;
-      tokenizeStatements(userFunctions[i].body, statements, statementCount);
+      tokenizeStatementsWithGroupSupport(userFunctions[i].body, statements, statementCount);
 
       for (int j = 0; j < statementCount; j++) {
         statements[j].trim();
         if (statements[j].length() > 0) {
           debugLog("INFO", "FUNCTION", "  [" + String(j + 1) + "/" + String(statementCount) + "] " + statements[j]);
-          executeStatement(statements[j]);
+          if (parsingMode) {
+            queueCommand(statements[j]);
+          } else {
+            executeStatement(statements[j]);
+          }
         }
       }
 
@@ -222,7 +228,19 @@ void PalletizerScriptParser::processGroupCommand(const String& groupStatement) {
   debugLog("INFO", "GROUP", "└─ Content: " + groupContent);
 
   String groupCommand = "GROUP;" + groupContent;
-  palletizerMaster->processCommand(groupCommand);
+  if (parsingMode) {
+    queueCommand(groupCommand);
+  } else {
+    palletizerMaster->processCommand(groupCommand);
+  }
+}
+
+void PalletizerScriptParser::queueCommand(const String& command) {
+  palletizerMaster->addCommandToQueue(command);
+}
+
+void PalletizerScriptParser::setParsingMode(bool mode) {
+  parsingMode = mode;
 }
 
 void PalletizerScriptParser::parseFunction(const String& script, int startPos) {
@@ -288,11 +306,58 @@ void PalletizerScriptParser::tokenizeStatements(const String& input, String* sta
   }
 }
 
+void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& input, String* statements, int& count) {
+  count = 0;
+  String current = "";
+  int parenDepth = 0;
+  bool inGroup = false;
+
+  for (int i = 0; i < input.length() && count < 50; i++) {
+    char c = input.charAt(i);
+
+    if (input.substring(i).startsWith("GROUP(") && !inGroup) {
+      inGroup = true;
+      parenDepth = 0;
+    }
+
+    if (c == '(' && inGroup) {
+      parenDepth++;
+    } else if (c == ')' && inGroup) {
+      parenDepth--;
+      if (parenDepth == 0) {
+        inGroup = false;
+      }
+    }
+
+    if (c == ';' && !inGroup) {
+      current.trim();
+      if (current.length() > 0) {
+        statements[count] = current;
+        count++;
+      }
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+
+  current.trim();
+  if (current.length() > 0 && count < 50) {
+    statements[count] = current;
+    count++;
+  }
+}
+
 void PalletizerScriptParser::processSingleStatement(const String& statement) {
   String cleanStatement = statement;
   trimWhitespace(cleanStatement);
 
   if (cleanStatement.length() == 0) return;
+
+  if (parsingMode) {
+    queueCommand(cleanStatement);
+    return;
+  }
 
   if (cleanStatement.startsWith("SET(") || cleanStatement == "WAIT") {
     debugLog("INFO", "SYNC", "🔄 " + cleanStatement);
@@ -374,6 +439,6 @@ void PalletizerScriptParser::debugLog(const String& level, const String& source,
 int PalletizerScriptParser::countStatementsInBody(const String& body) {
   String statements[50];
   int count = 0;
-  tokenizeStatements(body, statements, count);
+  tokenizeStatementsWithGroupSupport(body, statements, count);
   return count;
 }
