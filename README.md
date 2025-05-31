@@ -194,9 +194,16 @@ PalletizerOT/
 
 **Commands (Master → Slave):**
 ```cpp
-"x;1;100;d1000;200"    // axis;command;position;delay;speed
+"x;1;100;d1000"        // axis;run;position;delay
 "x;6;500"              // axis;setspeed;value  
-"x;2"                  // axis;zero
+"x;2"                  // axis;zero (homing)
+```
+
+**Coordinate Format:**
+```cpp
+"x(100,d1000,200,400,500), y(50,d500)"  // Multi-parameter movement
+// Maximum 5 parameters per axis
+// Parameters can include: position, delay (d1000), and other values
 ```
 
 **Responses (Slave → Master):**
@@ -205,6 +212,92 @@ PalletizerOT/
 "x;SEQUENCE COMPLETED"  
 "x;ZERO DONE"
 ```
+
+## Command Language Reference
+
+### System Control Commands
+
+| Command | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `IDLE` | Stops all operations and sets system to idle status | `IDLE` | `IDLE` |
+| `PLAY` | Starts or resumes execution from command queue | `PLAY` | `PLAY` |
+| `PAUSE` | Pauses execution. Completes current command but doesn't process next | `PAUSE` | `PAUSE` |
+| `STOP` | Stops all operations. If running, completes current sequence first | `STOP` | `STOP` |
+| `ZERO` | Returns all axes to home position | `ZERO` | `ZERO` |
+
+### Movement Commands
+
+| Command | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| **Coordinates** | Move axes to specific positions (max 5 commands per axis) | `slaveid(param1,param2,...), slaveid(param1,param2), …` | `x(100,d1000,200,400,500), y(200)` |
+
+**Note:** Each axis can accept maximum 5 parameters/commands in a single coordinate instruction.
+
+### Speed Control
+
+| Command | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| **Single Axis** | Set speed for specific axis | `SPEED;slaveid;value` | `SPEED;x;500` |
+| **All Axes** | Set speed for all axes | `SPEED;value` | `SPEED;200` |
+
+### Queue Management
+
+| Command | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| `END_QUEUE` | Marks end of command queue (optional) | `END_QUEUE` | `END_QUEUE` |
+
+### Legacy Format
+```
+X(100,d1000,200),Y(50,d500,100) NEXT
+SET(1) NEXT WAIT NEXT SET(0) NEXT
+```
+
+### Modern Script Format
+```cpp
+FUNC(PICK_SEQUENCE) {
+  X(100,d1000,200,400);
+  Y(50,d500,100);
+  Z(10,d1500,50,75,100);
+}
+
+FUNC(PLACE_SEQUENCE) {
+  Z(80,d500);
+  X(400,d1000,500,600);
+  Y(150,d500,200);
+  Z(100,d1000);
+}
+
+CALL(PICK_SEQUENCE);
+SET(1);
+SET(0);
+CALL(PLACE_SEQUENCE);
+```
+
+### Advanced Commands
+
+**Movement Parameters (Max 5 per axis):**
+- `X(position)` - Move to position
+- `X(position,delay)` - Move with delay
+- `X(position,delay,param3)` - Move with additional parameter
+- `X(position,delay,param3,param4,param5)` - Maximum 5 parameters
+- `d1000` - Delay 1000ms (can be anywhere in parameter list)
+
+**Examples:**
+```cpp
+X(100)                           # Single position
+X(100,d1000)                     # Position with delay
+X(100,d1000,200)                 # Position, delay, additional param
+X(100,d1000,200,400,500)         # Maximum 5 parameters
+```
+
+**Synchronization:**
+- `SET(1)` - Signal HIGH
+- `SET(0)` - Signal LOW
+- `WAIT` - Wait for signal
+
+**Functions:**
+- `FUNC(name) {...}` - Define function
+- `CALL(name)` - Execute function
 
 ## Debug System
 
@@ -266,7 +359,7 @@ DEBUG_MGR.error("PARSER", "Invalid command");
 **System Control:**
 ```
 POST /command
-Body: cmd=PLAY|PAUSE|STOP|ZERO
+Body: cmd=PLAY|PAUSE|STOP|ZERO|IDLE
 
 GET /status  
 Returns: {"status": "IDLE|RUNNING|PAUSED|STOPPING"}
@@ -285,6 +378,13 @@ Body: file=<script_file>
 
 GET /download_commands
 Returns: Script file download
+```
+
+**Speed Control:**
+```
+POST /command
+Body: cmd=SPEED;x;500     # Single axis
+Body: cmd=SPEED;200       # All axes
 ```
 
 **Configuration:**
@@ -314,8 +414,10 @@ GET /debug              # Debug messages SSE
 ```typescript
 import { api } from '@/lib/api'
 
-// Send commands
+// Send system commands
 await api.sendCommand('PLAY')
+await api.sendCommand('SPEED;x;500')
+await api.sendCommand('x(100,d1000,200,400,500), y(200)')
 
 // Script management  
 await api.saveCommands(scriptText)
@@ -333,51 +435,6 @@ await api.toggleDebugCapture()
 const eventSource = api.createEventSource()
 const debugSource = api.createDebugEventSource()
 ```
-
-## Command Language
-
-### Legacy Format
-```
-X(100,d1000,200),Y(50,d500,100) NEXT
-SET(1) NEXT WAIT NEXT SET(0) NEXT
-```
-
-### Modern Script Format
-```cpp
-FUNC(PICK_SEQUENCE) {
-  X(100,d1000,200);
-  Y(50,d500,100);
-  Z(10,d1000,50);
-}
-
-FUNC(PLACE_SEQUENCE) {
-  Z(80,d500);
-  X(400,d1000,500);
-  Y(150,d500,200);
-  Z(100,d1000);
-}
-
-CALL(PICK_SEQUENCE);
-SET(1);
-SET(0);
-CALL(PLACE_SEQUENCE);
-```
-
-### Command Reference
-
-**Movement:**
-- `X(position)` - Move to position
-- `X(pos,delay,speed)` - Move with timing
-- `d1000` - Delay 1000ms
-
-**Synchronization:**
-- `SET(1)` - Signal HIGH
-- `SET(0)` - Signal LOW
-- `WAIT` - Wait for signal
-
-**Functions:**
-- `FUNC(name) {...}` - Define function
-- `CALL(name)` - Execute function
 
 ## Configuration
 
@@ -446,7 +503,7 @@ npx shadcn@latest init --force
 
 **Commands not executing:**
 - Check slave communication in debug terminal
-- Verify command syntax
+- Verify command syntax (refer to Command Language Reference)
 - Monitor timeout statistics
 - Check debug messages for parsing errors
 
@@ -465,6 +522,69 @@ npm run build:copy
 # - Remove unused components
 # - Optimize assets
 # - Enable GZIP in firmware
+```
+
+## Command Examples
+
+### Basic Movement
+```
+x(100), y(200)                    # Move X to 100, Y to 200
+x(100,d500), y(200)               # Move X to 100 with 500ms delay, Y to 200
+x(100,d1000,200,400,500)          # X axis with maximum 5 parameters
+```
+
+### Multi-Parameter Movement
+```
+x(100,d1000,200,400,500), y(50,d500,100)    # Complex multi-parameter movement
+z(10,d2000), t(45,d1000,90)                 # Different parameter counts per axis
+```
+
+### Speed Control
+```
+SPEED;200               # Set all axes to speed 200
+SPEED;x;500             # Set X axis to speed 500
+SPEED;y;300             # Set Y axis to speed 300
+```
+
+### System Control
+```
+ZERO                    # Home all axes
+PLAY                    # Start execution
+PAUSE                   # Pause execution
+STOP                    # Stop execution
+IDLE                    # Set to idle
+```
+
+### Legacy Batch Commands
+```
+x(100,d1000,200), y(50,d500,100) NEXT x(200,d500), y(100) NEXT SET(1) NEXT WAIT NEXT SET(0)
+x(100,d1000,200,400,500), y(50,d500) NEXT z(10,d2000) NEXT
+```
+
+### Modern Script Format
+```cpp
+FUNC(HOME_SEQUENCE) {
+  ZERO;
+  SPEED;200;
+}
+
+FUNC(PICK_ITEM) {
+  x(100,d500,150);
+  y(50,d300,75);
+  z(10,d1000,20,30);
+}
+
+FUNC(PLACE_ITEM) {
+  x(400,d500,450,500);
+  y(150,d300,175);
+  z(80,d1000);
+}
+
+CALL(HOME_SEQUENCE);
+CALL(PICK_ITEM);
+SET(1);
+SET(0);
+CALL(PLACE_ITEM);
 ```
 
 ## Contributing
