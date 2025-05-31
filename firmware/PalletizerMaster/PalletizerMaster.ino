@@ -76,9 +76,9 @@ void loop() {
   master.update();
   server.update();
 
-  static unsigned long lastDebugUpdate = 0;
-  if (millis() - lastDebugUpdate > 30000) {
-    lastDebugUpdate = millis();
-    DEBUG_MGR.info("HEARTBEAT", "System running - State: " + String(master.getSystemState()));
-  }
+  // static unsigned long lastDebugUpdate = 0;
+  // if (millis() - lastDebugUpdate > 30000) {
+  //   lastDebugUpdate = millis();
+  //   DEBUG_MGR.info("HEARTBEAT", "System running - State: " + String(master.getSystemState()));
+  // }
 }
