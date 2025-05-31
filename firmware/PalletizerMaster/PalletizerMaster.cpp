@@ -74,6 +74,7 @@ void PalletizerMaster::update() {
       if (checkAllSlavesCompleted()) {
         sequenceRunning = false;
         waitingForCompletion = false;
+        groupExecutionActive = false;
         DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
 
         if (!isQueueEmpty() && systemState == STATE_RUNNING) {
@@ -262,6 +263,20 @@ PalletizerScriptParser* PalletizerMaster::getScriptParser() {
   return &scriptParser;
 }
 
+void PalletizerMaster::processGroupCommand(const String& groupCommands) {
+  DEBUG_MGR.info("GROUP", "🔄 Executing GROUP command");
+  DEBUG_MGR.info("GROUP", "└─ Commands: " + groupCommands);
+
+  groupExecutionActive = true;
+  currentCommand = CMD_GROUP;
+
+  parseAndSendGroupCommands(groupCommands);
+
+  sequenceRunning = true;
+  waitingForCompletion = indicatorEnabled;
+  lastCheckTime = millis();
+}
+
 void PalletizerMaster::checkSlaveData() {
   if (slaveSerial.available() > 0) {
     while (slaveSerial.available() > 0) {
@@ -292,6 +307,12 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   String upperData = data;
   upperData.trim();
   upperData.toUpperCase();
+
+  if (data.startsWith("GROUP;")) {
+    String groupCommands = data.substring(6);
+    processGroupCommand(groupCommands);
+    return;
+  }
 
   if (data.indexOf("FUNC(") != -1 || data.indexOf("CALL(") != -1 || (data.indexOf(';') != -1 && data.indexOf('{') != -1)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
@@ -348,6 +369,7 @@ void PalletizerMaster::onSlaveData(const String& data) {
     if (data.indexOf("SEQUENCE COMPLETED") != -1) {
       sequenceRunning = false;
       waitingForCompletion = false;
+      groupExecutionActive = false;
       DEBUG_PRINTLN("MASTER: All slaves completed sequence (based on message)");
 
       if (!isQueueEmpty() && systemState == STATE_RUNNING) {
@@ -370,6 +392,13 @@ void PalletizerMaster::onSlaveData(const String& data) {
     String axis = data.substring(0, data.indexOf(";"));
     axis.toUpperCase();
     DEBUG_MGR.info("MOTION", "✅ " + axis + " axis reached target position");
+  }
+
+  if (groupExecutionActive && data.indexOf("ERROR") != -1) {
+    DEBUG_MGR.error("GROUP", "❌ Error in GROUP execution - aborting sequence");
+    clearQueue();
+    setSystemState(STATE_IDLE);
+    groupExecutionActive = false;
   }
 }
 
@@ -533,6 +562,43 @@ void PalletizerMaster::parseCoordinateData(const String& data) {
     pos = data.indexOf(',', closePos);
     pos = (pos == -1) ? data.length() : pos + 1;
   }
+}
+
+void PalletizerMaster::parseAndSendGroupCommands(const String& groupCommands) {
+  DEBUG_MGR.info("GROUP", "Parsing and sending simultaneous commands");
+
+  int pos = 0;
+  while (pos < groupCommands.length()) {
+    int endPos = groupCommands.indexOf('(', pos);
+    if (endPos == -1) break;
+
+    String slaveId = groupCommands.substring(pos, endPos);
+    slaveId.trim();
+    slaveId.toLowerCase();
+
+    int closePos = groupCommands.indexOf(')', endPos);
+    if (closePos == -1) break;
+
+    String paramsOrig = groupCommands.substring(endPos + 1, closePos);
+    String params = "";
+    for (int i = 0; i < paramsOrig.length(); i++) {
+      params += (paramsOrig.charAt(i) == ',') ? ';' : paramsOrig.charAt(i);
+    }
+
+    String command = slaveId + ";" + String(CMD_RUN) + ";" + params;
+    sendToSlave(command);
+    DEBUG_MGR.info("GROUP→SLAVE", command);
+
+    pos = groupCommands.indexOf(',', closePos);
+    if (pos == -1) break;
+    pos++;
+
+    while (pos < groupCommands.length() && (groupCommands.charAt(pos) == ' ' || groupCommands.charAt(pos) == '\t')) {
+      pos++;
+    }
+  }
+
+  DEBUG_MGR.info("GROUP", "All commands broadcasted simultaneously");
 }
 
 bool PalletizerMaster::checkAllSlavesCompleted() {

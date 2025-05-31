@@ -34,7 +34,8 @@ public:
     CMD_ZERO = 2,
     CMD_SETSPEED = 6,
     CMD_SET = 7,
-    CMD_WAIT = 8
+    CMD_WAIT = 8,
+    CMD_GROUP = 9
   };
 
   enum SystemState {
@@ -104,6 +105,7 @@ public:
   bool loadTimeoutConfig();
   ExecutionInfo getExecutionInfo();
   PalletizerScriptParser* getScriptParser();
+  void processGroupCommand(const String& groupCommands);
 
 private:
   static PalletizerMaster* instance;
@@ -122,6 +124,7 @@ private:
   SystemState systemState = STATE_IDLE;
   bool sequenceRunning = false;
   bool waitingForCompletion = false;
+  bool groupExecutionActive = false;
 
   int indicatorPin;
   bool indicatorEnabled;
@@ -162,6 +165,7 @@ private:
   void processScriptCommand(const String& script);
   void sendCommandToAllSlaves(Command cmd);
   void parseCoordinateData(const String& data);
+  void parseAndSendGroupCommands(const String& groupCommands);
   bool checkAllSlavesCompleted();
   bool checkSyncTimeout();
   void addToQueue(const String& command);

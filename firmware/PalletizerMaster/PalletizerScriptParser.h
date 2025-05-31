@@ -23,10 +23,12 @@ public:
   int getYieldInterval();
   void resetCommandCounter();
   int getCommandCounter();
-
   void setDebugEnabled(bool enabled);
   int getCommandCountInFunction(const String& funcName);
   void printParsingInfo();
+  bool isGroupCommand(const String& statement);
+  String extractGroupContent(const String& groupStatement);
+  void processGroupCommand(const String& groupContent);
 
 private:
   static const int MAX_FUNCTIONS = 20;

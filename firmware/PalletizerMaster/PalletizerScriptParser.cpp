@@ -84,7 +84,9 @@ void PalletizerScriptParser::executeStatement(const String& statement) {
 
   commandCounter++;
 
-  if (cleanStatement.startsWith("CALL(") && cleanStatement.endsWith(")")) {
+  if (isGroupCommand(cleanStatement)) {
+    processGroupCommand(cleanStatement);
+  } else if (cleanStatement.startsWith("CALL(") && cleanStatement.endsWith(")")) {
     String funcName = cleanStatement.substring(5, cleanStatement.length() - 1);
     trimWhitespace(funcName);
     callFunction(funcName);
@@ -185,6 +187,42 @@ void PalletizerScriptParser::printParsingInfo() {
 
   debugLog("INFO", "PARSER", "└─ Total Commands: " + String(commandCounter));
   debugLog("INFO", "PARSER", "════════════════════════════════════════");
+}
+
+bool PalletizerScriptParser::isGroupCommand(const String& statement) {
+  return statement.startsWith("GROUP(") && statement.endsWith(")");
+}
+
+String PalletizerScriptParser::extractGroupContent(const String& groupStatement) {
+  if (!isGroupCommand(groupStatement)) {
+    return "";
+  }
+
+  int startPos = groupStatement.indexOf('(');
+  int endPos = groupStatement.lastIndexOf(')');
+
+  if (startPos == -1 || endPos == -1 || startPos >= endPos) {
+    return "";
+  }
+
+  String content = groupStatement.substring(startPos + 1, endPos);
+  trimWhitespace(content);
+  return content;
+}
+
+void PalletizerScriptParser::processGroupCommand(const String& groupStatement) {
+  String groupContent = extractGroupContent(groupStatement);
+
+  if (groupContent.length() == 0) {
+    debugLog("ERROR", "GROUP", "❌ Empty GROUP command");
+    return;
+  }
+
+  debugLog("INFO", "GROUP", "🔄 Processing GROUP command");
+  debugLog("INFO", "GROUP", "└─ Content: " + groupContent);
+
+  String groupCommand = "GROUP;" + groupContent;
+  palletizerMaster->processCommand(groupCommand);
 }
 
 void PalletizerScriptParser::parseFunction(const String& script, int startPos) {

@@ -1,0 +1,13 @@
+FUNC(SIMPLE_MOVE) {
+  GROUP(X(100,d1000,200), Y(100,200,d200), Z(200, 300,d300, 400)); // jalan kan 3 slave broadcast simultan
+  Y(50,d1000,100);X(50,d1000,100);Z(50,d1000,100); // menjalankan 1 persatu, Y dulu selesai baru X, x selesai baru Z 
+  X(1000, 200, d200);Y(1000, 200, d200); jadi format pemisah bisa ke kanan bisa ke bawah gitu
+  X(1000, 200, d200); bisa juga gini
+  Y(1000, 200, d200);
+}
+
+CALL(SIMPLE_MOVE);
+CALL(SIMPLE_MOVE);
+CALL(SIMPLE_MOVE); bisa call seperti ini atau 
+
+CALL(SIMPLE_MOVE);CALL(SIMPLE_MOVE);CALL(SIMPLE_MOVE);
