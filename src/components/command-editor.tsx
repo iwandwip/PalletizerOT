@@ -82,20 +82,42 @@ export default function CommandEditor({
         <Textarea
           value={commandText}
           onChange={(e) => onCommandTextChange(e.target.value)}
-          placeholder={`Enter commands here...
+          placeholder={`Enter Modern Script Language commands here...
 
-LEGACY FORMAT:
-X(100,d1000,200),Y(50,d500,100) NEXT
-SET(1) NEXT WAIT NEXT SET(0) NEXT
+BASIC MOVEMENT:
+X(100,d1000,200);
+Y(50,d500,100);
+Z(10,d2000);
 
-NEW SCRIPT FORMAT:
+SIMULTANEOUS MOVEMENT (GROUP):
+GROUP(X(100,d1000,200), Y(50,d500,100), Z(10));
+
+FUNCTION SYSTEM:
 FUNC(PICK_SEQUENCE) {
-  X(100,d1000,200);
-  Y(50,d500,100);
-  Z(10,d1000,50);
+  GROUP(X(100,d500), Y(50,d300));
+  Z(10,d1000);
 }
 
-CALL(PICK_SEQUENCE);`}
+FUNC(PLACE_SEQUENCE) {
+  Z(80,d500);
+  GROUP(X(400,d800), Y(150,d600));
+  Z(100,d1000);
+}
+
+CALL(PICK_SEQUENCE);
+SET(1);
+SET(0);
+CALL(PLACE_SEQUENCE);
+
+SPEED CONTROL:
+SPEED;200;          // All axes
+SPEED;x;500;        // Single axis
+
+SYSTEM CONTROL:
+ZERO; PLAY; PAUSE; STOP; IDLE;
+
+SYNCHRONIZATION:
+SET(1); SET(0); WAIT;`}
           className="min-h-[200px] font-mono text-sm"
         />
         
@@ -123,8 +145,8 @@ CALL(PICK_SEQUENCE);`}
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-lg font-medium mb-2">Click to upload command file</p>
-          <p className="text-sm text-gray-500">Supports .txt files</p>
+          <p className="text-lg font-medium mb-2">Click to upload script file</p>
+          <p className="text-sm text-gray-500">Supports .txt files with Modern Script Language</p>
         </div>
         
         <input

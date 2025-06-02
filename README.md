@@ -19,7 +19,6 @@ npm install
 
 ### React Version Fix
 ```bash
-# Next.js 15 uses React 19, downgrade to React 18 for shadcn/ui compatibility
 npm install react@^18.0.0 react-dom@^18.0.0
 npm install --save-dev @types/react@^18.0.0 @types/react-dom@^18.0.0
 ```
@@ -72,7 +71,6 @@ Opens `http://localhost:3002` to test the production build.
 
    **Method A - PlatformIO:**
    ```bash
-   # Copy all files to firmware/PalletizerMaster/data/
    cp -r out/* firmware/PalletizerMaster/data/
    pio run --target uploadfs
    ```
@@ -160,8 +158,8 @@ PalletizerOT/
 │   │   └── StepperSlave.h
 │   └── PalletizerCommandExample/  # Sample scripts
 │       ├── test_basic_simple.txt
-│       ├── test_legacy_format.txt
-│       └── test_new_script_format.txt
+│       ├── test_group_commands.txt
+│       └── test_complex_automation.txt
 │
 ├── scripts/
 │   └── copy-to-esp32.mjs          # Deployment helper
@@ -199,11 +197,9 @@ PalletizerOT/
 "x;2"                  // axis;zero (homing)
 ```
 
-**Coordinate Format:**
+**Group Commands:**
 ```cpp
-"x(100,d1000,200,400,500), y(50,d500)"  // Multi-parameter movement
-// Maximum 5 parameters per axis
-// Parameters can include: position, delay (d1000), and other values
+"GROUP;X(100,d1000,200),Y(50,d500),Z(30)"  // Simultaneous execution
 ```
 
 **Responses (Slave → Master):**
@@ -213,7 +209,7 @@ PalletizerOT/
 "x;ZERO DONE"
 ```
 
-## Command Language Reference
+## Modern Script Language
 
 ### System Control Commands
 
@@ -229,9 +225,10 @@ PalletizerOT/
 
 | Command | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| **Coordinates** | Move axes to specific positions (max 5 commands per axis) | `slaveid(param1,param2,...), slaveid(param1,param2), …` | `x(100,d1000,200,400,500), y(200)` |
+| **Sequential** | Move axes one by one (default behavior) | `X(position,...); Y(position,...);` | `X(100,d1000,200); Y(50,d500,100);` |
+| **Simultaneous** | Move multiple axes simultaneously | `GROUP(X(...), Y(...), Z(...))` | `GROUP(X(100,d1000,200), Y(50,d500), Z(30))` |
 
-**Note:** Each axis can accept maximum 5 parameters/commands in a single coordinate instruction.
+**Note:** Each axis can accept maximum 5 parameters in a single command.
 
 ### Speed Control
 
@@ -240,30 +237,45 @@ PalletizerOT/
 | **Single Axis** | Set speed for specific axis | `SPEED;slaveid;value` | `SPEED;x;500` |
 | **All Axes** | Set speed for all axes | `SPEED;value` | `SPEED;200` |
 
-### Queue Management
+### Function System
 
 | Command | Description | Usage | Example |
 |---------|-------------|-------|---------|
-| `END_QUEUE` | Marks end of command queue (optional) | `END_QUEUE` | `END_QUEUE` |
+| **Function Definition** | Define reusable function | `FUNC(name) { commands; }` | `FUNC(PICK_ITEM) { X(100); Y(50); }` |
+| **Function Call** | Execute defined function | `CALL(name)` | `CALL(PICK_ITEM)` |
 
-### Legacy Format
-```
-X(100,d1000,200),Y(50,d500,100) NEXT
-SET(1) NEXT WAIT NEXT SET(0) NEXT
+### Synchronization
+
+| Command | Description | Usage | Example |
+|---------|-------------|-------|---------|
+| **Signal HIGH** | Send synchronization signal | `SET(1)` | `SET(1)` |
+| **Signal LOW** | Clear synchronization signal | `SET(0)` | `SET(0)` |
+| **Wait** | Wait for external sync signal | `WAIT` | `WAIT` |
+
+## Script Examples
+
+### Basic Movement
+```cpp
+X(100,d1000,200);
+Y(50,d500,100);
+Z(10,d2000);
 ```
 
-### Modern Script Format
+### Simultaneous Movement (GROUP)
+```cpp
+GROUP(X(100,d1000,200), Y(50,d500,100), Z(10,d2000));
+```
+
+### Function Definition and Calls
 ```cpp
 FUNC(PICK_SEQUENCE) {
-  X(100,d1000,200,400);
-  Y(50,d500,100);
-  Z(10,d1500,50,75,100);
+  GROUP(X(100,d500), Y(50,d300));
+  Z(10,d1000);
 }
 
 FUNC(PLACE_SEQUENCE) {
   Z(80,d500);
-  X(400,d1000,500,600);
-  Y(150,d500,200);
+  GROUP(X(400,d800), Y(150,d600));
   Z(100,d1000);
 }
 
@@ -273,31 +285,97 @@ SET(0);
 CALL(PLACE_SEQUENCE);
 ```
 
-### Advanced Commands
+### Complex Automation
+```cpp
+FUNC(HOME_ALL) {
+  ZERO;
+  SPEED;200;
+}
 
-**Movement Parameters (Max 5 per axis):**
-- `X(position)` - Move to position
-- `X(position,delay)` - Move with delay
-- `X(position,delay,param3)` - Move with additional parameter
-- `X(position,delay,param3,param4,param5)` - Maximum 5 parameters
-- `d1000` - Delay 1000ms (can be anywhere in parameter list)
+FUNC(PICK_AND_PLACE) {
+  GROUP(X(100,d1000,200), Y(50,d500,100));
+  Z(5,d1000);
+  SET(1);
+  Z(80,d500);
+  GROUP(X(400,d1000,500), Y(150,d500,200));
+  Z(100,d1000);
+  SET(0);
+}
+
+CALL(HOME_ALL);
+CALL(PICK_AND_PLACE);
+CALL(PICK_AND_PLACE);
+CALL(PICK_AND_PLACE);
+```
+
+### Multi-Axis Coordination
+```cpp
+FUNC(ARM1_SEQUENCE) {
+  GROUP(X(100,d1000,200), Y(50,d800,100));
+  Z(10,d1500,50);
+  SET(1);
+  WAIT;
+  SET(0);
+}
+
+FUNC(ARM2_SEQUENCE) {
+  WAIT;
+  GROUP(X(1000,d1000,900), Y(500,d800,450));
+  Z(100,d1500,50);
+  SET(1);
+  SET(0);
+}
+
+CALL(ARM1_SEQUENCE);
+```
+
+## Movement Parameters
+
+**Position Parameters (Max 5 per axis):**
+```cpp
+X(position)                          # Single position
+X(position,delay)                    # Position with delay
+X(position,delay,param3)             # Additional parameter
+X(position,delay,param3,param4)      # More parameters
+X(position,delay,param3,param4,param5) # Maximum 5 parameters
+```
+
+**Delay Syntax:**
+```cpp
+d1000    # Delay 1000ms (can be anywhere in parameter list)
+```
 
 **Examples:**
 ```cpp
-X(100)                           # Single position
-X(100,d1000)                     # Position with delay
-X(100,d1000,200)                 # Position, delay, additional param
-X(100,d1000,200,400,500)         # Maximum 5 parameters
+X(100)                               # Move to position 100
+X(100,d1000)                         # Move to 100 with 1000ms delay
+X(100,d1000,200,400,500)             # Complex 5-parameter movement
 ```
 
-**Synchronization:**
-- `SET(1)` - Signal HIGH
-- `SET(0)` - Signal LOW
-- `WAIT` - Wait for signal
+## Code Style Guidelines
 
-**Functions:**
-- `FUNC(name) {...}` - Define function
-- `CALL(name)` - Execute function
+### Horizontal vs Vertical Formatting
+```cpp
+# Horizontal style
+X(100,d1000,200);Y(50,d500,100);Z(30);
+
+# Vertical style  
+X(100,d1000,200);
+Y(50,d500,100);
+Z(30);
+
+# Mixed style
+GROUP(X(100,d1000), Y(50,d500)); Z(30);
+```
+
+### Function Organization
+```cpp
+FUNC(DESCRIPTIVE_NAME) {
+  GROUP(X(...), Y(...));    # Simultaneous operations first
+  Z(...);                   # Sequential operations follow
+  SET(1); SET(0);           # Sync operations last
+}
+```
 
 ## Debug System
 
@@ -333,16 +411,10 @@ POST /debug/toggle       # Enable/disable debug capture
 
 **In Firmware:**
 ```cpp
-// In setup()
 DEBUG_MGR.begin(&Serial, &server);
-
-// Use debug methods
 DEBUG_MGR.info("MASTER", "System initialized");
 DEBUG_MGR.warning("SLAVE", "Connection timeout");
 DEBUG_MGR.error("PARSER", "Invalid command");
-
-// Or replace Serial with DEBUG_SERIAL
-#define Serial DEBUG_SERIAL
 ```
 
 **In React:**
@@ -383,8 +455,14 @@ Returns: Script file download
 **Speed Control:**
 ```
 POST /command
-Body: cmd=SPEED;x;500     # Single axis
-Body: cmd=SPEED;200       # All axes
+Body: cmd=SPEED;x;500     # Single axis speed
+Body: cmd=SPEED;200       # All axes speed
+```
+
+**Group Commands:**
+```
+POST /command
+Body: cmd=GROUP(X(100,d1000,200),Y(50,d500),Z(30))
 ```
 
 **Configuration:**
@@ -417,7 +495,7 @@ import { api } from '@/lib/api'
 // Send system commands
 await api.sendCommand('PLAY')
 await api.sendCommand('SPEED;x;500')
-await api.sendCommand('x(100,d1000,200,400,500), y(200)')
+await api.sendCommand('GROUP(X(100,d1000,200),Y(50,d500),Z(30))')
 
 // Script management  
 await api.saveCommands(scriptText)
@@ -503,9 +581,15 @@ npx shadcn@latest init --force
 
 **Commands not executing:**
 - Check slave communication in debug terminal
-- Verify command syntax (refer to Command Language Reference)
+- Verify command syntax using Modern Script Language
 - Monitor timeout statistics
 - Check debug messages for parsing errors
+
+**GROUP commands not simultaneous:**
+- Verify GROUP syntax: `GROUP(X(...), Y(...), Z(...))`
+- Check debug messages for GROUP processing
+- Ensure all slaves in group are connected
+- Monitor slave completion indicators
 
 **Debug terminal not showing messages:**
 - Ensure DebugManager is initialized after server
@@ -524,68 +608,39 @@ npm run build:copy
 # - Enable GZIP in firmware
 ```
 
-## Command Examples
+## Command Language Summary
 
-### Basic Movement
-```
-x(100), y(200)                    # Move X to 100, Y to 200
-x(100,d500), y(200)               # Move X to 100 with 500ms delay, Y to 200
-x(100,d1000,200,400,500)          # X axis with maximum 5 parameters
-```
-
-### Multi-Parameter Movement
-```
-x(100,d1000,200,400,500), y(50,d500,100)    # Complex multi-parameter movement
-z(10,d2000), t(45,d1000,90)                 # Different parameter counts per axis
-```
-
-### Speed Control
-```
-SPEED;200               # Set all axes to speed 200
-SPEED;x;500             # Set X axis to speed 500
-SPEED;y;300             # Set Y axis to speed 300
-```
-
-### System Control
-```
-ZERO                    # Home all axes
-PLAY                    # Start execution
-PAUSE                   # Pause execution
-STOP                    # Stop execution
-IDLE                    # Set to idle
-```
-
-### Legacy Batch Commands
-```
-x(100,d1000,200), y(50,d500,100) NEXT x(200,d500), y(100) NEXT SET(1) NEXT WAIT NEXT SET(0)
-x(100,d1000,200,400,500), y(50,d500) NEXT z(10,d2000) NEXT
-```
-
-### Modern Script Format
+### Essential Commands
 ```cpp
-FUNC(HOME_SEQUENCE) {
-  ZERO;
-  SPEED;200;
-}
+# System Control
+PLAY; PAUSE; STOP; IDLE; ZERO;
 
-FUNC(PICK_ITEM) {
-  x(100,d500,150);
-  y(50,d300,75);
-  z(10,d1000,20,30);
-}
+# Speed Control  
+SPEED;200;              # All axes
+SPEED;x;500;            # Single axis
 
-FUNC(PLACE_ITEM) {
-  x(400,d500,450,500);
-  y(150,d300,175);
-  z(80,d1000);
-}
+# Sequential Movement
+X(100,d1000,200);
+Y(50,d500,100);
 
-CALL(HOME_SEQUENCE);
-CALL(PICK_ITEM);
-SET(1);
-SET(0);
-CALL(PLACE_ITEM);
+# Simultaneous Movement
+GROUP(X(100,d1000,200), Y(50,d500,100), Z(30));
+
+# Functions
+FUNC(NAME) { commands; }
+CALL(NAME);
+
+# Synchronization
+SET(1); SET(0); WAIT;
 ```
+
+### Best Practices
+- Use GROUP() for simultaneous operations
+- Define reusable functions for complex sequences
+- Use descriptive function names
+- Add delays for mechanical settling
+- Test with debug terminal for verification
+- Use proper synchronization for multi-arm coordination
 
 ## Contributing
 
@@ -613,6 +668,7 @@ git push origin feature-name
 - Add loading states
 - Document complex logic
 - Add debug messages for new features
+- Use Modern Script Language syntax only
 
 ## License
 
