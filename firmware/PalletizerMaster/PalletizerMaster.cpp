@@ -71,7 +71,15 @@ void PalletizerMaster::update() {
     if (millis() - lastCheckTime > 50) {
       lastCheckTime = millis();
 
-      if (checkAllSlavesCompleted()) {
+      bool allCompleted = checkAllSlavesCompleted();
+      static unsigned long lastDebugTime = 0;
+
+      if (millis() - lastDebugTime > 1000) {
+        DEBUG_PRINTLN("MASTER: Indicator pin state: " + String(allCompleted ? "HIGH (all complete)" : "LOW (working)"));
+        lastDebugTime = millis();
+      }
+
+      if (allCompleted) {
         sequenceRunning = false;
         waitingForCompletion = false;
         groupExecutionActive = false;
@@ -272,9 +280,15 @@ void PalletizerMaster::processGroupCommand(const String& groupCommands) {
 
   parseAndSendGroupCommands(groupCommands);
 
+  delay(100);
+
   sequenceRunning = true;
   waitingForCompletion = indicatorEnabled;
   lastCheckTime = millis();
+
+  if (indicatorEnabled) {
+    DEBUG_PRINTLN("MASTER: Starting completion monitoring for GROUP command");
+  }
 }
 
 void PalletizerMaster::addCommandToQueue(const String& command) {
@@ -437,6 +451,7 @@ void PalletizerMaster::processStandardCommand(const String& command) {
     currentCommand = CMD_ZERO;
     DEBUG_MGR.info("SYSTEM", "⚙️ Executing ZERO (Homing) command");
     sendCommandToAllSlaves(CMD_ZERO);
+    delay(100);
     sequenceRunning = true;
     waitingForCompletion = indicatorEnabled;
     lastCheckTime = millis();
@@ -472,6 +487,7 @@ void PalletizerMaster::processCoordinateData(const String& data) {
   currentCommand = CMD_RUN;
   logMotionCommand(data);
   parseCoordinateData(data);
+  delay(100);
   sequenceRunning = true;
   waitingForCompletion = true;
   lastCheckTime = millis();
