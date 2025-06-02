@@ -354,7 +354,7 @@ export default function CommandPage({ onError }: CommandPageProps) {
               
               <div>
                 <p className="font-medium mb-1">Functions:</p>
-                <code className="text-xs bg-muted px-2 py-1 rounded">FUNC(NAME) { ... }</code>
+                <code className="text-xs bg-muted px-2 py-1 rounded">FUNC(NAME) {`{ ... }`}</code>
               </div>
               
               <div>
