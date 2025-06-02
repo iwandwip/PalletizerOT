@@ -464,6 +464,19 @@ void PalletizerMaster::processCoordinateData(const String& data) {
 }
 
 void PalletizerMaster::processSystemStateCommand(const String& command) {
+  static String lastStateCommand = "";
+  static unsigned long lastStateTime = 0;
+
+  unsigned long currentTime = millis();
+
+  if (command == lastStateCommand && (currentTime - lastStateTime) < 200) {
+    DEBUG_PRINTLN("MASTER: Ignoring duplicate state command: " + command);
+    return;
+  }
+
+  lastStateCommand = command;
+  lastStateTime = currentTime;
+
   DEBUG_PRINTLN("MASTER: Processing system state command: " + command);
 
   if (command == "IDLE") {
@@ -487,7 +500,6 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
       loadCommandsFromFile();
     }
 
-    DEBUG_MGR.info("EXECUTOR", "▶️ EXECUTION STARTED");
     updateExecutionInfo(true);
     setSystemState(STATE_RUNNING);
     if (!sequenceRunning && !waitingForCompletion && !isQueueEmpty()) {
@@ -690,6 +702,13 @@ bool PalletizerMaster::isQueueFull() {
 }
 
 void PalletizerMaster::processNextCommand() {
+  static bool processingCommand = false;
+
+  if (processingCommand) {
+    DEBUG_PRINTLN("MASTER: Already processing command, skipping duplicate");
+    return;
+  }
+
   if (isQueueEmpty()) {
     DEBUG_PRINTLN("MASTER: Command queue is empty");
     return;
@@ -700,6 +719,7 @@ void PalletizerMaster::processNextCommand() {
     return;
   }
 
+  processingCommand = true;
   String command = getFromQueue();
   executionInfo.currentCommand++;
 
@@ -723,6 +743,8 @@ void PalletizerMaster::processNextCommand() {
   } else {
     DEBUG_PRINTLN("MASTER: Unknown command format: " + command);
   }
+
+  processingCommand = false;
 }
 
 void PalletizerMaster::requestCommand() {
@@ -1050,24 +1072,28 @@ void PalletizerMaster::updateExecutionInfo(bool start) {
   static bool executionActive = false;
 
   if (start) {
-    if (executionActive) {
+    if (executionActive || executionInfoActive) {
       DEBUG_PRINTLN("MASTER: Execution already active, ignoring duplicate start");
       return;
     }
 
     executionActive = true;
+    executionInfoActive = true;
     executionInfo.isExecuting = true;
     executionInfo.executionStartTime = millis();
     executionInfo.currentCommand = 0;
     executionInfo.currentFunction = "";
     executionInfo.functionDepth = 0;
+
+    DEBUG_MGR.info("EXECUTOR", "▶️ EXECUTION STARTED");
   } else {
-    if (!executionActive) {
+    if (!executionActive || !executionInfoActive) {
       DEBUG_PRINTLN("MASTER: Execution not active, ignoring duplicate end");
       return;
     }
 
     executionActive = false;
+    executionInfoActive = false;
     executionInfo.isExecuting = false;
     unsigned long totalTime = millis() - executionInfo.executionStartTime;
 
@@ -1086,16 +1112,20 @@ void PalletizerMaster::logExecutionProgress() {
   static int lastProgressCommand = -1;
 
   unsigned long currentTime = millis();
-  if (currentTime - lastProgressTime < 100 && executionInfo.currentCommand == lastProgressCommand) {
+
+  if ((currentTime - lastProgressTime < 500 && executionInfo.currentCommand == lastProgressCommand) || progressLoggingActive) {
     return;
   }
 
   lastProgressTime = currentTime;
   lastProgressCommand = executionInfo.currentCommand;
+  progressLoggingActive = true;
 
   if (executionInfo.totalCommands > 0) {
     DEBUG_MGR.progress(executionInfo.currentCommand, executionInfo.totalCommands, "Execution Progress");
   }
+
+  progressLoggingActive = false;
 }
 
 void PalletizerMaster::logMotionCommand(const String& data) {
@@ -1151,5 +1181,19 @@ bool PalletizerMaster::isCoordinateCommand(const String& command) {
     return true;
   }
 
+  return false;
+}
+
+bool PalletizerMaster::isDuplicateMessage(const String& message) {
+  unsigned long currentTime = millis();
+
+  if (debugTracker.lastMessage == message && (currentTime - debugTracker.lastTimestamp) < 100) {
+    debugTracker.duplicateCount++;
+    return true;
+  }
+
+  debugTracker.lastMessage = message;
+  debugTracker.lastTimestamp = currentTime;
+  debugTracker.duplicateCount = 0;
   return false;
 }

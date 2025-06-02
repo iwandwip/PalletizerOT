@@ -33,6 +33,14 @@ public:
 private:
   static const int DEBUG_BUFFER_SIZE = 1000;
 
+  struct ServerDebugTracker {
+    String lastMessage;
+    String lastLevel;
+    String lastSource;
+    unsigned long lastTimestamp;
+    int duplicateCount;
+  };
+
   PalletizerMaster* palletizerMaster;
   AsyncWebServer server;
   AsyncEventSource events;
@@ -59,6 +67,7 @@ private:
   int debugMessageCount = 0;
   SemaphoreHandle_t debugMutex;
   bool debugCaptureEnabled = true;
+  ServerDebugTracker serverDebugTracker;
 
   static void wifiMonitorTask(void* pvParameters);
   static void stateMonitorTask(void* pvParameters);
@@ -92,6 +101,7 @@ private:
   void addDebugMessageInternal(const String& level, const String& source, const String& message);
   String getDebugBufferJSON(int startIndex = 0);
   String formatDebugMessage(const DebugMessage& msg);
+  bool isServerDuplicateMessage(const String& level, const String& source, const String& message, unsigned long currentTime);
 };
 
 #endif

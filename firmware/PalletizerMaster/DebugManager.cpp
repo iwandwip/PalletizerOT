@@ -2,7 +2,7 @@
 #include "PalletizerServer.h"
 
 DebugPrint::DebugPrint()
-  : hwSerial(nullptr), palletizerServer(nullptr), currentSource("SYSTEM"), enabled(true) {
+  : hwSerial(nullptr), palletizerServer(nullptr), currentSource("SYSTEM"), enabled(true), lastMessageTime(0), duplicateCount(0) {
 }
 
 void DebugPrint::begin(HardwareSerial* serial, PalletizerServer* server) {
@@ -20,6 +20,10 @@ void DebugPrint::setEnabled(bool enabled) {
 
 void DebugPrint::setSource(const String& source) {
   currentSource = source;
+}
+
+PalletizerServer* DebugPrint::getServer() {
+  return palletizerServer;
 }
 
 size_t DebugPrint::write(uint8_t c) {
@@ -55,7 +59,11 @@ size_t DebugPrint::write(const uint8_t* buffer, size_t size) {
 void DebugPrint::processLine() {
   if (lineBuffer.length() > 0 && palletizerServer) {
     String level = detectLevel(lineBuffer);
-    palletizerServer->sendDebugMessage(level, currentSource, lineBuffer);
+
+    if (!isDuplicateMessage(level, currentSource, lineBuffer)) {
+      palletizerServer->sendDebugMessage(level, currentSource, lineBuffer);
+    }
+
     lineBuffer = "";
   }
 }
@@ -75,13 +83,28 @@ String DebugPrint::detectLevel(const String& line) {
   }
 }
 
+bool DebugPrint::isDuplicateMessage(const String& level, const String& source, const String& message) {
+  unsigned long currentTime = millis();
+  String messageKey = level + ":" + source + ":" + message;
+
+  if (lastMessageKey == messageKey && (currentTime - lastMessageTime) < 100) {
+    duplicateCount++;
+    if (duplicateCount == 3 && palletizerServer) {
+      String warningMsg = "Duplicate message suppressed (" + String(duplicateCount) + "x): " + message;
+      palletizerServer->sendDebugMessage("WARNING", "DEBUG_MGR", warningMsg);
+    }
+    return true;
+  }
+
+  lastMessageKey = messageKey;
+  lastMessageTime = currentTime;
+  duplicateCount = 0;
+  return false;
+}
+
 DebugManager& DebugManager::getInstance() {
   static DebugManager instance;
   return instance;
-}
-
-DebugManager::DebugManager()
-  : initialized(false) {
 }
 
 void DebugManager::begin(HardwareSerial* serial, PalletizerServer* server) {
@@ -132,8 +155,20 @@ void DebugManager::debug(const String& source, const String& message) {
 }
 
 void DebugManager::sequence(const String& source, int current, int total, const String& message) {
-  String formattedMsg = "🔄 [" + String(current) + "/" + String(total) + "] " + message;
-  sendFormattedMessage("INFO", source, formattedMsg);
+  static String lastSequenceMsg = "";
+  static unsigned long lastSequenceTime = 0;
+
+  String currentMsg = "🔄 [" + String(current) + "/" + String(total) + "] " + message;
+  unsigned long currentTime = millis();
+
+  if (lastSequenceMsg == currentMsg && (currentTime - lastSequenceTime) < 200) {
+    return;
+  }
+
+  lastSequenceMsg = currentMsg;
+  lastSequenceTime = currentTime;
+
+  sendFormattedMessage("INFO", source, currentMsg);
 }
 
 void DebugManager::motion(const String& axis, long position, float speed, unsigned long delay) {
@@ -167,6 +202,9 @@ void DebugManager::function(const String& funcName, bool entering, int commandCo
 }
 
 void DebugManager::progress(int current, int total, const String& task) {
+  static String lastProgressMsg = "";
+  static unsigned long lastProgressTime = 0;
+
   int percentage = (total > 0) ? (current * 100 / total) : 0;
   String progressBar = "[";
 
@@ -179,10 +217,27 @@ void DebugManager::progress(int current, int total, const String& task) {
   }
 
   progressBar += "] " + String(current) + "/" + String(total) + " (" + String(percentage) + "%) - " + task;
+
+  unsigned long currentTime = millis();
+  if (lastProgressMsg == progressBar && (currentTime - lastProgressTime) < 500) {
+    return;
+  }
+
+  lastProgressMsg = progressBar;
+  lastProgressTime = currentTime;
+
   sendFormattedMessage("INFO", "PROGRESS", progressBar);
 }
 
 void DebugManager::separator() {
+  static unsigned long lastSeparatorTime = 0;
+  unsigned long currentTime = millis();
+
+  if ((currentTime - lastSeparatorTime) < 200) {
+    return;
+  }
+
+  lastSeparatorTime = currentTime;
   sendFormattedMessage("INFO", "SYSTEM", "════════════════════════════════════════");
 }
 
@@ -190,7 +245,24 @@ DebugPrint& DebugManager::getDebugPrint() {
   return debugPrint;
 }
 
+DebugManager::DebugManager()
+  : initialized(false) {
+}
+
 void DebugManager::sendFormattedMessage(const String& level, const String& source, const String& message) {
+  static String lastManagerMsg = "";
+  static unsigned long lastManagerTime = 0;
+
+  String messageKey = level + ":" + source + ":" + message;
+  unsigned long currentTime = millis();
+
+  if (lastManagerMsg == messageKey && (currentTime - lastManagerTime) < 50) {
+    return;
+  }
+
+  lastManagerMsg = messageKey;
+  lastManagerTime = currentTime;
+
   if (debugPrint.getServer()) {
     debugPrint.getServer()->sendDebugMessage(level, source, message);
   }

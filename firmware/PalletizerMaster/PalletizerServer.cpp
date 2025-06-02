@@ -81,19 +81,13 @@ void PalletizerServer::sendDebugMessage(const String &level, const String &sourc
   if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (debugCaptureEnabled && debugEvents.count() > 0) {
       unsigned long currentTime = millis();
-      bool isDuplicate = false;
 
-      for (int i = max(0, debugMessageCount - 5); i < debugMessageCount; i++) {
-        int idx = (debugBufferHead + i) % DEBUG_BUFFER_SIZE;
-        if (debugBuffer[idx].level == level && debugBuffer[idx].source == source && debugBuffer[idx].message == message && (currentTime - debugBuffer[idx].timestamp) < 100) {
-          isDuplicate = true;
-          break;
-        }
+      if (isServerDuplicateMessage(level, source, message, currentTime)) {
+        xSemaphoreGive(debugMutex);
+        return;
       }
 
-      if (!isDuplicate) {
-        addDebugMessageInternal(level, source, message);
-      }
+      addDebugMessageInternal(level, source, message);
     }
     xSemaphoreGive(debugMutex);
   }
@@ -626,4 +620,51 @@ String PalletizerServer::formatDebugMessage(const DebugMessage &msg) {
   json += "\"message\":\"" + msg.message + "\"";
   json += "}";
   return json;
+}
+
+bool PalletizerServer::isServerDuplicateMessage(const String &level, const String &source, const String &message, unsigned long currentTime) {
+  if (serverDebugTracker.lastMessage == message && serverDebugTracker.lastLevel == level && serverDebugTracker.lastSource == source && (currentTime - serverDebugTracker.lastTimestamp) < 100) {
+    serverDebugTracker.duplicateCount++;
+    return true;
+  }
+
+  if (message.indexOf("▶️ EXECUTION STARTED") != -1) {
+    static unsigned long lastExecutionStart = 0;
+    if ((currentTime - lastExecutionStart) < 500) {
+      return true;
+    }
+    lastExecutionStart = currentTime;
+  }
+
+  if (message.indexOf("📊 Execution Summary:") != -1 || message.indexOf("════════════════════════════════════════") != -1) {
+    static unsigned long lastPerformanceMsg = 0;
+    if ((currentTime - lastPerformanceMsg) < 1000) {
+      return true;
+    }
+    lastPerformanceMsg = currentTime;
+  }
+
+  if (message.indexOf("[████████████████████]") != -1) {
+    static unsigned long lastProgressMsg = 0;
+    if ((currentTime - lastProgressMsg) < 300) {
+      return true;
+    }
+    lastProgressMsg = currentTime;
+  }
+
+  if (message.indexOf("🔄 [") != -1 && message.indexOf("] Executing:") != -1) {
+    static String lastSequenceMsg = "";
+    if (message == lastSequenceMsg) {
+      return true;
+    }
+    lastSequenceMsg = message;
+  }
+
+  serverDebugTracker.lastMessage = message;
+  serverDebugTracker.lastLevel = level;
+  serverDebugTracker.lastSource = source;
+  serverDebugTracker.lastTimestamp = currentTime;
+  serverDebugTracker.duplicateCount = 0;
+
+  return false;
 }

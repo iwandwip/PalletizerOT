@@ -149,6 +149,13 @@ export interface ExecutionState {
   startTime: number
 }
 
+interface MessageDeduplication {
+  lastMessageKey: string
+  lastMessageTime: number
+  duplicateCount: number
+  windowMs: number
+}
+
 export function useDebugMonitor() {
   const [messages, setMessages] = useState<ParsedMessage[]>([])
   const [connected, setConnected] = useState(false)
@@ -168,9 +175,72 @@ export function useDebugMonitor() {
   const eventSourceRef = useRef<EventSource | null>(null)
   const messagesRef = useRef<ParsedMessage[]>([])
   const isConnectingRef = useRef(false)
-  const lastMessageRef = useRef<string>('')
-  const lastMessageTimeRef = useRef<number>(0)
   const maxMessages = 1000
+  
+  const deduplicationRef = useRef<MessageDeduplication>({
+    lastMessageKey: '',
+    lastMessageTime: 0,
+    duplicateCount: 0,
+    windowMs: 150
+  })
+  
+  const executionTrackingRef = useRef({
+    lastExecutionStarted: 0,
+    lastProgressUpdate: 0,
+    lastSequenceId: '',
+    lastPerformanceReport: 0
+  })
+
+  const isDuplicateMessage = useCallback((msg: DebugMessage): boolean => {
+    const currentTime = Date.now()
+    const messageKey = `${msg.level}:${msg.source}:${msg.message}`
+    const dedup = deduplicationRef.current
+    
+    if (messageKey === dedup.lastMessageKey && 
+        (currentTime - dedup.lastMessageTime) < dedup.windowMs) {
+      dedup.duplicateCount++
+      return true
+    }
+    
+    if (msg.message.includes('▶️ EXECUTION STARTED')) {
+      if ((currentTime - executionTrackingRef.current.lastExecutionStarted) < 500) {
+        return true
+      }
+      executionTrackingRef.current.lastExecutionStarted = currentTime
+    }
+    
+    if (msg.message.includes('[████████████████████]')) {
+      if ((currentTime - executionTrackingRef.current.lastProgressUpdate) < 300) {
+        return true
+      }
+      executionTrackingRef.current.lastProgressUpdate = currentTime
+    }
+    
+    if (msg.message.includes('🔄 [') && msg.message.includes('] Executing:')) {
+      const sequenceMatch = msg.message.match(/🔄 \[(\d+)\/(\d+)\] Executing: (.+)/)
+      if (sequenceMatch) {
+        const sequenceId = `${sequenceMatch[1]}_${sequenceMatch[2]}_${sequenceMatch[3]}`
+        if (sequenceId === executionTrackingRef.current.lastSequenceId) {
+          return true
+        }
+        executionTrackingRef.current.lastSequenceId = sequenceId
+      }
+    }
+    
+    if (msg.message.includes('📊 Execution Summary:') || 
+        msg.message.includes('════════════════════════════════════════')) {
+      if ((currentTime - executionTrackingRef.current.lastPerformanceReport) < 1000) {
+        return true
+      }
+      executionTrackingRef.current.lastPerformanceReport = currentTime
+    }
+    
+    dedup.lastMessageKey = messageKey
+    dedup.lastMessageTime = currentTime
+    dedup.duplicateCount = 0
+    
+    return false
+  }, [])
 
   const parseMessage = useCallback((msg: DebugMessage): ParsedMessage => {
     const parsed: ParsedMessage = { ...msg }
@@ -272,41 +342,6 @@ export function useDebugMonitor() {
       parsed.type = 'parser'
     }
     
-    else if (msg.message.includes('├─ Functions Found:')) {
-      const match = msg.message.match(/Functions Found: (\d+)/)
-      if (match && messagesRef.current.length > 0) {
-        const lastParserMsg = messagesRef.current.filter(m => m.type === 'parser').pop()
-        if (lastParserMsg) {
-          if (!lastParserMsg.data) lastParserMsg.data = {}
-          if (!lastParserMsg.data.parsingResults) lastParserMsg.data.parsingResults = {}
-          lastParserMsg.data.parsingResults.functions = []
-        }
-      }
-    }
-    
-    else if (msg.message.match(/│\s+[├└]─\s+(\w+)\s+\((\d+) commands\)/)) {
-      const match = msg.message.match(/│\s+[├└]─\s+(\w+)\s+\((\d+) commands\)/)
-      if (match && messagesRef.current.length > 0) {
-        const lastParserMsg = messagesRef.current.filter(m => m.type === 'parser').pop()
-        if (lastParserMsg?.data?.parsingResults?.functions) {
-          lastParserMsg.data.parsingResults.functions.push({
-            name: match[1],
-            commands: parseInt(match[2])
-          })
-        }
-      }
-    }
-    
-    else if (msg.message.includes('└─ Total Commands:')) {
-      const match = msg.message.match(/Total Commands: (\d+)/)
-      if (match && messagesRef.current.length > 0) {
-        const lastParserMsg = messagesRef.current.filter(m => m.type === 'parser').pop()
-        if (lastParserMsg?.data?.parsingResults) {
-          lastParserMsg.data.parsingResults.totalCommands = parseInt(match[1])
-        }
-      }
-    }
-    
     else if (msg.message.includes('[') && msg.message.includes(']') && msg.message.includes('░')) {
       parsed.type = 'progress'
       const match = msg.message.match(/\[([█░]+)\]\s*(\d+)\/(\d+)\s*\((\d+)%\)/)
@@ -322,48 +357,6 @@ export function useDebugMonitor() {
     else if (msg.message.includes('📊 Execution Summary:')) {
       parsed.type = 'performance'
       setExecutionState(prev => ({ ...prev, isExecuting: false }))
-    }
-    
-    else if (msg.message.includes('├─ Total Time:')) {
-      const match = msg.message.match(/Total Time: (.+)/)
-      if (match && messagesRef.current.length > 0) {
-        const lastPerfMsg = messagesRef.current.filter(m => m.type === 'performance').pop()
-        if (lastPerfMsg) {
-          if (!lastPerfMsg.data) lastPerfMsg.data = {}
-          if (!lastPerfMsg.data.performanceData) lastPerfMsg.data.performanceData = {}
-          lastPerfMsg.data.performanceData.totalTime = match[1]
-        }
-      }
-    }
-    
-    else if (msg.message.includes('├─ Commands:')) {
-      const match = msg.message.match(/Commands: (\d+)\/\d+/)
-      if (match && messagesRef.current.length > 0) {
-        const lastPerfMsg = messagesRef.current.filter(m => m.type === 'performance').pop()
-        if (lastPerfMsg?.data?.performanceData) {
-          lastPerfMsg.data.performanceData.commandsExecuted = parseInt(match[1])
-        }
-      }
-    }
-    
-    else if (msg.message.includes('├─ Success Rate:')) {
-      const match = msg.message.match(/Success Rate: ([\d.]+)%/)
-      if (match && messagesRef.current.length > 0) {
-        const lastPerfMsg = messagesRef.current.filter(m => m.type === 'performance').pop()
-        if (lastPerfMsg?.data?.performanceData) {
-          lastPerfMsg.data.performanceData.successRate = parseFloat(match[1])
-        }
-      }
-    }
-    
-    else if (msg.message.includes('└─ Avg Command Time:')) {
-      const match = msg.message.match(/Avg Command Time: (.+)/)
-      if (match && messagesRef.current.length > 0) {
-        const lastPerfMsg = messagesRef.current.filter(m => m.type === 'performance').pop()
-        if (lastPerfMsg?.data?.performanceData) {
-          lastPerfMsg.data.performanceData.avgCommandTime = match[1]
-        }
-      }
     }
     
     return parsed
@@ -393,16 +386,9 @@ export function useDebugMonitor() {
         try {
           const data: DebugMessage = JSON.parse(event.data)
           
-          const messageKey = `${data.level}:${data.source}:${data.message}`
-          const currentTime = Date.now()
-          
-          if (messageKey === lastMessageRef.current && 
-              currentTime - lastMessageTimeRef.current < 50) {
+          if (isDuplicateMessage(data)) {
             return
           }
-          
-          lastMessageRef.current = messageKey
-          lastMessageTimeRef.current = currentTime
           
           const parsed = parseMessage(data)
           messagesRef.current = [...messagesRef.current, parsed].slice(-maxMessages)
@@ -418,7 +404,7 @@ export function useDebugMonitor() {
       isConnectingRef.current = false
       setTimeout(() => connect(), 5000)
     }
-  }, [paused, parseMessage])
+  }, [paused, parseMessage, isDuplicateMessage])
 
   const disconnect = useCallback(() => {
     isConnectingRef.current = false
@@ -432,6 +418,21 @@ export function useDebugMonitor() {
   const clearMessages = useCallback(() => {
     messagesRef.current = []
     setMessages([])
+    
+    deduplicationRef.current = {
+      lastMessageKey: '',
+      lastMessageTime: 0,
+      duplicateCount: 0,
+      windowMs: 150
+    }
+    
+    executionTrackingRef.current = {
+      lastExecutionStarted: 0,
+      lastProgressUpdate: 0,
+      lastSequenceId: '',
+      lastPerformanceReport: 0
+    }
+    
     setExecutionState({
       isExecuting: false,
       totalCommands: 0,

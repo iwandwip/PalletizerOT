@@ -84,6 +84,12 @@ public:
     bool isExecuting = false;
   };
 
+  struct MessageTracker {
+    String lastMessage;
+    unsigned long lastTimestamp;
+    int duplicateCount;
+  };
+
   typedef void (*DataCallback)(const String& data);
 
   PalletizerMaster(int rxPin, int txPin, int indicatorPin = -1);
@@ -152,6 +158,9 @@ private:
 
   PalletizerScriptParser scriptParser;
   ExecutionInfo executionInfo;
+  MessageTracker debugTracker;
+  bool executionInfoActive = false;
+  bool progressLoggingActive = false;
 
   void checkSlaveData();
   void onCommandReceived(const String& data);
@@ -197,6 +206,7 @@ private:
   void logMotionCommand(const String& data);
   bool isScriptCommand(const String& command);
   bool isCoordinateCommand(const String& command);
+  bool isDuplicateMessage(const String& message);
 };
 
 #endif
