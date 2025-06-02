@@ -195,6 +195,8 @@ private:
   void updateExecutionInfo(bool start = false);
   void logExecutionProgress();
   void logMotionCommand(const String& data);
+  bool isScriptCommand(const String& command);
+  bool isCoordinateCommand(const String& command);
 };
 
 #endif

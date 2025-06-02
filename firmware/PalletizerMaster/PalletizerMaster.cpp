@@ -325,7 +325,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     return;
   }
 
-  if (data.indexOf("FUNC(") != -1 || data.indexOf("CALL(") != -1 || (data.indexOf(';') != -1 && data.indexOf('{') != -1)) {
+  if (isScriptCommand(data)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(data);
     xSemaphoreGive(commandMutex);
@@ -710,7 +710,7 @@ void PalletizerMaster::processNextCommand() {
   upperData.trim();
   upperData.toUpperCase();
 
-  if (command.indexOf(';') != -1 || command.indexOf('{') != -1 || command.indexOf("FUNC(") != -1 || command.indexOf("CALL(") != -1) {
+  if (isScriptCommand(command)) {
     processScriptCommand(command);
   } else if (upperData == "ZERO") {
     processStandardCommand(upperData);
@@ -718,8 +718,10 @@ void PalletizerMaster::processNextCommand() {
     processSpeedCommand(command);
   } else if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
-  } else {
+  } else if (isCoordinateCommand(command)) {
     processCoordinateData(command);
+  } else {
+    DEBUG_PRINTLN("MASTER: Unknown command format: " + command);
   }
 }
 
@@ -925,7 +927,7 @@ void PalletizerMaster::loadCommandsFromFile() {
   clearQueue();
 
   if (allCommands.length() > 0) {
-    if (allCommands.indexOf("FUNC(") != -1 || allCommands.indexOf("CALL(") != -1) {
+    if (isScriptCommand(allCommands)) {
       DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
       processScriptCommand(allCommands);
     } else {
@@ -1108,4 +1110,46 @@ void PalletizerMaster::logMotionCommand(const String& data) {
   if (count > 1) {
     DEBUG_MGR.info("MOTION", "🎯 Multi-axis movement (" + String(count) + " axes)");
   }
+}
+
+bool PalletizerMaster::isScriptCommand(const String& command) {
+  String trimmed = command;
+  trimmed.trim();
+
+  if (trimmed.indexOf("FUNC(") != -1 || trimmed.indexOf("CALL(") != -1) {
+    return true;
+  }
+
+  if (trimmed.indexOf('{') != -1 && trimmed.indexOf('}') != -1) {
+    return true;
+  }
+
+  int semicolonCount = 0;
+  for (int i = 0; i < trimmed.length(); i++) {
+    if (trimmed.charAt(i) == ';') {
+      semicolonCount++;
+    }
+  }
+
+  if (semicolonCount > 1) {
+    return true;
+  }
+
+  return false;
+}
+
+bool PalletizerMaster::isCoordinateCommand(const String& command) {
+  String trimmed = command;
+  trimmed.trim();
+  trimmed.toUpperCase();
+
+  if (trimmed.startsWith("X(") || trimmed.startsWith("Y(") || trimmed.startsWith("Z(") || trimmed.startsWith("T(") || trimmed.startsWith("G(")) {
+    return true;
+  }
+
+  if (trimmed.indexOf("X(") != -1 && trimmed.indexOf("Y(") != -1) {
+    return true;
+  }
+
+  return false;
 }
