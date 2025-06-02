@@ -327,9 +327,10 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     return;
   }
 
-  if (upperData.startsWith("GROUP(") && upperData.endsWith(");")) {
+  if (upperData.startsWith("GROUP(") && upperData.indexOf(")") != -1) {
     int startPos = 6;
-    int endPos = trimmedData.lastIndexOf(")");
+    int endPos = trimmedData.indexOf(")", startPos);
+    endPos = trimmedData.lastIndexOf(")", endPos);
     if (endPos > startPos) {
       String groupCommands = trimmedData.substring(startPos, endPos);
       processGroupCommand(groupCommands);
@@ -625,19 +626,40 @@ void PalletizerMaster::parseAndSendGroupCommands(const String& groupCommands) {
 
   int pos = 0;
   while (pos < groupCommands.length()) {
+    while (pos < groupCommands.length() && (groupCommands.charAt(pos) == ' ' || groupCommands.charAt(pos) == '\t')) {
+      pos++;
+    }
+
     int endPos = groupCommands.indexOf('(', pos);
-    if (endPos == -1) break;
+    if (endPos == -1 || pos >= groupCommands.length()) break;
 
     String slaveId = groupCommands.substring(pos, endPos);
     slaveId.trim();
     slaveId.toLowerCase();
 
-    int closePos = groupCommands.indexOf(')', endPos);
-    if (closePos == -1) break;
+    int openParen = endPos;
+    int closeParen = -1;
+    int parenCount = 1;
 
-    String paramsOrig = groupCommands.substring(endPos + 1, closePos);
+    for (int i = openParen + 1; i < groupCommands.length() && parenCount > 0; i++) {
+      if (groupCommands.charAt(i) == '(') {
+        parenCount++;
+      } else if (groupCommands.charAt(i) == ')') {
+        parenCount--;
+        if (parenCount == 0) {
+          closeParen = i;
+        }
+      }
+    }
+
+    if (closeParen == -1) break;
+
+    String paramsOrig = groupCommands.substring(openParen + 1, closeParen);
     String params = "";
     for (int i = 0; i < paramsOrig.length(); i++) {
+      if (paramsOrig.charAt(i) == ' ') {
+        continue;
+      }
       params += (paramsOrig.charAt(i) == ',') ? ';' : paramsOrig.charAt(i);
     }
 
@@ -645,11 +667,8 @@ void PalletizerMaster::parseAndSendGroupCommands(const String& groupCommands) {
     sendToSlave(command);
     DEBUG_MGR.info("GROUP→SLAVE", command);
 
-    pos = groupCommands.indexOf(',', closePos);
-    if (pos == -1) break;
-    pos++;
-
-    while (pos < groupCommands.length() && (groupCommands.charAt(pos) == ' ' || groupCommands.charAt(pos) == '\t')) {
+    pos = closeParen + 1;
+    while (pos < groupCommands.length() && (groupCommands.charAt(pos) == ' ' || groupCommands.charAt(pos) == ',')) {
       pos++;
     }
   }
@@ -742,9 +761,22 @@ void PalletizerMaster::processNextCommand() {
   String trimmedCommand = command;
   trimmedCommand.trim();
 
-  if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(");") != -1) {
+  if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(")") != -1) {
     int startPos = 6;
-    int endPos = trimmedCommand.indexOf(");");
+    int endPos = -1;
+    int parenCount = 1;
+
+    for (int i = startPos; i < trimmedCommand.length() && parenCount > 0; i++) {
+      if (trimmedCommand.charAt(i) == '(') {
+        parenCount++;
+      } else if (trimmedCommand.charAt(i) == ')') {
+        parenCount--;
+        if (parenCount == 0) {
+          endPos = i;
+        }
+      }
+    }
+
     if (endPos > startPos) {
       String groupCommands = trimmedCommand.substring(startPos, endPos);
       processGroupCommand(groupCommands);
