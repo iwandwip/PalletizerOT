@@ -314,20 +314,33 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   DEBUG_PRINTLN("COMMAND→MASTER: " + data);
   requestNextCommand = false;
 
-  String upperData = data;
-  upperData.trim();
+  String trimmedData = data;
+  trimmedData.trim();
+
+  String upperData = trimmedData;
   upperData.toUpperCase();
 
-  if (data.startsWith("GROUP;")) {
-    String groupCommands = data.substring(6);
+  if (trimmedData.startsWith("GROUP;")) {
+    String groupCommands = trimmedData.substring(6);
     processGroupCommand(groupCommands);
     xSemaphoreGive(commandMutex);
     return;
   }
 
-  if (isScriptCommand(data)) {
+  if (upperData.startsWith("GROUP(") && upperData.endsWith(");")) {
+    int startPos = 6;
+    int endPos = trimmedData.lastIndexOf(")");
+    if (endPos > startPos) {
+      String groupCommands = trimmedData.substring(startPos, endPos);
+      processGroupCommand(groupCommands);
+    }
+    xSemaphoreGive(commandMutex);
+    return;
+  }
+
+  if (isScriptCommand(trimmedData)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
-    processScriptCommand(data);
+    processScriptCommand(trimmedData);
     xSemaphoreGive(commandMutex);
     return;
   }
@@ -348,12 +361,12 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     if (upperData == "ZERO") {
       processStandardCommand(upperData);
     } else if (upperData.startsWith("SPEED;")) {
-      processSpeedCommand(data);
+      processSpeedCommand(trimmedData);
     } else if (upperData == "END_QUEUE") {
       DEBUG_PRINTLN("MASTER: Queue loading completed");
       scriptProcessing = false;
     } else {
-      if (shouldClearQueue(data)) {
+      if (shouldClearQueue(trimmedData)) {
         if (!queueClearRequested) {
           clearQueue();
           queueClearRequested = true;
@@ -361,10 +374,10 @@ void PalletizerMaster::onCommandReceived(const String& data) {
       }
 
       DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
-      processCommandsBatch(data);
+      processCommandsBatch(trimmedData);
     }
-  } else if (data != "END_QUEUE") {
-    if (shouldClearQueue(data)) {
+  } else if (trimmedData != "END_QUEUE") {
+    if (shouldClearQueue(trimmedData)) {
       if (!queueClearRequested) {
         clearQueue();
         queueClearRequested = true;
@@ -372,7 +385,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     }
 
     DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
-    processCommandsBatch(data);
+    processCommandsBatch(trimmedData);
   }
 
   xSemaphoreGive(commandMutex);
@@ -726,22 +739,35 @@ void PalletizerMaster::processNextCommand() {
   DEBUG_MGR.sequence("EXECUTOR", executionInfo.currentCommand, executionInfo.totalCommands, "Executing: " + command);
   logExecutionProgress();
 
-  String upperData = command;
-  upperData.trim();
+  String trimmedCommand = command;
+  trimmedCommand.trim();
+
+  if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(");") != -1) {
+    int startPos = 6;
+    int endPos = trimmedCommand.indexOf(");");
+    if (endPos > startPos) {
+      String groupCommands = trimmedCommand.substring(startPos, endPos);
+      processGroupCommand(groupCommands);
+      processingCommand = false;
+      return;
+    }
+  }
+
+  String upperData = trimmedCommand;
   upperData.toUpperCase();
 
-  if (isScriptCommand(command)) {
-    processScriptCommand(command);
+  if (isScriptCommand(trimmedCommand)) {
+    processScriptCommand(trimmedCommand);
   } else if (upperData == "ZERO") {
     processStandardCommand(upperData);
   } else if (upperData.startsWith("SPEED;")) {
-    processSpeedCommand(command);
+    processSpeedCommand(trimmedCommand);
   } else if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
-  } else if (isCoordinateCommand(command)) {
-    processCoordinateData(command);
+  } else if (isCoordinateCommand(trimmedCommand)) {
+    processCoordinateData(trimmedCommand);
   } else {
-    DEBUG_PRINTLN("MASTER: Unknown command format: " + command);
+    DEBUG_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
   }
 
   processingCommand = false;
@@ -1058,8 +1084,8 @@ void PalletizerMaster::processCommandsBatch(const String& commands) {
 }
 
 bool PalletizerMaster::shouldClearQueue(const String& data) {
-  bool isCoordinateCommand = data.indexOf('(') != -1;
-  return isCoordinateCommand && QUEUE_OPERATION_MODE == QUEUE_MODE_OVERWRITE;
+  bool isCoordinateCmd = data.indexOf('(') != -1;
+  return isCoordinateCmd && QUEUE_OPERATION_MODE == QUEUE_MODE_OVERWRITE;
 }
 
 void PalletizerMaster::ensureFileIsClosed(File& file) {
@@ -1172,6 +1198,10 @@ bool PalletizerMaster::isCoordinateCommand(const String& command) {
   String trimmed = command;
   trimmed.trim();
   trimmed.toUpperCase();
+
+  if (trimmed.startsWith("GROUP(")) {
+    return false;
+  }
 
   if (trimmed.startsWith("X(") || trimmed.startsWith("Y(") || trimmed.startsWith("Z(") || trimmed.startsWith("T(") || trimmed.startsWith("G(")) {
     return true;
