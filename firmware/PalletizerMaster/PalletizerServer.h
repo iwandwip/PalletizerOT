@@ -52,6 +52,7 @@ private:
 
   TaskHandle_t wifiTaskHandle = NULL;
   TaskHandle_t stateTaskHandle = NULL;
+  TaskHandle_t serverUpdateTaskHandle = NULL;
 
   DebugMessage debugBuffer[DEBUG_BUFFER_SIZE];
   int debugBufferHead = 0;
@@ -62,6 +63,7 @@ private:
 
   static void wifiMonitorTask(void* pvParameters);
   static void stateMonitorTask(void* pvParameters);
+  static void serverUpdateTask(void* pvParameters);
 
   void setupRoutes();
   void handleUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final);

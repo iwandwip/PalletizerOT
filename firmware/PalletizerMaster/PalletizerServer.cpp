@@ -72,6 +72,15 @@ void PalletizerServer::begin() {
     2,
     &stateTaskHandle,
     1);
+
+  xTaskCreatePinnedToCore(
+    serverUpdateTask,
+    "Server_Update",
+    9216,
+    this,
+    1,
+    &serverUpdateTaskHandle,
+    0);
 }
 
 void PalletizerServer::update() {
@@ -130,6 +139,17 @@ void PalletizerServer::stateMonitorTask(void *pvParameters) {
     }
 
     vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
+void PalletizerServer::serverUpdateTask(void *pvParameters) {
+  PalletizerServer *server = (PalletizerServer *)pvParameters;
+
+  server->sendDebugMessage("INFO", "SERVER_TASK", "Server update task started on Core 0");
+
+  while (true) {
+    server->update();
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 

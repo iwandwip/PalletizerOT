@@ -15,14 +15,6 @@
 #define WIFI_SSID "silenceAndSleep"
 #define WIFI_PASSWORD "11111111"
 
-// #define WIFI_MODE PalletizerServer::MODE_STA
-// #define WIFI_SSID "TIMEOSPACE"
-// #define WIFI_PASSWORD "1234Saja"
-
-// #define WIFI_MODE PalletizerServer::MODE_AP
-// #define WIFI_SSID "PalletizerAP"
-// #define WIFI_PASSWORD ""
-
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
 
@@ -74,11 +66,4 @@ void setup() {
 
 void loop() {
   master.update();
-  server.update();
-
-  // static unsigned long lastDebugUpdate = 0;
-  // if (millis() - lastDebugUpdate > 30000) {
-  //   lastDebugUpdate = millis();
-  //   DEBUG_MGR.info("HEARTBEAT", "System running - State: " + String(master.getSystemState()));
-  // }
 }
