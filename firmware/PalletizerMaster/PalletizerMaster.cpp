@@ -305,6 +305,12 @@ void PalletizerMaster::checkSlaveData() {
 }
 
 void PalletizerMaster::onCommandReceived(const String& data) {
+  static SemaphoreHandle_t commandMutex = xSemaphoreCreateMutex();
+  if (xSemaphoreTake(commandMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+    DEBUG_PRINTLN("MASTER: Command processing busy, skipping duplicate");
+    return;
+  }
+
   DEBUG_PRINTLN("COMMAND→MASTER: " + data);
   requestNextCommand = false;
 
@@ -315,22 +321,26 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   if (data.startsWith("GROUP;")) {
     String groupCommands = data.substring(6);
     processGroupCommand(groupCommands);
+    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (data.indexOf("FUNC(") != -1 || data.indexOf("CALL(") != -1 || (data.indexOf(';') != -1 && data.indexOf('{') != -1)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(data);
+    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
+    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP") {
     processSystemStateCommand(upperData);
+    xSemaphoreGive(commandMutex);
     return;
   }
 
@@ -364,6 +374,8 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
     processCommandsBatch(data);
   }
+
+  xSemaphoreGive(commandMutex);
 }
 
 void PalletizerMaster::onSlaveData(const String& data) {
@@ -466,6 +478,11 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
       setSystemState(STATE_IDLE);
     }
   } else if (command == "PLAY") {
+    if (systemState == STATE_RUNNING) {
+      DEBUG_PRINTLN("MASTER: Already running, ignoring duplicate PLAY");
+      return;
+    }
+
     if (isQueueEmpty()) {
       loadCommandsFromFile();
     }
@@ -524,11 +541,21 @@ void PalletizerMaster::processWaitCommand() {
 }
 
 void PalletizerMaster::processScriptCommand(const String& script) {
+  static bool scriptInProgress = false;
+  if (scriptInProgress) {
+    DEBUG_PRINTLN("MASTER: Script already processing, ignoring duplicate");
+    return;
+  }
+
+  scriptInProgress = true;
   DEBUG_PRINTLN("MASTER: Processing script command");
+
   scriptProcessing = true;
   queueClearRequested = false;
   scriptParser.parseScript(script);
   scriptProcessing = false;
+
+  scriptInProgress = false;
 }
 
 void PalletizerMaster::sendCommandToAllSlaves(Command cmd) {
@@ -617,6 +644,18 @@ bool PalletizerMaster::checkSyncTimeout() {
 }
 
 void PalletizerMaster::addToQueue(const String& command) {
+  static unsigned long lastAddTime = 0;
+  static String lastAddCommand = "";
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastAddTime < 50 && command == lastAddCommand) {
+    DEBUG_PRINTLN("MASTER: Ignoring duplicate queue add: " + command);
+    return;
+  }
+
+  lastAddTime = currentTime;
+  lastAddCommand = command;
+
   if (appendToQueueFile(command)) {
     queueSize++;
     writeQueueIndex();
@@ -1006,13 +1045,27 @@ void PalletizerMaster::ensureFileIsClosed(File& file) {
 }
 
 void PalletizerMaster::updateExecutionInfo(bool start) {
+  static bool executionActive = false;
+
   if (start) {
+    if (executionActive) {
+      DEBUG_PRINTLN("MASTER: Execution already active, ignoring duplicate start");
+      return;
+    }
+
+    executionActive = true;
     executionInfo.isExecuting = true;
     executionInfo.executionStartTime = millis();
     executionInfo.currentCommand = 0;
     executionInfo.currentFunction = "";
     executionInfo.functionDepth = 0;
   } else {
+    if (!executionActive) {
+      DEBUG_PRINTLN("MASTER: Execution not active, ignoring duplicate end");
+      return;
+    }
+
+    executionActive = false;
     executionInfo.isExecuting = false;
     unsigned long totalTime = millis() - executionInfo.executionStartTime;
 
@@ -1027,6 +1080,17 @@ void PalletizerMaster::updateExecutionInfo(bool start) {
 }
 
 void PalletizerMaster::logExecutionProgress() {
+  static unsigned long lastProgressTime = 0;
+  static int lastProgressCommand = -1;
+
+  unsigned long currentTime = millis();
+  if (currentTime - lastProgressTime < 100 && executionInfo.currentCommand == lastProgressCommand) {
+    return;
+  }
+
+  lastProgressTime = currentTime;
+  lastProgressCommand = executionInfo.currentCommand;
+
   if (executionInfo.totalCommands > 0) {
     DEBUG_MGR.progress(executionInfo.currentCommand, executionInfo.totalCommands, "Execution Progress");
   }

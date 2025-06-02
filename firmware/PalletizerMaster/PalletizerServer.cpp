@@ -72,23 +72,30 @@ void PalletizerServer::begin() {
     2,
     &stateTaskHandle,
     1);
-
-  xTaskCreatePinnedToCore(
-    serverUpdateTask,
-    "Server_Update",
-    9216,
-    this,
-    1,
-    &serverUpdateTaskHandle,
-    0);
 }
 
 void PalletizerServer::update() {
 }
 
 void PalletizerServer::sendDebugMessage(const String &level, const String &source, const String &message) {
-  if (debugCaptureEnabled) {
-    addDebugMessage(level, source, message);
+  if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (debugCaptureEnabled && debugEvents.count() > 0) {
+      unsigned long currentTime = millis();
+      bool isDuplicate = false;
+
+      for (int i = max(0, debugMessageCount - 5); i < debugMessageCount; i++) {
+        int idx = (debugBufferHead + i) % DEBUG_BUFFER_SIZE;
+        if (debugBuffer[idx].level == level && debugBuffer[idx].source == source && debugBuffer[idx].message == message && (currentTime - debugBuffer[idx].timestamp) < 100) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        addDebugMessageInternal(level, source, message);
+      }
+    }
+    xSemaphoreGive(debugMutex);
   }
 }
 
@@ -139,17 +146,6 @@ void PalletizerServer::stateMonitorTask(void *pvParameters) {
     }
 
     vTaskDelay(50 / portTICK_PERIOD_MS);
-  }
-}
-
-void PalletizerServer::serverUpdateTask(void *pvParameters) {
-  PalletizerServer *server = (PalletizerServer *)pvParameters;
-
-  server->sendDebugMessage("INFO", "SERVER_TASK", "Server update task started on Core 0");
-
-  while (true) {
-    server->update();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -578,8 +574,10 @@ void PalletizerServer::setCachedCommands(const String &commands) {
 }
 
 void PalletizerServer::addDebugMessage(const String &level, const String &source, const String &message) {
-  xSemaphoreTake(debugMutex, portMAX_DELAY);
+  addDebugMessageInternal(level, source, message);
+}
 
+void PalletizerServer::addDebugMessageInternal(const String &level, const String &source, const String &message) {
   debugBuffer[debugBufferTail].timestamp = millis();
   debugBuffer[debugBufferTail].level = level;
   debugBuffer[debugBufferTail].source = source;
@@ -594,9 +592,6 @@ void PalletizerServer::addDebugMessage(const String &level, const String &source
   }
 
   DebugMessage msg = debugBuffer[(debugBufferTail - 1 + DEBUG_BUFFER_SIZE) % DEBUG_BUFFER_SIZE];
-
-  xSemaphoreGive(debugMutex);
-
   sendDebugEvent(msg);
 }
 

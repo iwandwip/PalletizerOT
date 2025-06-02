@@ -36,8 +36,15 @@ export function useRealtime() {
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isConnectingRef = useRef(false)
 
   const connect = useCallback(() => {
+    if (isConnectingRef.current || eventSourceRef.current?.readyState === EventSource.OPEN) {
+      return
+    }
+    
+    isConnectingRef.current = true
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
     }
@@ -47,6 +54,7 @@ export function useRealtime() {
 
     eventSource.onopen = () => {
       setConnected(true)
+      isConnectingRef.current = false
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
@@ -64,10 +72,12 @@ export function useRealtime() {
 
     eventSource.onerror = () => {
       setConnected(false)
+      isConnectingRef.current = false
       eventSource.close()
       
       if (!reconnectTimeoutRef.current) {
         reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null
           connect()
         }, 5000)
       }
@@ -75,6 +85,7 @@ export function useRealtime() {
   }, [])
 
   const disconnect = useCallback(() => {
+    isConnectingRef.current = false
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
@@ -156,6 +167,9 @@ export function useDebugMonitor() {
   
   const eventSourceRef = useRef<EventSource | null>(null)
   const messagesRef = useRef<ParsedMessage[]>([])
+  const isConnectingRef = useRef(false)
+  const lastMessageRef = useRef<string>('')
+  const lastMessageTimeRef = useRef<number>(0)
   const maxMessages = 1000
 
   const parseMessage = useCallback((msg: DebugMessage): ParsedMessage => {
@@ -190,6 +204,7 @@ export function useDebugMonitor() {
         setExecutionState(prev => ({
           ...prev,
           currentCommand: current,
+          totalCommands: total,
           progress: (current / total) * 100
         }))
       }
@@ -355,6 +370,12 @@ export function useDebugMonitor() {
   }, [])
 
   const connect = useCallback(() => {
+    if (isConnectingRef.current || eventSourceRef.current?.readyState === EventSource.OPEN) {
+      return
+    }
+    
+    isConnectingRef.current = true
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
     }
@@ -364,15 +385,28 @@ export function useDebugMonitor() {
 
     eventSource.onopen = () => {
       setConnected(true)
+      isConnectingRef.current = false
     }
 
     eventSource.addEventListener('debug', (event) => {
       if (!paused) {
         try {
           const data: DebugMessage = JSON.parse(event.data)
+          
+          const messageKey = `${data.level}:${data.source}:${data.message}`
+          const currentTime = Date.now()
+          
+          if (messageKey === lastMessageRef.current && 
+              currentTime - lastMessageTimeRef.current < 50) {
+            return
+          }
+          
+          lastMessageRef.current = messageKey
+          lastMessageTimeRef.current = currentTime
+          
           const parsed = parseMessage(data)
           messagesRef.current = [...messagesRef.current, parsed].slice(-maxMessages)
-          setMessages(messagesRef.current)
+          setMessages([...messagesRef.current])
         } catch (err) {
           console.error('Error parsing debug data:', err)
         }
@@ -381,11 +415,13 @@ export function useDebugMonitor() {
 
     eventSource.onerror = () => {
       setConnected(false)
+      isConnectingRef.current = false
       setTimeout(() => connect(), 5000)
     }
   }, [paused, parseMessage])
 
   const disconnect = useCallback(() => {
+    isConnectingRef.current = false
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
