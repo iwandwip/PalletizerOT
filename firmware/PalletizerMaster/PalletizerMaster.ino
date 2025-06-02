@@ -49,13 +49,8 @@ void setup() {
 
   DEBUG_MGR.begin(&Serial, &server);
   DEBUG_MGR.info("SYSTEM", "Debug Manager initialized");
-
   DEBUG_MGR.info("SYSTEM", "Palletizer System Ready");
   DEBUG_MGR.info("SYSTEM", "Access at: http://palletizer.local");
-
-  DEBUG_MGR.info("SYSTEM", "This is an info message");
-  DEBUG_MGR.warning("SYSTEM", "This is a warning message");
-  DEBUG_MGR.error("SYSTEM", "This is an error message (test only)");
 
   Serial.println("\n🔍 DEBUG FEATURES:");
   Serial.println("  - All Serial output now goes to web interface");
