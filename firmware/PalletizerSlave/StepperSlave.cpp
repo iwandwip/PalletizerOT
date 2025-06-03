@@ -308,10 +308,10 @@ void StepperSlave::performHoming() {
   long distance = 0;
   int count = 20000;
 
-  if (digitalRead(sensorPin) == HIGH) {
+  if (isSensorDetected()) {
     DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Already in sensor area, moving out first");
     stepper.move(count);
-    while (digitalRead(sensorPin) == HIGH && stepper.distanceToGo() != 0) {
+    while (isSensorDetected() && stepper.distanceToGo() != 0) {
       stepper.run();
     }
 
@@ -320,14 +320,14 @@ void StepperSlave::performHoming() {
       stepper.setCurrentPosition(stepper.currentPosition());
       DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Moving back to sensor");
       stepper.move(-count);
-      while (digitalRead(sensorPin) == LOW && stepper.distanceToGo() != 0) {
+      while (!isSensorDetected() && stepper.distanceToGo() != 0) {
         stepper.run();
       }
     }
   } else {
     DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Outside sensor area, moving to sensor");
     stepper.move(-count);
-    while (digitalRead(sensorPin) == LOW && stepper.distanceToGo() != 0) {
+    while (!isSensorDetected() && stepper.distanceToGo() != 0) {
       stepper.run();
     }
   }
@@ -397,4 +397,8 @@ void StepperSlave::setIndicator(bool active) {
   if (indicatorPin != NOT_CONNECTED) {
     digitalWrite(indicatorPin, active ? LOW : HIGH);
   }
+}
+
+bool StepperSlave::isSensorDetected() {
+  return digitalRead(sensorPin) == HIGH;
 }
