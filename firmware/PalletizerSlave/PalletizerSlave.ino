@@ -2,7 +2,7 @@
 
 #include "StepperSlave.h"
 
-#define SLAVE_ADDR T_AXIS
+#define SLAVE_ADDR X_AXIS
 
 #define CLK_PIN 10  // 10
 #define CW_PIN 11   // 11
@@ -59,5 +59,15 @@ void setup() {
 }
 
 void loop() {
+#if TESTING_SENSOR_DEBUG
+  static uint32_t sensorDebugTimer;
+  if (millis() - sensorDebugTimer >= 500) {
+    sensorDebugTimer = millis();
+    int sensorState = digitalRead(SENSOR_PIN);
+    Serial.print("| sensorState: ");
+    Serial.print(sensorState);
+    Serial.println();
+  }
+#endif
   slave.update();
 }
