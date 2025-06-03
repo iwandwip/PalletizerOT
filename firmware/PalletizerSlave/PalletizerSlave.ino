@@ -2,7 +2,7 @@
 
 #include "StepperSlave.h"
 
-#define SLAVE_ADDR G_AXIS
+#define SLAVE_ADDR X_AXIS
 
 #define CLK_PIN 10  // 10
 #define CW_PIN 11   // 11
@@ -34,10 +34,10 @@
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #endif
 
-// Command reference: g;1;100;2000;d2000;500;1000
-// CMD_RUN      = 1 // g;1;200    - Start movement to position 200
-// CMD_ZERO     = 2 // g;2        - Home the axis
-// CMD_SETSPEED = 6 // g;6;2000   - Set speed to 2000
+// Command reference: x;1;100;2000;d2000;500;1000
+// CMD_RUN      = 1 // x;1;200    - Start movement to position 200
+// CMD_ZERO     = 2 // x;2        - Home the axis
+// CMD_SETSPEED = 6 // x;6;2000   - Set speed to 2000
 
 StepperSlave slave(
   SLAVE_ADDR,
