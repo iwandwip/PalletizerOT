@@ -27,7 +27,11 @@ StepperSlave::StepperSlave(
 void StepperSlave::begin() {
   Serial.begin(9600);
   masterCommSerial.begin(9600);
-  masterSerial.begin(&masterCommSerial);  // masterCommSerial
+#if TESTING_MODE
+  masterSerial.begin(&Serial);
+#else
+  masterSerial.begin(&masterCommSerial);
+#endif
   debugSerial.begin(&Serial);
   masterSerial.setDataCallback(onMasterDataWrapper);
 

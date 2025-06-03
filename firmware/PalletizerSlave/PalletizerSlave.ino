@@ -2,7 +2,7 @@
 
 #include "StepperSlave.h"
 
-#define SLAVE_ADDR X_AXIS
+#define SLAVE_ADDR T_AXIS
 
 #define CLK_PIN 10  // 10
 #define CW_PIN 11   // 11
@@ -34,11 +34,6 @@
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #endif
 
-// Command reference: x;1;100;2000;d2000;500;1000
-// CMD_RUN      = 1 // x;1;200    - Start movement to position 200
-// CMD_ZERO     = 2 // x;2        - Home the axis
-// CMD_SETSPEED = 6 // x;6;2000   - Set speed to 2000
-
 StepperSlave slave(
   SLAVE_ADDR,
   RX_PIN, TX_PIN,
@@ -54,6 +49,13 @@ StepperSlave slave(
 
 void setup() {
   slave.begin();
+
+#if TESTING_MODE
+  Serial.println("Command Example");
+  Serial.println("[CMD_RUN]     : " + String(SLAVE_ADDR) + ";1;200");
+  Serial.println("[CMD_ZERO]    : " + String(SLAVE_ADDR) + ";2");
+  Serial.println("[CMD_SETSPEED]: " + String(SLAVE_ADDR) + ";6;2000");
+#endif
 }
 
 void loop() {

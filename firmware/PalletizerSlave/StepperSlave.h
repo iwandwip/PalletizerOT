@@ -3,7 +3,13 @@
 
 #define ENABLE_MODULE_NODEF_SERIAL_ENHANCED
 
+#define TESTING_MODE 1
+
+#if TESTING_MODE
+#define DEBUG 1
+#else
 #define DEBUG 0
+#endif
 
 #if DEBUG
 #define DEBUG_PRINT(x) debugSerial.print(x)

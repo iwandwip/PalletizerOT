@@ -72,7 +72,7 @@ void PalletizerMaster::update() {
       lastCheckTime = millis();
 
       bool allCompleted = checkAllSlavesCompleted();
-      
+
       if (allCompleted) {
         sequenceRunning = false;
         waitingForCompletion = false;
@@ -313,12 +313,6 @@ void PalletizerMaster::checkSlaveData() {
 }
 
 void PalletizerMaster::onCommandReceived(const String& data) {
-  static SemaphoreHandle_t commandMutex = xSemaphoreCreateMutex();
-  if (xSemaphoreTake(commandMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-    DEBUG_PRINTLN("MASTER: Command processing busy, skipping duplicate");
-    return;
-  }
-
   DEBUG_PRINTLN("COMMAND→MASTER: " + data);
   requestNextCommand = false;
 
@@ -331,7 +325,6 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   if (trimmedData.startsWith("GROUP;")) {
     String groupCommands = trimmedData.substring(6);
     processGroupCommand(groupCommands);
-    xSemaphoreGive(commandMutex);
     return;
   }
 
@@ -343,26 +336,22 @@ void PalletizerMaster::onCommandReceived(const String& data) {
       String groupCommands = trimmedData.substring(startPos, endPos);
       processGroupCommand(groupCommands);
     }
-    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (isScriptCommand(trimmedData)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(trimmedData);
-    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
-    xSemaphoreGive(commandMutex);
     return;
   }
 
   if (upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP") {
     processSystemStateCommand(upperData);
-    xSemaphoreGive(commandMutex);
     return;
   }
 
@@ -396,8 +385,6 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
     processCommandsBatch(trimmedData);
   }
-
-  xSemaphoreGive(commandMutex);
 }
 
 void PalletizerMaster::onSlaveData(const String& data) {
