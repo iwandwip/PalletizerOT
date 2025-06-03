@@ -22,71 +22,37 @@ import {
   ChevronRight,
   Activity,
   Clock,
-  Search,
-  Copy
+  CheckCircle2,
+  AlertCircle,
+  Info
 } from 'lucide-react'
-
-interface DebugMessage {
-  id: string
-  timestamp: number
-  level: 'ERROR' | 'WARNING' | 'INFO' | 'DEBUG'
-  source: string
-  message: string
-  type?: 'progress' | 'sequence' | 'function' | 'motion' | 'sync' | 'parser' | 'performance'
-  data?: any
-}
-
-interface ExecutionState {
-  isExecuting: boolean
-  totalCommands: number
-  currentCommand: number
-  currentFunction: string
-  functionStack: string[]
-  progress: number
-  startTime: number
-}
+import { useDebugMonitor, ParsedMessage } from '@/lib/hooks'
 
 interface DebugTerminalProps {
-  messages?: DebugMessage[]
-  connected?: boolean
-  executionState?: ExecutionState
-  onClearMessages?: () => void
-  onExportMessages?: () => void
-  onTogglePause?: () => void
-  onToggle?: () => void
-  paused?: boolean
   className?: string
-  defaultMinimized?: boolean
 }
 
-export default function DebugTerminal({
-  messages = [],
-  connected = true,
-  executionState = {
-    isExecuting: false,
-    totalCommands: 0,
-    currentCommand: 0,
-    currentFunction: '',
-    functionStack: [],
-    progress: 0,
-    startTime: 0
-  },
-  onClearMessages = () => {},
-  onExportMessages = () => {},
-  onTogglePause = () => {},
-  onToggle = () => {},
-  paused = false,
-  className = '',
-  defaultMinimized = false
-}: DebugTerminalProps) {
+export default function DebugTerminal({ className }: DebugTerminalProps) {
+  const { 
+    messages, 
+    connected, 
+    paused, 
+    filter, 
+    levelFilter,
+    executionState,
+    setFilter,
+    setLevelFilter,
+    clearMessages, 
+    togglePause, 
+    exportMessages 
+  } = useDebugMonitor()
+  
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
-  const [minimized, setMinimized] = useState(defaultMinimized)
+  const [minimized, setMinimized] = useState(false)
   const [height, setHeight] = useState(400)
   const [isResizing, setIsResizing] = useState(false)
-  const [filter, setFilter] = useState('')
-  const [levelFilter, setLevelFilter] = useState('ALL')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [showExecutionTree, setShowExecutionTree] = useState(true)
 
   useEffect(() => {
     if (autoScroll && scrollRef.current && !paused) {
@@ -130,6 +96,16 @@ export default function DebugTerminal({
     }
   }
 
+  const getLevelIcon = (level: string) => {
+    switch(level) {
+      case 'ERROR': return <AlertCircle className="h-3 w-3" />
+      case 'WARNING': return <AlertCircle className="h-3 w-3" />
+      case 'INFO': return <Info className="h-3 w-3" />
+      case 'DEBUG': return <Info className="h-3 w-3" />
+      default: return null
+    }
+  }
+
   const formatTimestamp = (ts: number) => {
     return new Date(ts).toLocaleTimeString('en-US', { 
       hour12: false,
@@ -154,44 +130,50 @@ export default function DebugTerminal({
     }
   }
 
-  const filteredMessages = messages.filter(msg => {
-    if (levelFilter !== 'ALL' && msg.level !== levelFilter) return false
-    if (filter && !msg.message.toLowerCase().includes(filter.toLowerCase()) && 
-        !msg.source.toLowerCase().includes(filter.toLowerCase())) return false
-    if (searchTerm && !msg.message.toLowerCase().includes(searchTerm.toLowerCase())) return false
-    return true
-  })
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error)
-    }
-  }
-
-  const renderMessage = (msg: DebugMessage, idx: number) => {
+  const renderMessage = (msg: ParsedMessage, idx: number) => {
     const isSpecialType = msg.type && ['sequence', 'function', 'motion', 'sync', 'parser', 'performance', 'progress'].includes(msg.type)
     
     return (
       <div 
-        key={msg.id || idx} 
-        className={`flex items-start gap-2 hover:bg-muted/50 px-2 py-1 rounded group ${isSpecialType ? 'font-medium' : ''}`}
+        key={idx} 
+        className={`flex items-start gap-2 hover:bg-muted/50 px-1 py-0.5 rounded ${isSpecialType ? 'font-medium' : ''}`}
       >
-        <span className="text-muted-foreground text-xs w-20 font-mono">{formatTimestamp(msg.timestamp)}</span>
-        <span className={`${getLevelColor(msg.level)} w-16 text-xs font-bold`}>[{msg.level}]</span>
+        <span className="text-muted-foreground text-xs w-20">{formatTimestamp(msg.timestamp)}</span>
+        <span className={`${getLevelColor(msg.level)} w-4`}>{getLevelIcon(msg.level)}</span>
+        <span className={`font-semibold ${getLevelColor(msg.level)} w-16 text-xs`}>[{msg.level}]</span>
         <span className="text-primary font-medium w-20 text-xs">[{msg.source}]</span>
-        <span className="text-foreground flex-1 break-all text-sm">
-          {msg.message}
+        <span className="text-foreground flex-1 break-all">
+          {msg.type === 'parser' && msg.data?.parsingResults && (
+            <div className="space-y-1">
+              <div>{msg.message}</div>
+              {msg.data.parsingResults.functions && (
+                <div className="ml-4 text-xs space-y-0.5">
+                  <div>Functions Found: {msg.data.parsingResults.functions.length}</div>
+                  {msg.data.parsingResults.functions.map((func, i) => (
+                    <div key={i} className="ml-4">
+                      {i === msg.data.parsingResults.functions!.length - 1 ? '└─' : '├─'} {func.name} ({func.commands} commands)
+                    </div>
+                  ))}
+                  {msg.data.parsingResults.totalCommands && (
+                    <div>Total Commands: {msg.data.parsingResults.totalCommands}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {msg.type === 'performance' && msg.data?.performanceData && (
+            <div className="space-y-1">
+              <div>{msg.message}</div>
+              <div className="ml-4 text-xs space-y-0.5 text-green-500">
+                {msg.data.performanceData.totalTime && <div>├─ Total Time: {msg.data.performanceData.totalTime}</div>}
+                {msg.data.performanceData.commandsExecuted && <div>├─ Commands Executed: {msg.data.performanceData.commandsExecuted}</div>}
+                {msg.data.performanceData.successRate !== undefined && <div>├─ Success Rate: {msg.data.performanceData.successRate}%</div>}
+                {msg.data.performanceData.avgCommandTime && <div>└─ Avg Command Time: {msg.data.performanceData.avgCommandTime}</div>}
+              </div>
+            </div>
+          )}
+          {(!msg.type || !['parser', 'performance'].includes(msg.type)) && msg.message}
         </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="opacity-0 group-hover:opacity-100 w-6 h-6 p-0"
-          onClick={() => copyToClipboard(`[${msg.level}] [${msg.source}] ${msg.message}`)}
-        >
-          <Copy className="w-3 h-3" />
-        </Button>
       </div>
     )
   }
@@ -229,22 +211,32 @@ export default function DebugTerminal({
       />
       
       <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between p-3 border-b bg-muted/50">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between p-2 border-b bg-muted/50">
+          <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4" />
             <span className="font-semibold text-sm">Debug Terminal</span>
             <Badge variant={connected ? "default" : "destructive"} className="text-xs">
               {connected ? <><Wifi className="h-3 w-3 mr-1" />Connected</> : <><WifiOff className="h-3 w-3 mr-1" />Disconnected</>}
             </Badge>
             {paused && <Badge variant="secondary" className="text-xs">Paused</Badge>}
-            <span className="text-xs text-muted-foreground">({filteredMessages.length} messages)</span>
+            <span className="text-xs text-muted-foreground">({messages.length} messages)</span>
           </div>
           
           <div className="flex items-center gap-1">
             <Button
               size="sm"
               variant="ghost"
-              onClick={onClearMessages}
+              onClick={() => setShowExecutionTree(!showExecutionTree)}
+              title="Toggle execution tree"
+              className="h-7 w-7 p-0"
+            >
+              <Activity className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearMessages}
+              title="Clear messages"
               className="h-7 w-7 p-0"
             >
               <Trash2 className="h-3 w-3" />
@@ -252,7 +244,8 @@ export default function DebugTerminal({
             <Button
               size="sm"
               variant="ghost"
-              onClick={onExportMessages}
+              onClick={exportMessages}
+              title="Export log"
               className="h-7 w-7 p-0"
             >
               <Download className="h-3 w-3" />
@@ -260,7 +253,8 @@ export default function DebugTerminal({
             <Button
               size="sm"
               variant="ghost"
-              onClick={onTogglePause}
+              onClick={togglePause}
+              title={paused ? "Resume" : "Pause"}
               className="h-7 w-7 p-0"
             >
               {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
@@ -269,23 +263,16 @@ export default function DebugTerminal({
               size="sm"
               variant="ghost"
               onClick={() => setMinimized(true)}
+              title="Minimize"
               className="h-7 w-7 p-0"
             >
               <Minimize2 className="h-3 w-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onToggle}
-              className="h-7 w-7 p-0"
-            >
-              <X className="h-3 w-3" />
             </Button>
           </div>
         </div>
 
         {executionState.isExecuting && (
-          <div className="p-3 border-b bg-muted/30 space-y-2">
+          <div className="p-2 border-b bg-muted/30 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Activity className="h-4 w-4 text-green-500 animate-pulse" />
@@ -300,9 +287,9 @@ export default function DebugTerminal({
               </div>
             </div>
             <Progress value={executionState.progress} className="h-2" />
-            {executionState.functionStack.length > 0 && (
+            {showExecutionTree && executionState.functionStack.length > 0 && (
               <div className="text-xs space-y-0.5 font-mono ml-4">
-                <div className="text-muted-foreground">Current Position:</div>
+                <div className="text-muted-foreground">📍 Current Position:</div>
                 {executionState.functionStack.map((func, i) => (
                   <div key={i} className="flex items-center gap-1">
                     <span className="text-muted-foreground">
@@ -323,23 +310,13 @@ export default function DebugTerminal({
             placeholder="Filter messages..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="h-7 text-xs flex-1"
+            className="h-7 text-xs"
           />
-          <div className="flex items-center gap-1">
-            <Search className="h-3 w-3 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-7 text-xs w-24"
-            />
-          </div>
           <Tabs value={levelFilter} onValueChange={setLevelFilter} className="h-7">
             <TabsList className="h-7">
               <TabsTrigger value="ALL" className="text-xs h-6 px-2">All</TabsTrigger>
               <TabsTrigger value="ERROR" className="text-xs h-6 px-2">Error</TabsTrigger>
-              <TabsTrigger value="WARNING" className="text-xs h-6 px-2">Warn</TabsTrigger>
+              <TabsTrigger value="WARNING" className="text-xs h-6 px-2">Warning</TabsTrigger>
               <TabsTrigger value="INFO" className="text-xs h-6 px-2">Info</TabsTrigger>
               <TabsTrigger value="DEBUG" className="text-xs h-6 px-2">Debug</TabsTrigger>
             </TabsList>
@@ -355,17 +332,17 @@ export default function DebugTerminal({
             setAutoScroll(isAtBottom)
           }}
         >
-          {filteredMessages.length === 0 ? (
+          {messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
-              {messages.length === 0 ? 'No debug messages yet...' : 'No messages match current filters'}
+              No debug messages yet...
             </div>
           ) : (
-            filteredMessages.map((msg, idx) => renderMessage(msg, idx))
+            messages.map((msg, idx) => renderMessage(msg, idx))
           )}
         </div>
 
         {!autoScroll && (
-          <div className="absolute bottom-4 right-4">
+          <div className="absolute bottom-20 right-4">
             <Button
               size="sm"
               variant="secondary"

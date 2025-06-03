@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ESP32 Palletizer Control",
-  description: "Modern palletizer control interface with advanced robotics management",
+  description: "Modern palletizer control interface",
 };
 
 export default function RootLayout({

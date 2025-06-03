@@ -15,10 +15,6 @@
 #define WIFI_SSID "silenceAndSleep"
 #define WIFI_PASSWORD "11111111"
 
-// #define WIFI_MODE PalletizerServer::MODE_AP
-// #define WIFI_SSID "Palletizer"
-// #define WIFI_PASSWORD ""
-
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
 
@@ -43,24 +39,13 @@ void setup() {
   master.setSlaveDataCallback(onSlaveData);
 
   master.begin();
-  Serial.println("Palletizer master initialized");
   server.begin();
-  Serial.println("Web server initialized");
 
   DEBUG_MGR.begin(&Serial, &server);
   DEBUG_MGR.info("SYSTEM", "Debug Manager initialized");
+
   DEBUG_MGR.info("SYSTEM", "Palletizer System Ready");
   DEBUG_MGR.info("SYSTEM", "Access at: http://palletizer.local");
-
-  Serial.println("\n🔍 DEBUG FEATURES:");
-  Serial.println("  - All Serial output now goes to web interface");
-  Serial.println("  - Access debug stream at: http://palletizer.local/debug");
-  Serial.println("  - View debug buffer at: http://palletizer.local/debug/buffer");
-  Serial.println("  - Clear debug buffer: POST http://palletizer.local/debug/clear");
-  Serial.println("  - Toggle debug capture: POST http://palletizer.local/debug/toggle");
-
-  Serial.println("\nSystem ready");
-  Serial.println("Access at: http://palletizer.local");
 }
 
 void loop() {

@@ -1,143 +1,448 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from './api'
-import type { SystemStatus, DebugMessage, TimeoutStats } from './api'
+import { SystemStatus, TimeoutConfig, TimeoutStats, RealtimeEvent } from './types'
+
+export function useApi() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const execute = useCallback(async <T>(
+    apiCall: () => Promise<T>,
+    onSuccess?: (data: T) => void,
+    onError?: (error: string) => void
+  ) => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const result = await apiCall()
+      onSuccess?.(result)
+      return result
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      setError(errorMessage)
+      onError?.(errorMessage)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { loading, error, execute }
+}
 
 export function useRealtime() {
   const [connected, setConnected] = useState(false)
-  const [status, setStatus] = useState<SystemStatus['status']>('IDLE')
-  const [lastSeen, setLastSeen] = useState<number>(0)
+  const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isConnectingRef = useRef(false)
+
+  const connect = useCallback(() => {
+    if (isConnectingRef.current || eventSourceRef.current?.readyState === EventSource.OPEN) {
+      return
+    }
+    
+    isConnectingRef.current = true
+
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+    }
+
+    const eventSource = api.createEventSource()
+    eventSourceRef.current = eventSource
+
+    eventSource.onopen = () => {
+      setConnected(true)
+      isConnectingRef.current = false
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+    }
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: RealtimeEvent = JSON.parse(event.data)
+        setLastEvent(data)
+      } catch (err) {
+        console.error('Error parsing SSE data:', err)
+      }
+    }
+
+    eventSource.onerror = () => {
+      setConnected(false)
+      isConnectingRef.current = false
+      eventSource.close()
+      
+      if (!reconnectTimeoutRef.current) {
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null
+          connect()
+        }, 5000)
+      }
+    }
+  }, [])
+
+  const disconnect = useCallback(() => {
+    isConnectingRef.current = false
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+    setConnected(false)
+  }, [])
 
   useEffect(() => {
-    let retryCount = 0
-    const maxRetries = 5
-    const retryDelay = 2000
-
-    const connect = () => {
-      try {
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close()
-        }
-
-        const eventSource = api.createEventSource()
-        eventSourceRef.current = eventSource
-
-        eventSource.onopen = () => {
-          setConnected(true)
-          setLastSeen(Date.now())
-          retryCount = 0
-        }
-
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            if (data.type === 'status') {
-              setStatus(data.value)
-            }
-            setLastSeen(Date.now())
-          } catch (error) {
-            console.error('Failed to parse SSE message:', error)
-          }
-        }
-
-        eventSource.onerror = () => {
-          setConnected(false)
-          eventSource.close()
-          
-          if (retryCount < maxRetries) {
-            retryCount++
-            setTimeout(connect, retryDelay * retryCount)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to create EventSource:', error)
-        setConnected(false)
-        
-        if (retryCount < maxRetries) {
-          retryCount++
-          setTimeout(connect, retryDelay * retryCount)
-        }
-      }
-    }
-
     connect()
+    return disconnect
+  }, [connect, disconnect])
 
-    const checkConnection = setInterval(() => {
-      const now = Date.now()
-      if (now - lastSeen > 10000) {
-        setConnected(false)
-      }
-    }, 5000)
+  return { connected, lastEvent, connect, disconnect }
+}
 
-    return () => {
-      clearInterval(checkConnection)
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-        eventSourceRef.current = null
-      }
+export interface DebugMessage {
+  timestamp: number
+  level: string
+  source: string
+  message: string
+}
+
+export interface ParsedMessage extends DebugMessage {
+  type?: 'progress' | 'sequence' | 'function' | 'motion' | 'sync' | 'parser' | 'performance'
+  data?: {
+    current?: number
+    total?: number
+    percentage?: number
+    functionName?: string
+    entering?: boolean
+    commandCount?: number
+    axis?: string
+    position?: number
+    speed?: number
+    delay?: number
+    syncType?: string
+    parsingResults?: {
+      functions?: Array<{ name: string; commands: number }>
+      totalCommands?: number
     }
-  }, [lastSeen])
+    performanceData?: {
+      totalTime?: string
+      commandsExecuted?: number
+      successRate?: number
+      avgCommandTime?: string
+    }
+  }
+}
 
-  return { connected, status, lastSeen }
+export interface ExecutionState {
+  isExecuting: boolean
+  totalCommands: number
+  currentCommand: number
+  currentFunction: string
+  functionStack: string[]
+  progress: number
+  startTime: number
+}
+
+interface MessageDeduplication {
+  lastMessageKey: string
+  lastMessageTime: number
+  duplicateCount: number
+  windowMs: number
 }
 
 export function useDebugMonitor() {
-  const [messages, setMessages] = useState<DebugMessage[]>([])
+  const [messages, setMessages] = useState<ParsedMessage[]>([])
   const [connected, setConnected] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [levelFilter, setLevelFilter] = useState('ALL')
+  const [executionState, setExecutionState] = useState<ExecutionState>({
+    isExecuting: false,
+    totalCommands: 0,
+    currentCommand: 0,
+    currentFunction: '',
+    functionStack: [],
+    progress: 0,
+    startTime: 0
+  })
+  
   const eventSourceRef = useRef<EventSource | null>(null)
+  const messagesRef = useRef<ParsedMessage[]>([])
+  const isConnectingRef = useRef(false)
   const maxMessages = 1000
+  
+  const deduplicationRef = useRef<MessageDeduplication>({
+    lastMessageKey: '',
+    lastMessageTime: 0,
+    duplicateCount: 0,
+    windowMs: 150
+  })
+  
+  const executionTrackingRef = useRef({
+    lastExecutionStarted: 0,
+    lastProgressUpdate: 0,
+    lastSequenceId: '',
+    lastPerformanceReport: 0
+  })
 
-  useEffect(() => {
-    if (paused) return
-
-    const connect = () => {
-      try {
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close()
+  const isDuplicateMessage = useCallback((msg: DebugMessage): boolean => {
+    const currentTime = Date.now()
+    const messageKey = `${msg.level}:${msg.source}:${msg.message}`
+    const dedup = deduplicationRef.current
+    
+    if (messageKey === dedup.lastMessageKey && 
+        (currentTime - dedup.lastMessageTime) < dedup.windowMs) {
+      dedup.duplicateCount++
+      return true
+    }
+    
+    if (msg.message.includes('▶️ EXECUTION STARTED')) {
+      if ((currentTime - executionTrackingRef.current.lastExecutionStarted) < 500) {
+        return true
+      }
+      executionTrackingRef.current.lastExecutionStarted = currentTime
+    }
+    
+    if (msg.message.includes('[████████████████████]')) {
+      if ((currentTime - executionTrackingRef.current.lastProgressUpdate) < 300) {
+        return true
+      }
+      executionTrackingRef.current.lastProgressUpdate = currentTime
+    }
+    
+    if (msg.message.includes('🔄 [') && msg.message.includes('] Executing:')) {
+      const sequenceMatch = msg.message.match(/🔄 \[(\d+)\/(\d+)\] Executing: (.+)/)
+      if (sequenceMatch) {
+        const sequenceId = `${sequenceMatch[1]}_${sequenceMatch[2]}_${sequenceMatch[3]}`
+        if (sequenceId === executionTrackingRef.current.lastSequenceId) {
+          return true
         }
+        executionTrackingRef.current.lastSequenceId = sequenceId
+      }
+    }
+    
+    if (msg.message.includes('📊 Execution Summary:') || 
+        msg.message.includes('════════════════════════════════════════')) {
+      if ((currentTime - executionTrackingRef.current.lastPerformanceReport) < 1000) {
+        return true
+      }
+      executionTrackingRef.current.lastPerformanceReport = currentTime
+    }
+    
+    dedup.lastMessageKey = messageKey
+    dedup.lastMessageTime = currentTime
+    dedup.duplicateCount = 0
+    
+    return false
+  }, [])
 
-        const eventSource = api.createDebugEventSource()
-        eventSourceRef.current = eventSource
-
-        eventSource.onopen = () => {
-          setConnected(true)
+  const parseMessage = useCallback((msg: DebugMessage): ParsedMessage => {
+    const parsed: ParsedMessage = { ...msg }
+    
+    if (msg.message.includes('▶️ EXECUTION STARTED')) {
+      parsed.type = 'sequence'
+      setExecutionState(prev => ({
+        ...prev,
+        isExecuting: true,
+        startTime: Date.now(),
+        currentCommand: 0,
+        progress: 0
+      }))
+    }
+    
+    else if (msg.message.includes('Total Commands in Queue:')) {
+      const match = msg.message.match(/Total Commands in Queue: (\d+)/)
+      if (match) {
+        const total = parseInt(match[1])
+        setExecutionState(prev => ({ ...prev, totalCommands: total }))
+      }
+    }
+    
+    else if (msg.message.includes('🔄') && msg.message.match(/\[(\d+)\/(\d+)\]/)) {
+      parsed.type = 'sequence'
+      const match = msg.message.match(/\[(\d+)\/(\d+)\]/)
+      if (match) {
+        const current = parseInt(match[1])
+        const total = parseInt(match[2])
+        parsed.data = { current, total, percentage: Math.round((current / total) * 100) }
+        setExecutionState(prev => ({
+          ...prev,
+          currentCommand: current,
+          totalCommands: total,
+          progress: (current / total) * 100
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('└─ Entering function')) {
+      parsed.type = 'function'
+      const match = msg.message.match(/Entering function (\w+)(?:\s*\((\d+) commands\))?/)
+      if (match) {
+        parsed.data = {
+          functionName: match[1],
+          entering: true,
+          commandCount: match[2] ? parseInt(match[2]) : 0
         }
+        setExecutionState(prev => ({
+          ...prev,
+          currentFunction: match[1],
+          functionStack: [...prev.functionStack, match[1]]
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('✅ Function') && msg.message.includes('completed')) {
+      parsed.type = 'function'
+      const match = msg.message.match(/Function (\w+) completed/)
+      if (match) {
+        parsed.data = { functionName: match[1], entering: false }
+        setExecutionState(prev => ({
+          ...prev,
+          functionStack: prev.functionStack.filter(f => f !== match[1]),
+          currentFunction: prev.functionStack[prev.functionStack.length - 2] || ''
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('🎯')) {
+      parsed.type = 'motion'
+      const singleAxisMatch = msg.message.match(/🎯\s*([XYZGT])\(([^)]+)\)/)
+      const multiAxisMatch = msg.message.match(/Multi-axis movement \((\d+) axes\)/)
+      
+      if (singleAxisMatch) {
+        const params = singleAxisMatch[2].split(',')
+        parsed.data = {
+          axis: singleAxisMatch[1],
+          position: parseInt(params[0]),
+          delay: params.find(p => p.startsWith('d')) ? parseInt(params.find(p => p.startsWith('d'))!.substring(1)) : undefined,
+          speed: params.length > 2 || (params.length === 2 && !params[1].startsWith('d')) ? parseFloat(params[params.length - 1]) : undefined
+        }
+      } else if (multiAxisMatch) {
+        parsed.data = { axis: 'MULTI', position: parseInt(multiAxisMatch[1]) }
+      }
+    }
+    
+    else if (msg.message.includes('SET(') || msg.message.includes('WAIT')) {
+      parsed.type = 'sync'
+      if (msg.message.includes('SET(')) {
+        const match = msg.message.match(/SET\((\d)\)/)
+        parsed.data = { syncType: match ? `SET(${match[1]})` : 'SET' }
+      } else {
+        parsed.data = { syncType: 'WAIT' }
+      }
+    }
+    
+    else if (msg.message.includes('📋 PARSING RESULTS:')) {
+      parsed.type = 'parser'
+    }
+    
+    else if (msg.message.includes('[') && msg.message.includes(']') && msg.message.includes('░')) {
+      parsed.type = 'progress'
+      const match = msg.message.match(/\[([█░]+)\]\s*(\d+)\/(\d+)\s*\((\d+)%\)/)
+      if (match) {
+        parsed.data = {
+          current: parseInt(match[2]),
+          total: parseInt(match[3]),
+          percentage: parseInt(match[4])
+        }
+      }
+    }
+    
+    else if (msg.message.includes('📊 Execution Summary:')) {
+      parsed.type = 'performance'
+      setExecutionState(prev => ({ ...prev, isExecuting: false }))
+    }
+    
+    return parsed
+  }, [])
 
-        eventSource.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data) as DebugMessage
-            setMessages(prev => {
-              const updated = [...prev, message]
-              return updated.slice(-maxMessages)
-            })
-          } catch (error) {
-            console.error('Failed to parse debug message:', error)
+  const connect = useCallback(() => {
+    if (isConnectingRef.current || eventSourceRef.current?.readyState === EventSource.OPEN) {
+      return
+    }
+    
+    isConnectingRef.current = true
+
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+    }
+
+    const eventSource = new EventSource('/debug')
+    eventSourceRef.current = eventSource
+
+    eventSource.onopen = () => {
+      setConnected(true)
+      isConnectingRef.current = false
+    }
+
+    eventSource.addEventListener('debug', (event) => {
+      if (!paused) {
+        try {
+          const data: DebugMessage = JSON.parse(event.data)
+          
+          if (isDuplicateMessage(data)) {
+            return
           }
+          
+          const parsed = parseMessage(data)
+          messagesRef.current = [...messagesRef.current, parsed].slice(-maxMessages)
+          setMessages([...messagesRef.current])
+        } catch (err) {
+          console.error('Error parsing debug data:', err)
         }
-
-        eventSource.onerror = () => {
-          setConnected(false)
-          eventSource.close()
-        }
-      } catch (error) {
-        console.error('Failed to create debug EventSource:', error)
-        setConnected(false)
       }
-    }
+    })
 
-    connect()
-
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-        eventSourceRef.current = null
-      }
+    eventSource.onerror = () => {
+      setConnected(false)
+      isConnectingRef.current = false
+      setTimeout(() => connect(), 5000)
     }
-  }, [paused])
+  }, [paused, parseMessage, isDuplicateMessage])
+
+  const disconnect = useCallback(() => {
+    isConnectingRef.current = false
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
+    }
+    setConnected(false)
+  }, [])
 
   const clearMessages = useCallback(() => {
+    messagesRef.current = []
     setMessages([])
+    
+    deduplicationRef.current = {
+      lastMessageKey: '',
+      lastMessageTime: 0,
+      duplicateCount: 0,
+      windowMs: 150
+    }
+    
+    executionTrackingRef.current = {
+      lastExecutionStarted: 0,
+      lastProgressUpdate: 0,
+      lastSequenceId: '',
+      lastPerformanceReport: 0
+    }
+    
+    setExecutionState({
+      isExecuting: false,
+      totalCommands: 0,
+      currentCommand: 0,
+      currentFunction: '',
+      functionStack: [],
+      progress: 0,
+      startTime: 0
+    })
+    api.clearDebugBuffer()
   }, [])
 
   const togglePause = useCallback(() => {
@@ -145,23 +450,40 @@ export function useDebugMonitor() {
   }, [])
 
   const exportMessages = useCallback(() => {
-    const content = messages
-      .map(msg => `[${new Date(msg.timestamp).toISOString()}] [${msg.level}] [${msg.source}] ${msg.message}`)
-      .join('\n')
+    const data = messages.map(msg => 
+      `[${new Date(msg.timestamp).toLocaleTimeString()}] [${msg.level}] [${msg.source}] ${msg.message}`
+    ).join('\n')
     
-    const blob = new Blob([content], { type: 'text/plain' })
+    const blob = new Blob([data], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `debug_log_${new Date().toISOString().split('T')[0]}.txt`
+    a.download = `debug_log_${new Date().toISOString()}.txt`
     a.click()
     URL.revokeObjectURL(url)
   }, [messages])
 
+  const filteredMessages = messages.filter(msg => {
+    if (levelFilter !== 'ALL' && msg.level !== levelFilter) return false
+    if (filter && !msg.message.toLowerCase().includes(filter.toLowerCase()) && 
+        !msg.source.toLowerCase().includes(filter.toLowerCase())) return false
+    return true
+  })
+
+  useEffect(() => {
+    connect()
+    return disconnect
+  }, [connect, disconnect])
+
   return {
-    messages,
+    messages: filteredMessages,
     connected,
     paused,
+    filter,
+    levelFilter,
+    executionState,
+    setFilter,
+    setLevelFilter,
     clearMessages,
     togglePause,
     exportMessages
@@ -169,148 +491,83 @@ export function useDebugMonitor() {
 }
 
 export function useSystemStatus() {
-  const [status, setStatus] = useState<SystemStatus | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<SystemStatus>('IDLE')
+  const { execute } = useApi()
 
   const fetchStatus = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const systemStatus = await api.getStatus()
-      setStatus(systemStatus)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch status')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    await execute(
+      () => api.getStatus(),
+      (response) => setStatus(response.status)
+    )
+  }, [execute])
+
+  const sendCommand = useCallback(async (command: string) => {
+    await execute(() => api.sendCommand(command))
+  }, [execute])
 
   useEffect(() => {
     fetchStatus()
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
   }, [fetchStatus])
 
-  return { status, loading, error, refetch: fetchStatus }
+  return { status, setStatus, fetchStatus, sendCommand }
+}
+
+export function useTimeoutConfig() {
+  const [config, setConfig] = useState<TimeoutConfig>({
+    maxWaitTime: 30000,
+    strategy: 0,
+    maxTimeoutWarning: 5,
+    autoRetryCount: 0,
+    saveToFile: true
+  })
+  const { execute } = useApi()
+
+  const loadConfig = useCallback(async () => {
+    await execute(
+      () => api.getTimeoutConfig(),
+      (response) => setConfig(response)
+    )
+  }, [execute])
+
+  const saveConfig = useCallback(async () => {
+    await execute(() => api.saveTimeoutConfig(config))
+  }, [execute, config])
+
+  useEffect(() => {
+    loadConfig()
+  }, [loadConfig])
+
+  return { config, setConfig, loadConfig, saveConfig }
 }
 
 export function useTimeoutStats() {
-  const [stats, setStats] = useState<TimeoutStats | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true)
-    try {
-      const timeoutStats = await api.getTimeoutStats()
-      setStats(timeoutStats)
-    } catch (error) {
-      console.error('Failed to fetch timeout stats:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const clearStats = useCallback(async () => {
-    try {
-      await api.clearTimeoutStats()
-      await fetchStats()
-    } catch (error) {
-      console.error('Failed to clear timeout stats:', error)
-    }
-  }, [fetchStats])
-
-  useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
-
-  return { stats, loading, refetch: fetchStats, clearStats }
-}
-
-export function useLocalStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') {
-      return initialValue
-    }
-    try {
-      const item = window.localStorage.getItem(key)
-      return item ? JSON.parse(item) : initialValue
-    } catch (error) {
-      console.error(`Error reading localStorage key "${key}":`, error)
-      return initialValue
-    }
+  const [stats, setStats] = useState<TimeoutStats>({
+    totalTimeouts: 0,
+    successfulWaits: 0,
+    lastTimeoutTime: 0,
+    totalWaitTime: 0,
+    currentRetryCount: 0,
+    successRate: 100.0
   })
+  const { execute } = useApi()
 
-  const setValue = useCallback((value: T | ((val: T) => T)) => {
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value
-      setStoredValue(valueToStore)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(valueToStore))
-      }
-    } catch (error) {
-      console.error(`Error setting localStorage key "${key}":`, error)
-    }
-  }, [key, storedValue])
-
-  const removeValue = useCallback(() => {
-    try {
-      setStoredValue(initialValue)
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(key)
-      }
-    } catch (error) {
-      console.error(`Error removing localStorage key "${key}":`, error)
-    }
-  }, [key, initialValue])
-
-  return [storedValue, setValue, removeValue] as const
-}
-
-export function useInterval(callback: () => void, delay: number | null) {
-  const savedCallback = useRef<() => void>()
-
-  useEffect(() => {
-    savedCallback.current = callback
-  }, [callback])
-
-  useEffect(() => {
-    function tick() {
-      if (savedCallback.current) {
-        savedCallback.current()
-      }
-    }
-    if (delay !== null) {
-      const id = setInterval(tick, delay)
-      return () => clearInterval(id)
-    }
-  }, [delay])
-}
-
-export function useAsync<T>(
-  asyncFunction: () => Promise<T>,
-  dependencies: any[] = []
-) {
-  const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-
-  const execute = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await asyncFunction()
-      setData(result)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'))
-    } finally {
-      setLoading(false)
-    }
-  }, dependencies)
-
-  useEffect(() => {
-    execute()
+  const loadStats = useCallback(async () => {
+    await execute(
+      () => api.getTimeoutStats(),
+      (response) => setStats(response)
+    )
   }, [execute])
 
-  return { data, loading, error, refetch: execute }
+  const clearStats = useCallback(async () => {
+    await execute(
+      () => api.clearTimeoutStats(),
+      () => loadStats()
+    )
+  }, [execute, loadStats])
+
+  useEffect(() => {
+    loadStats()
+  }, [loadStats])
+
+  return { stats, loadStats, clearStats }
 }

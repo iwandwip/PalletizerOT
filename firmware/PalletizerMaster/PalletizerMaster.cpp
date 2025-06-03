@@ -72,13 +72,7 @@ void PalletizerMaster::update() {
       lastCheckTime = millis();
 
       bool allCompleted = checkAllSlavesCompleted();
-      static unsigned long lastDebugTime = 0;
-
-      if (millis() - lastDebugTime > 1000) {
-        DEBUG_PRINTLN("MASTER: Indicator pin state: " + String(allCompleted ? "HIGH (all complete)" : "LOW (working)"));
-        lastDebugTime = millis();
-      }
-
+      
       if (allCompleted) {
         sequenceRunning = false;
         waitingForCompletion = false;
