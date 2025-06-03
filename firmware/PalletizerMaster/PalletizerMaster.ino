@@ -6,6 +6,7 @@
 #include "DebugManager.h"
 #include "LittleFS.h"
 #include "ESPmDNS.h"
+#include "esp_task_wdt.h"
 
 #define RX_PIN 16
 #define TX_PIN 17
@@ -29,6 +30,9 @@ void setup() {
   disableLoopWDT();
   disableCore0WDT();
   disableCore1WDT();
+
+  esp_task_wdt_delete(NULL);
+  esp_task_wdt_deinit();
 
   if (!LittleFS.begin(true)) {
     Serial.println("Error mounting LittleFS! System will continue without file storage.");
