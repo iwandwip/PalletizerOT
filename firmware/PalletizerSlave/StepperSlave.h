@@ -3,8 +3,9 @@
 
 #define ENABLE_MODULE_NODEF_SERIAL_ENHANCED
 
-#define TESTING_MODE 0
-#define TESTING_SENSOR_DEBUG 0
+#define TESTING_MODE 1
+#define TESTING_SENSOR_DEBUG 1
+#define SENSOR_TYPE 0
 
 #if TESTING_MODE
 #define DEBUG 1
@@ -138,7 +139,6 @@ private:
   void activateMotor();
   void deactivateMotor();
   void setIndicator(bool active);
-
-  bool isSensorDetected();
 };
+
 #endif
