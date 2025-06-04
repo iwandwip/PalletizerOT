@@ -358,19 +358,6 @@ bool QueueManager::ensureFileExists(const String& path) {
   return true;
 }
 
-void QueueManager::safeFileWrite(const String& path, const String& content) {
-  if (LittleFS.exists(path)) {
-    LittleFS.remove(path);
-    delay(10);
-  }
-
-  File file = LittleFS.open(path, "w");
-  if (file) {
-    file.print(content);
-    file.close();
-  }
-}
-
 bool QueueManager::isScriptCommand(const String& command) {
   String trimmed = command;
   trimmed.trim();

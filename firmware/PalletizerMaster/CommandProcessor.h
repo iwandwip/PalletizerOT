@@ -19,13 +19,6 @@ public:
     CMD_GROUP = 9
   };
 
-  enum SystemState {
-    STATE_IDLE = 0,
-    STATE_RUNNING = 1,
-    STATE_PAUSED = 2,
-    STATE_STOPPING = 3
-  };
-
   CommandProcessor(PalletizerMaster* master, QueueManager* queueManager, PalletizerScriptParser* scriptParser);
   void processCommand(const String& data);
   void onCommandReceived(const String& data);

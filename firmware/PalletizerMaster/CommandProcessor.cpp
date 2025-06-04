@@ -147,18 +147,18 @@ void CommandProcessor::processSystemStateCommand(const String& command) {
   DEBUG_PRINTLN("MASTER: Processing system state command: " + command);
 
   if (command == "IDLE") {
-    if (palletizerMaster->getSystemState() == STATE_RUNNING || palletizerMaster->getSystemState() == STATE_PAUSED) {
+    if (palletizerMaster->getSystemState() == PalletizerMaster::STATE_RUNNING || palletizerMaster->getSystemState() == PalletizerMaster::STATE_PAUSED) {
       if (palletizerMaster->isSequenceRunning()) {
-        palletizerMaster->setSystemState(STATE_STOPPING);
+        palletizerMaster->setSystemState(PalletizerMaster::STATE_STOPPING);
       } else {
         queueManager->clearQueue();
-        palletizerMaster->setSystemState(STATE_IDLE);
+        palletizerMaster->setSystemState(PalletizerMaster::STATE_IDLE);
       }
     } else {
-      palletizerMaster->setSystemState(STATE_IDLE);
+      palletizerMaster->setSystemState(PalletizerMaster::STATE_IDLE);
     }
   } else if (command == "PLAY") {
-    if (palletizerMaster->getSystemState() == STATE_RUNNING) {
+    if (palletizerMaster->getSystemState() == PalletizerMaster::STATE_RUNNING) {
       DEBUG_PRINTLN("MASTER: Already running, ignoring duplicate PLAY");
       return;
     }
@@ -168,18 +168,18 @@ void CommandProcessor::processSystemStateCommand(const String& command) {
     }
 
     queueManager->updateExecutionInfo(true);
-    palletizerMaster->setSystemState(STATE_RUNNING);
+    palletizerMaster->setSystemState(PalletizerMaster::STATE_RUNNING);
     if (!palletizerMaster->isSequenceRunning() && !palletizerMaster->isWaitingForCompletion() && !queueManager->isQueueEmpty()) {
       palletizerMaster->processNextCommand();
     }
   } else if (command == "PAUSE") {
-    palletizerMaster->setSystemState(STATE_PAUSED);
+    palletizerMaster->setSystemState(PalletizerMaster::STATE_PAUSED);
   } else if (command == "STOP") {
     if (palletizerMaster->isSequenceRunning()) {
-      palletizerMaster->setSystemState(STATE_STOPPING);
+      palletizerMaster->setSystemState(PalletizerMaster::STATE_STOPPING);
     } else {
       queueManager->clearQueue();
-      palletizerMaster->setSystemState(STATE_IDLE);
+      palletizerMaster->setSystemState(PalletizerMaster::STATE_IDLE);
     }
   }
 }

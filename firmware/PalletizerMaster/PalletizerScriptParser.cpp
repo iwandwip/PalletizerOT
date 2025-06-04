@@ -231,12 +231,12 @@ void PalletizerScriptParser::processGroupCommand(const String& groupStatement) {
   if (parsingMode) {
     queueCommand(groupCommand);
   } else {
-    palletizerMaster->processCommand(groupCommand);
+    palletizerMaster->getCommandProcessor().processCommand(groupCommand);
   }
 }
 
 void PalletizerScriptParser::queueCommand(const String& command) {
-  palletizerMaster->addCommandToQueue(command);
+  palletizerMaster->getQueueManager().addToQueue(command);
 }
 
 void PalletizerScriptParser::setParsingMode(bool mode) {
@@ -361,22 +361,22 @@ void PalletizerScriptParser::processSingleStatement(const String& statement) {
 
   if (cleanStatement.startsWith("SET(") || cleanStatement == "WAIT") {
     debugLog("INFO", "SYNC", "🔄 " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   } else if (cleanStatement == "ZERO" || cleanStatement == "IDLE" || cleanStatement == "PLAY" || cleanStatement == "PAUSE" || cleanStatement == "STOP") {
     debugLog("INFO", "SYSTEM", "⚙️ " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("SPEED;")) {
     debugLog("INFO", "SPEED", "⚡ " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   } else if (cleanStatement.indexOf('(') != -1 && (cleanStatement.startsWith("X(") || cleanStatement.startsWith("Y(") || cleanStatement.startsWith("Z(") || cleanStatement.startsWith("T(") || cleanStatement.startsWith("G("))) {
     debugLog("INFO", "MOTION", "🎯 " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   } else if (cleanStatement.indexOf(',') != -1) {
     debugLog("INFO", "MULTI", "🎯 " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("GRIPPER;") || cleanStatement.startsWith("TOOL;")) {
     debugLog("INFO", "TOOL", "🔧 " + cleanStatement);
-    palletizerMaster->processCommand(cleanStatement);
+    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
   }
 }
 
