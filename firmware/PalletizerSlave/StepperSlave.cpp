@@ -54,10 +54,10 @@ void StepperSlave::begin() {
     setIndicator(false);
   }
 
-  stepper.setMaxSpeed(maxSpeed);
   stepper.setAcceleration(acceleration);
+  stepper.setMaxSpeed(maxSpeed);
   stepper.setCurrentPosition(0);
-  stepper.setMinPulseWidth(100);
+  // stepper.setMinPulseWidth(100);
 
   DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi");
 }
