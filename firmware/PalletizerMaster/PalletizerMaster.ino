@@ -25,6 +25,7 @@ TaskHandle_t masterTaskHandle = NULL;
 void serverTask(void* pvParameters) {
   server.begin();
   DEBUG_MGR.begin(&Serial, &server);
+  DEBUG_MGR.setEnabled(false);
   DEBUG_MGR.info("SYSTEM", "Server task started on Core 0");
 
   while (true) {
@@ -32,7 +33,7 @@ void serverTask(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(10));
 
     static unsigned long lastMaintenance = 0;
-    if (millis() - lastMaintenance > 30000) {
+    if (millis() - lastMaintenance > 3000) {
       lastMaintenance = millis();
 
       if (WIFI_MODE == PalletizerServer::MODE_STA && WiFi.status() != WL_CONNECTED) {
