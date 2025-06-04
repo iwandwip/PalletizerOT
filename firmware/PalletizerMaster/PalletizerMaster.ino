@@ -25,6 +25,7 @@ TaskHandle_t masterTaskHandle = NULL;
 void serverTask(void* pvParameters) {
   server.begin();
   DEBUG_MGR.begin(&Serial, &server);
+  DEBUG_MGR.setEnabled(false);
   DEBUG_MGR.info("SYSTEM", "Server task started on Core 0");
 
   while (true) {
