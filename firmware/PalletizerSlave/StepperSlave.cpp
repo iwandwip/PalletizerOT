@@ -308,10 +308,6 @@ void StepperSlave::performHoming() {
   long distance = 0;
   int count = 20000;
 
-  Serial.print("| sensorStateBefore: ");
-  Serial.print(sensorStateBefore);
-  Serial.println();
-
   if (digitalRead(sensorPin) == HIGH) {
     DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Already in sensor area, moving out first");
     stepper.move(count);
