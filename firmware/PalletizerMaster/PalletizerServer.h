@@ -58,9 +58,6 @@ private:
   bool commandsCacheValid = false;
   SemaphoreHandle_t cacheMutex;
 
-  TaskHandle_t wifiTaskHandle = NULL;
-  TaskHandle_t stateTaskHandle = NULL;
-
   DebugMessage debugBuffer[DEBUG_BUFFER_SIZE];
   int debugBufferHead = 0;
   int debugBufferTail = 0;
@@ -68,9 +65,6 @@ private:
   SemaphoreHandle_t debugMutex;
   bool debugCaptureEnabled = true;
   ServerDebugTracker serverDebugTracker;
-
-  static void wifiMonitorTask(void* pvParameters);
-  static void stateMonitorTask(void* pvParameters);
 
   void setupRoutes();
   void handleUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final);

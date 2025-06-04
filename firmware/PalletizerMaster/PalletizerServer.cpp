@@ -16,6 +16,11 @@ void PalletizerServer::begin() {
     Serial.print("AP Mode - IP address: ");
     Serial.println(IP);
   } else {
+    WiFi.setSleep(false);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+
     WiFi.begin(ssid, password);
     int attempts = 0;
     Serial.print("Connecting to WiFi");
@@ -54,24 +59,6 @@ void PalletizerServer::begin() {
   Serial.println("HTTP server started");
 
   sendDebugMessage("INFO", "SERVER", "System initialized");
-
-  xTaskCreatePinnedToCore(
-    wifiMonitorTask,
-    "WiFi_Monitor",
-    9216,
-    this,
-    1,
-    &wifiTaskHandle,
-    0);
-
-  xTaskCreatePinnedToCore(
-    stateMonitorTask,
-    "State_Monitor",
-    9216,
-    this,
-    2,
-    &stateTaskHandle,
-    1);
 }
 
 void PalletizerServer::update() {
@@ -97,54 +84,10 @@ void PalletizerServer::enableDebugCapture(bool enable) {
   debugCaptureEnabled = enable;
 }
 
-void PalletizerServer::wifiMonitorTask(void *pvParameters) {
-  PalletizerServer *server = (PalletizerServer *)pvParameters;
-
-  while (true) {
-    if (server->wifiMode == MODE_STA && WiFi.status() != WL_CONNECTED) {
-      server->sendDebugMessage("WARNING", "WIFI", "Connection lost. Reconnecting...");
-      WiFi.begin(server->ssid, server->password);
-
-      int attempts = 0;
-      while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        attempts++;
-      }
-
-      if (WiFi.status() == WL_CONNECTED) {
-        server->sendDebugMessage("INFO", "WIFI", "Reconnected successfully");
-      } else {
-        server->sendDebugMessage("ERROR", "WIFI", "Reconnection failed");
-      }
-    }
-
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-  }
-}
-
-void PalletizerServer::stateMonitorTask(void *pvParameters) {
-  PalletizerServer *server = (PalletizerServer *)pvParameters;
-
-  while (true) {
-    PalletizerMaster::SystemState currentState = server->palletizerMaster->getSystemState();
-
-    if (currentState != server->lastReportedState) {
-      unsigned long now = millis();
-      if (now - server->lastStateUpdate >= server->STATE_UPDATE_INTERVAL) {
-        String statusStr = server->getStatusString(currentState);
-        server->sendStatusEvent(statusStr);
-        server->sendDebugMessage("INFO", "STATE", "System state changed to " + statusStr);
-        server->lastReportedState = currentState;
-        server->lastStateUpdate = now;
-      }
-    }
-
-    vTaskDelay(50 / portTICK_PERIOD_MS);
-  }
-}
-
 void PalletizerServer::setupRoutes() {
-  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  server.serveStatic("/", LittleFS, "/")
+    .setDefaultFile("index.html")
+    .setCacheControl("max-age=600");
 
   server.on("/command", HTTP_POST, [this](AsyncWebServerRequest *request) {
     this->handleCommand(request);

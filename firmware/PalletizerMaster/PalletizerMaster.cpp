@@ -47,6 +47,17 @@ void PalletizerMaster::begin() {
 void PalletizerMaster::update() {
   checkSlaveData();
 
+  if (waitingForGroupDelay && millis() >= groupCommandTimer) {
+    waitingForGroupDelay = false;
+    sequenceRunning = true;
+    waitingForCompletion = indicatorEnabled;
+    lastCheckTime = millis();
+
+    if (indicatorEnabled) {
+      DEBUG_PRINTLN("MASTER: Starting completion monitoring for GROUP command");
+    }
+  }
+
   if (waitingForSync) {
     if (digitalRead(syncWaitPin) == HIGH) {
       DEBUG_MGR.sync("WAIT", "Sync signal received - continuing execution");
@@ -274,15 +285,8 @@ void PalletizerMaster::processGroupCommand(const String& groupCommands) {
 
   parseAndSendGroupCommands(groupCommands);
 
-  delay(100);
-
-  sequenceRunning = true;
-  waitingForCompletion = indicatorEnabled;
-  lastCheckTime = millis();
-
-  if (indicatorEnabled) {
-    DEBUG_PRINTLN("MASTER: Starting completion monitoring for GROUP command");
-  }
+  groupCommandTimer = millis() + 100;
+  waitingForGroupDelay = true;
 }
 
 void PalletizerMaster::addCommandToQueue(const String& command) {

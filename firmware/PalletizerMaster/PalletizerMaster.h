@@ -162,6 +162,9 @@ private:
   bool executionInfoActive = false;
   bool progressLoggingActive = false;
 
+  unsigned long groupCommandTimer = 0;
+  bool waitingForGroupDelay = false;
+
   void checkSlaveData();
   void onCommandReceived(const String& data);
   void onSlaveData(const String& data);
