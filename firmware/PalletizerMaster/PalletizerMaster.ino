@@ -33,7 +33,7 @@ void serverTask(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(10));
 
     static unsigned long lastMaintenance = 0;
-    if (millis() - lastMaintenance > 30000) {
+    if (millis() - lastMaintenance > 3000) {
       lastMaintenance = millis();
 
       if (WIFI_MODE == PalletizerServer::MODE_STA && WiFi.status() != WL_CONNECTED) {
