@@ -710,12 +710,18 @@ void PalletizerMaster::parseInlineCommands(const String& input, String* statemen
   for (int i = 0; i < input.length() && count < 50; i++) {
     char c = input.charAt(i);
 
-    if (current.length() == 0 && input.substring(i).toUpperCase().startsWith("SPEED;")) {
-      inSpeedCommand = true;
-      speedSemicolonCount = 0;
+    if (current.length() == 0) {
+      String remaining = input.substring(i);
+      remaining.toUpperCase();
+      if (remaining.startsWith("SPEED;")) {
+        inSpeedCommand = true;
+        speedSemicolonCount = 0;
+      }
     }
 
-    if (input.substring(i).toUpperCase().startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+    String remainingFromI = input.substring(i);
+    remainingFromI.toUpperCase();
+    if (remainingFromI.startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
       inGroup = true;
       parenDepth = 0;
     }
