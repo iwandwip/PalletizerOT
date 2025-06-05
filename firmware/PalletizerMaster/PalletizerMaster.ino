@@ -9,13 +9,21 @@
 #include "ESPmDNS.h"
 #include "esp_task_wdt.h"
 
+#define DEVELOPMENT_MODE 1
+
 #define RX_PIN 16
 #define TX_PIN 17
 #define INDICATOR_PIN 26
 
+#if DEVELOPMENT_MODE == 1
+#define WIFI_MODE PalletizerServer::MODE_AP
+#define WIFI_SSID "Palletizer.DEV"
+#define WIFI_PASSWORD "11111111"
+#else
 #define WIFI_MODE PalletizerServer::MODE_AP
 #define WIFI_SSID "Palletizer"
 #define WIFI_PASSWORD ""
+#endif
 
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
