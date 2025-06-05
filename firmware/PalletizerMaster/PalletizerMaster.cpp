@@ -362,7 +362,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     return;
   }
 
-  if (isScriptCommand(trimmedData)) {
+  if (isRealScriptCommand(trimmedData)) {
     DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(trimmedData);
     return;
@@ -380,8 +380,8 @@ void PalletizerMaster::onCommandReceived(const String& data) {
         }
       }
 
-      DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
-      processCommandsBatch(trimmedData);
+      DEBUG_PRINTLN("MASTER: Processing as inline commands");
+      processInlineCommands(trimmedData);
     }
   } else if (trimmedData != "END_QUEUE") {
     if (shouldClearQueue(trimmedData)) {
@@ -391,8 +391,8 @@ void PalletizerMaster::onCommandReceived(const String& data) {
       }
     }
 
-    DEBUG_PRINTLN("MASTER: Processing as legacy batch commands");
-    processCommandsBatch(trimmedData);
+    DEBUG_PRINTLN("MASTER: Processing as inline commands");
+    processInlineCommands(trimmedData);
   }
 }
 
@@ -456,6 +456,8 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
     String slaveId = params.substring(0, separatorPos);
     String speedValue = params.substring(separatorPos + 1);
 
+    speedValue = cleanSpeedValue(speedValue);
+
     slaveId.toLowerCase();
     String command = slaveId + ";" + String(CMD_SETSPEED) + ";" + speedValue;
 
@@ -463,6 +465,7 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
     slaveId.toUpperCase();
     DEBUG_MGR.info("SPEED", "⚡ Set " + slaveId + " axis speed to " + speedValue);
   } else {
+    params = cleanSpeedValue(params);
     const char* slaveIds[] = { "x", "y", "z", "t", "g" };
     for (int i = 0; i < 5; i++) {
       String command = String(slaveIds[i]) + ";" + String(CMD_SETSPEED) + ";" + params;
@@ -590,6 +593,20 @@ void PalletizerMaster::processScriptCommand(const String& script) {
   scriptInProgress = false;
 }
 
+void PalletizerMaster::processInlineCommands(const String& commands) {
+  String statements[50];
+  int statementCount = 0;
+
+  parseInlineCommands(commands, statements, statementCount);
+
+  for (int i = 0; i < statementCount; i++) {
+    statements[i].trim();
+    if (statements[i].length() > 0) {
+      addToQueue(statements[i]);
+    }
+  }
+}
+
 void PalletizerMaster::sendCommandToAllSlaves(Command cmd) {
   const char* slaveIds[] = { "x", "y", "z", "t", "g" };
   for (int i = 0; i < 5; i++) {
@@ -680,6 +697,69 @@ void PalletizerMaster::parseAndSendGroupCommands(const String& groupCommands) {
   }
 
   DEBUG_MGR.info("GROUP", "All commands broadcasted simultaneously");
+}
+
+void PalletizerMaster::parseInlineCommands(const String& input, String* statements, int& count) {
+  count = 0;
+  String current = "";
+  int parenDepth = 0;
+  bool inGroup = false;
+  bool inSpeedCommand = false;
+  int speedSemicolonCount = 0;
+
+  for (int i = 0; i < input.length() && count < 50; i++) {
+    char c = input.charAt(i);
+
+    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
+      inSpeedCommand = true;
+      speedSemicolonCount = 0;
+    }
+
+    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+      inGroup = true;
+      parenDepth = 0;
+    }
+
+    if (c == '(' && inGroup) {
+      parenDepth++;
+    } else if (c == ')' && inGroup) {
+      parenDepth--;
+      if (parenDepth == 0) {
+        inGroup = false;
+      }
+    }
+
+    current += c;
+
+    if (c == ';') {
+      if (inSpeedCommand) {
+        speedSemicolonCount++;
+        if (speedSemicolonCount >= 2) {
+          current.trim();
+          if (current.length() > 0) {
+            statements[count] = current;
+            count++;
+          }
+          current = "";
+          inSpeedCommand = false;
+          speedSemicolonCount = 0;
+        }
+      } else if (!inGroup) {
+        current.trim();
+        if (current.length() > 0) {
+          statements[count] = current;
+          count++;
+        }
+        current = "";
+      }
+    }
+  }
+
+  current.trim();
+  if (current.length() > 0 && count < 50) {
+    statements[count] = current;
+    count++;
+  }
 }
 
 bool PalletizerMaster::checkAllSlavesCompleted() {
@@ -812,7 +892,7 @@ void PalletizerMaster::processNextCommand() {
     processCoordinateData(trimmedCommand);
   } else if (isInvalidSpeedFragment(trimmedCommand)) {
     DEBUG_PRINTLN("MASTER: Skipping invalid speed fragment: " + trimmedCommand);
-  } else if (isScriptCommand(trimmedCommand)) {
+  } else if (isRealScriptCommand(trimmedCommand)) {
     processScriptCommand(trimmedCommand);
   } else {
     DEBUG_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
@@ -1023,12 +1103,12 @@ void PalletizerMaster::loadCommandsFromFile() {
   clearQueue();
 
   if (allCommands.length() > 0) {
-    if (isScriptCommand(allCommands)) {
+    if (isRealScriptCommand(allCommands)) {
       DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
       processScriptCommand(allCommands);
     } else {
-      DEBUG_PRINTLN("MASTER: Detected legacy format - processing as batch");
-      processCommandsBatch(allCommands);
+      DEBUG_PRINTLN("MASTER: Processing as inline commands");
+      processInlineCommands(allCommands);
       processCommand("END_QUEUE");
     }
     DEBUG_PRINTLN("MASTER: Commands loaded from file successfully");
@@ -1216,32 +1296,15 @@ void PalletizerMaster::logMotionCommand(const String& data) {
   }
 }
 
-bool PalletizerMaster::isScriptCommand(const String& command) {
+bool PalletizerMaster::isRealScriptCommand(const String& command) {
   String trimmed = command;
   trimmed.trim();
-  String upperData = trimmed;
-  upperData.toUpperCase();
-
-  if (upperData.startsWith("SPEED;") || upperData.startsWith("SET(") || upperData == "WAIT" || upperData == "ZERO" || upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP" || upperData.startsWith("GROUP(")) {
-    return false;
-  }
 
   if (trimmed.indexOf("FUNC(") != -1 || trimmed.indexOf("CALL(") != -1) {
     return true;
   }
 
   if (trimmed.indexOf('{') != -1 && trimmed.indexOf('}') != -1) {
-    return true;
-  }
-
-  int semicolonCount = 0;
-  for (int i = 0; i < trimmed.length(); i++) {
-    if (trimmed.charAt(i) == ';') {
-      semicolonCount++;
-    }
-  }
-
-  if (semicolonCount > 2) {
     return true;
   }
 
@@ -1295,4 +1358,15 @@ bool PalletizerMaster::isInvalidSpeedFragment(const String& command) {
   }
 
   return false;
+}
+
+String PalletizerMaster::cleanSpeedValue(const String& value) {
+  String cleaned = value;
+  cleaned.trim();
+
+  while (cleaned.endsWith(";")) {
+    cleaned = cleaned.substring(0, cleaned.length() - 1);
+  }
+
+  return cleaned;
 }
