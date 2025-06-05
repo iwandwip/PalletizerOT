@@ -215,6 +215,8 @@ private:
   bool isDuplicateMessage(const String& message);
   bool isInvalidSpeedFragment(const String& command);
   String cleanSpeedValue(const String& value);
+  bool isCompleteSpeedCommand(const String& command);
+  bool isNumeric(const String& str);
 };
 
 #endif

@@ -402,6 +402,10 @@ void PalletizerScriptParser::processSingleStatement(const String& statement) {
 
   if (cleanStatement.length() == 0) return;
 
+  if (cleanStatement.startsWith("CALL(") && cleanStatement.endsWith(")")) {
+    return;
+  }
+
   if (parsingMode) {
     queueCommand(cleanStatement);
     return;
