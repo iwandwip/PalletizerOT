@@ -113,6 +113,7 @@ public:
   PalletizerScriptParser* getScriptParser();
   void processGroupCommand(const String& groupCommands);
   void addCommandToQueue(const String& command);
+  bool canProcessNextCommand();
 
 private:
   static PalletizerMaster* instance;

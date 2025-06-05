@@ -53,8 +53,11 @@ void PalletizerMaster::update() {
     waitingForCompletion = indicatorEnabled;
     lastCheckTime = millis();
 
+    DEBUG_MGR.info("GROUP", "✅ GROUP delay completed, starting completion monitoring");
     if (indicatorEnabled) {
-      DEBUG_PRINTLN("MASTER: Starting completion monitoring for GROUP command");
+      DEBUG_MGR.info("GROUP", "└─ Using indicator pin for completion detection");
+    } else {
+      DEBUG_MGR.info("GROUP", "└─ Using message-based completion detection");
     }
   }
 
@@ -74,7 +77,7 @@ void PalletizerMaster::update() {
     return;
   }
 
-  if (!requestNextCommand && !isQueueFull() && !waitingForSync && !scriptProcessing) {
+  if (canProcessNextCommand()) {
     requestCommand();
   }
 
@@ -279,6 +282,7 @@ PalletizerScriptParser* PalletizerMaster::getScriptParser() {
 void PalletizerMaster::processGroupCommand(const String& groupCommands) {
   DEBUG_MGR.info("GROUP", "🔄 Executing GROUP command");
   DEBUG_MGR.info("GROUP", "└─ Commands: " + groupCommands);
+  DEBUG_MGR.info("GROUP", "└─ Setting wait flags and 100ms delay");
 
   groupExecutionActive = true;
   currentCommand = CMD_GROUP;
@@ -287,10 +291,16 @@ void PalletizerMaster::processGroupCommand(const String& groupCommands) {
 
   groupCommandTimer = millis() + 100;
   waitingForGroupDelay = true;
+
+  DEBUG_MGR.info("GROUP", "└─ GROUP setup complete, waiting for delay...");
 }
 
 void PalletizerMaster::addCommandToQueue(const String& command) {
   addToQueue(command);
+}
+
+bool PalletizerMaster::canProcessNextCommand() {
+  return !requestNextCommand && !isQueueFull() && !waitingForSync && !scriptProcessing && !waitingForGroupDelay && !groupExecutionActive && !sequenceRunning && !waitingForCompletion;
 }
 
 void PalletizerMaster::checkSlaveData() {
@@ -849,6 +859,11 @@ void PalletizerMaster::processNextCommand() {
     return;
   }
 
+  if (groupExecutionActive || waitingForGroupDelay) {
+    DEBUG_PRINTLN("MASTER: GROUP command active, deferring next command");
+    return;
+  }
+
   if (isQueueEmpty()) {
     DEBUG_PRINTLN("MASTER: Command queue is empty");
     return;
@@ -1316,6 +1331,10 @@ void PalletizerMaster::logMotionCommand(const String& data) {
   if (count > 1) {
     DEBUG_MGR.info("MOTION", "🎯 Multi-axis movement (" + String(count) + " axes)");
   }
+}
+
+bool PalletizerMaster::isScriptCommand(const String& command) {
+  return isRealScriptCommand(command);
 }
 
 bool PalletizerMaster::isRealScriptCommand(const String& command) {
