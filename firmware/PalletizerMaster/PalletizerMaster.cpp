@@ -766,6 +766,8 @@ void PalletizerMaster::processNextCommand() {
 
   String trimmedCommand = command;
   trimmedCommand.trim();
+  String upperData = trimmedCommand;
+  upperData.toUpperCase();
 
   if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(")") != -1) {
     int startPos = 6;
@@ -791,8 +793,12 @@ void PalletizerMaster::processNextCommand() {
     }
   }
 
-  String upperData = trimmedCommand;
-  upperData.toUpperCase();
+  if (trimmedCommand.startsWith("GROUP;")) {
+    String groupCommands = trimmedCommand.substring(6);
+    processGroupCommand(groupCommands);
+    processingCommand = false;
+    return;
+  }
 
   if (isScriptCommand(trimmedCommand)) {
     processScriptCommand(trimmedCommand);

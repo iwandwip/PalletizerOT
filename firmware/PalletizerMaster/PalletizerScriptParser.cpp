@@ -227,7 +227,7 @@ void PalletizerScriptParser::processGroupCommand(const String& groupStatement) {
   debugLog("INFO", "GROUP", "🔄 Processing GROUP command");
   debugLog("INFO", "GROUP", "└─ Content: " + groupContent);
 
-  String groupCommand = "GROUP;" + groupContent;
+  String groupCommand = "GROUP(" + groupContent + ")";
   if (parsingMode) {
     queueCommand(groupCommand);
   } else {
