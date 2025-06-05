@@ -1405,20 +1405,16 @@ bool PalletizerMaster::isCompleteSpeedCommand(const String& command) {
   }
 
   if (semicolonCount == 2) {
-    String afterFirst = command.substring(6);
-    int nextSemicolon = afterFirst.indexOf(';');
-    if (nextSemicolon != -1) {
-      String param = afterFirst.substring(0, nextSemicolon);
-      param.trim();
-      return isNumeric(param);
-    }
+    String param = command.substring(6);
+    param.trim();
+    return isNumeric(param);
   } else if (semicolonCount == 3) {
-    String afterFirst = command.substring(6);
-    int nextSemicolon = afterFirst.indexOf(';');
-    if (nextSemicolon != -1) {
-      String param = afterFirst.substring(0, nextSemicolon);
-      param.trim();
-      return !isNumeric(param) && param.length() == 1;
+    String remaining = command.substring(6);
+    int nextSemi = remaining.indexOf(';');
+    if (nextSemi != -1) {
+      String axis = remaining.substring(0, nextSemi);
+      axis.trim();
+      return axis.length() == 1 && !isNumeric(axis);
     }
   }
 
