@@ -353,18 +353,11 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
   String current = "";
   int parenDepth = 0;
   bool inGroup = false;
-  bool inSpeedCommand = false;
-  int speedSemicolonCount = 0;
 
   for (int i = 0; i < input.length() && count < 50; i++) {
     char c = input.charAt(i);
 
-    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
-      inSpeedCommand = true;
-      speedSemicolonCount = 0;
-    }
-
-    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+    if (input.substring(i).startsWith("GROUP(") && !inGroup) {
       inGroup = true;
       parenDepth = 0;
     }
@@ -378,32 +371,22 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
       }
     }
 
-    if (c == ';') {
-      if (inSpeedCommand) {
-        speedSemicolonCount++;
-        if (speedSemicolonCount >= 2) {
-          current.trim();
-          if (current.length() > 0) {
-            statements[count] = current;
-            count++;
-          }
-          current = "";
-          inSpeedCommand = false;
-          speedSemicolonCount = 0;
-          continue;
-        }
-      } else if (!inGroup) {
-        current.trim();
-        if (current.length() > 0) {
+    current += c;
+
+    if (c == ';' && !inGroup) {
+      current.trim();
+      if (current.length() > 0) {
+        if (isCompleteSpeedCommand(current)) {
           statements[count] = current;
           count++;
+          current = "";
+        } else if (!current.startsWith("SPEED;")) {
+          statements[count] = current;
+          count++;
+          current = "";
         }
-        current = "";
-        continue;
       }
     }
-
-    current += c;
   }
 
   current.trim();
@@ -506,4 +489,47 @@ int PalletizerScriptParser::countStatementsInBody(const String& body) {
   int count = 0;
   tokenizeStatementsWithCommandSupport(body, statements, count);
   return count;
+}
+
+bool PalletizerScriptParser::isNumeric(const String& str) {
+  if (str.length() == 0) return false;
+
+  for (int i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (!(c >= '0' && c <= '9')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool PalletizerScriptParser::isCompleteSpeedCommand(const String& command) {
+  if (!command.startsWith("SPEED;")) return false;
+
+  int semicolonCount = 0;
+  for (int i = 0; i < command.length(); i++) {
+    if (command.charAt(i) == ';') {
+      semicolonCount++;
+    }
+  }
+
+  if (semicolonCount == 2) {
+    String afterFirst = command.substring(6);
+    int nextSemicolon = afterFirst.indexOf(';');
+    if (nextSemicolon != -1) {
+      String param = afterFirst.substring(0, nextSemicolon);
+      param.trim();
+      return isNumeric(param);
+    }
+  } else if (semicolonCount == 3) {
+    String afterFirst = command.substring(6);
+    int nextSemicolon = afterFirst.indexOf(';');
+    if (nextSemicolon != -1) {
+      String param = afterFirst.substring(0, nextSemicolon);
+      param.trim();
+      return !isNumeric(param) && param.length() == 1;
+    }
+  }
+
+  return false;
 }

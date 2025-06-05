@@ -55,6 +55,8 @@ private:
   bool functionExists(const String& name);
   void debugLog(const String& level, const String& source, const String& message);
   int countStatementsInBody(const String& body);
+  bool isNumeric(const String& str);
+  bool isCompleteSpeedCommand(const String& command);
 };
 
 #endif

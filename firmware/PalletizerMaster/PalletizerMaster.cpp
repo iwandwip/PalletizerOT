@@ -450,13 +450,24 @@ void PalletizerMaster::processStandardCommand(const String& command) {
 
 void PalletizerMaster::processSpeedCommand(const String& data) {
   String params = data.substring(6);
+  params.trim();
+
+  while (params.endsWith(";")) {
+    params = params.substring(0, params.length() - 1);
+  }
+
   int separatorPos = params.indexOf(';');
 
   if (separatorPos != -1) {
     String slaveId = params.substring(0, separatorPos);
     String speedValue = params.substring(separatorPos + 1);
 
-    speedValue = cleanSpeedValue(speedValue);
+    slaveId.trim();
+    speedValue.trim();
+
+    while (speedValue.endsWith(";")) {
+      speedValue = speedValue.substring(0, speedValue.length() - 1);
+    }
 
     slaveId.toLowerCase();
     String command = slaveId + ";" + String(CMD_SETSPEED) + ";" + speedValue;
@@ -465,7 +476,10 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
     slaveId.toUpperCase();
     DEBUG_MGR.info("SPEED", "⚡ Set " + slaveId + " axis speed to " + speedValue);
   } else {
-    params = cleanSpeedValue(params);
+    while (params.endsWith(";")) {
+      params = params.substring(0, params.length() - 1);
+    }
+
     const char* slaveIds[] = { "x", "y", "z", "t", "g" };
     for (int i = 0; i < 5; i++) {
       String command = String(slaveIds[i]) + ";" + String(CMD_SETSPEED) + ";" + params;
@@ -1368,5 +1382,6 @@ String PalletizerMaster::cleanSpeedValue(const String& value) {
     cleaned = cleaned.substring(0, cleaned.length() - 1);
   }
 
+  cleaned.trim();
   return cleaned;
 }
