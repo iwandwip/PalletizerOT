@@ -710,12 +710,12 @@ void PalletizerMaster::parseInlineCommands(const String& input, String* statemen
   for (int i = 0; i < input.length() && count < 50; i++) {
     char c = input.charAt(i);
 
-    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
+    if (current.length() == 0 && input.substring(i).toUpperCase().startsWith("SPEED;")) {
       inSpeedCommand = true;
       speedSemicolonCount = 0;
     }
 
-    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+    if (input.substring(i).toUpperCase().startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
       inGroup = true;
       parenDepth = 0;
     }
@@ -829,6 +829,11 @@ void PalletizerMaster::processNextCommand() {
 
   if (isQueueEmpty()) {
     DEBUG_PRINTLN("MASTER: Command queue is empty");
+    if (executionInfo.isExecuting) {
+      logExecutionProgress();
+      updateExecutionInfo(false);
+    }
+    setSystemState(STATE_IDLE);
     return;
   }
 
@@ -882,23 +887,47 @@ void PalletizerMaster::processNextCommand() {
 
   if (upperData.startsWith("CALL(")) {
     processScriptCommand(trimmedCommand);
+    processingCommand = false;
+    if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   } else if (upperData == "ZERO") {
     processStandardCommand(upperData);
+    processingCommand = false;
   } else if (upperData.startsWith("SPEED;")) {
     processSpeedCommand(trimmedCommand);
+    processingCommand = false;
+    if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   } else if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
+    processingCommand = false;
+    if (upperData.startsWith("SET(") && !isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   } else if (isCoordinateCommand(trimmedCommand)) {
     processCoordinateData(trimmedCommand);
+    processingCommand = false;
   } else if (isInvalidSpeedFragment(trimmedCommand)) {
     DEBUG_PRINTLN("MASTER: Skipping invalid speed fragment: " + trimmedCommand);
+    processingCommand = false;
+    if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   } else if (isRealScriptCommand(trimmedCommand)) {
     processScriptCommand(trimmedCommand);
+    processingCommand = false;
+    if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   } else {
     DEBUG_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
+    processingCommand = false;
+    if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+      processNextCommand();
+    }
   }
-
-  processingCommand = false;
 }
 
 void PalletizerMaster::requestCommand() {

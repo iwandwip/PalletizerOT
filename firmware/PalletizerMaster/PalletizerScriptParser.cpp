@@ -359,12 +359,18 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
   for (int i = 0; i < input.length() && count < 50; i++) {
     char c = input.charAt(i);
 
-    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
-      inSpeedCommand = true;
-      speedSemicolonCount = 0;
+    if (current.length() == 0) {
+      String remaining = input.substring(i);
+      remaining.toUpperCase();
+      if (remaining.startsWith("SPEED;")) {
+        inSpeedCommand = true;
+        speedSemicolonCount = 0;
+      }
     }
 
-    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+    String remainingFromI = input.substring(i);
+    remainingFromI.toUpperCase();
+    if (remainingFromI.startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
       inGroup = true;
       parenDepth = 0;
     }
@@ -378,6 +384,8 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
       }
     }
 
+    current += c;
+
     if (c == ';') {
       if (inSpeedCommand) {
         speedSemicolonCount++;
@@ -390,7 +398,6 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
           current = "";
           inSpeedCommand = false;
           speedSemicolonCount = 0;
-          continue;
         }
       } else if (!inGroup) {
         current.trim();
@@ -399,11 +406,8 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
           count++;
         }
         current = "";
-        continue;
       }
     }
-
-    current += c;
   }
 
   current.trim();
