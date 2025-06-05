@@ -176,9 +176,11 @@ private:
   void processSetCommand(const String& data);
   void processWaitCommand();
   void processScriptCommand(const String& script);
+  void processInlineCommands(const String& commands);
   void sendCommandToAllSlaves(Command cmd);
   void parseCoordinateData(const String& data);
   void parseAndSendGroupCommands(const String& groupCommands);
+  void parseInlineCommands(const String& input, String* statements, int& count);
   bool checkAllSlavesCompleted();
   bool checkSyncTimeout();
   void addToQueue(const String& command);
@@ -208,9 +210,11 @@ private:
   void logExecutionProgress();
   void logMotionCommand(const String& data);
   bool isScriptCommand(const String& command);
+  bool isRealScriptCommand(const String& command);
   bool isCoordinateCommand(const String& command);
   bool isDuplicateMessage(const String& message);
   bool isInvalidSpeedFragment(const String& command);
+  String cleanSpeedValue(const String& value);
 };
 
 #endif
