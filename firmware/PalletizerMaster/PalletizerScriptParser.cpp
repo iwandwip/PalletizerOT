@@ -60,7 +60,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
 
       scriptPart.trim();
       if (scriptPart.length() > 0) {
-        String statements[50];
+        String statements[MAX_STATEMENTS];
         int statementCount = 0;
         tokenizeStatementsWithCommandSupport(scriptPart, statements, statementCount);
 
@@ -107,7 +107,7 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
       debugLog("INFO", "EXECUTOR", "🔄 Executing: CALL(" + trimmedName + ")");
       debugLog("INFO", "EXECUTOR", "└─ Entering function " + trimmedName + " (" + String(cmdCount) + " commands)");
 
-      String statements[50];
+      String statements[MAX_STATEMENTS];
       int statementCount = 0;
       tokenizeStatementsWithCommandSupport(userFunctions[i].body, statements, statementCount);
 
@@ -284,7 +284,7 @@ void PalletizerScriptParser::tokenizeStatements(const String& input, String* sta
   count = 0;
   String current = "";
 
-  for (int i = 0; i < input.length() && count < 50; i++) {
+  for (int i = 0; i < input.length() && count < MAX_STATEMENTS; i++) {
     char c = input.charAt(i);
 
     if (c == ';') {
@@ -300,7 +300,7 @@ void PalletizerScriptParser::tokenizeStatements(const String& input, String* sta
   }
 
   current.trim();
-  if (current.length() > 0 && count < 50) {
+  if (current.length() > 0 && count < MAX_STATEMENTS) {
     statements[count] = current;
     count++;
   }
@@ -312,7 +312,7 @@ void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& in
   int parenDepth = 0;
   bool inGroup = false;
 
-  for (int i = 0; i < input.length() && count < 50; i++) {
+  for (int i = 0; i < input.length() && count < MAX_STATEMENTS; i++) {
     char c = input.charAt(i);
 
     if (input.substring(i).startsWith("GROUP(") && !inGroup) {
@@ -342,7 +342,7 @@ void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& in
   }
 
   current.trim();
-  if (current.length() > 0 && count < 50) {
+  if (current.length() > 0 && count < MAX_STATEMENTS) {
     statements[count] = current;
     count++;
   }
@@ -352,7 +352,7 @@ void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& 
   count = 0;
   String buffer = "";
 
-  for (int i = 0; i <= input.length() && count < 50; i++) {
+  for (int i = 0; i <= input.length() && count < MAX_STATEMENTS; i++) {
     char c = (i < input.length()) ? input.charAt(i) : ';';
 
     if (c == ';') {
@@ -502,13 +502,15 @@ bool PalletizerScriptParser::functionExists(const String& name) {
 }
 
 void PalletizerScriptParser::debugLog(const String& level, const String& source, const String& message) {
+#if WEB_DEBUG == 1 || SERIAL_DEBUG == 1
   if (debugEnabled) {
     DEBUG_MGR.println(source, message);
   }
+#endif
 }
 
 int PalletizerScriptParser::countStatementsInBody(const String& body) {
-  String statements[50];
+  String statements[MAX_STATEMENTS];
   int count = 0;
   tokenizeStatementsWithCommandSupport(body, statements, count);
   return count;

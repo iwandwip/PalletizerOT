@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Print.h>
+#include "DebugConfig.h"
 
 class PalletizerServer;
 
@@ -64,9 +65,23 @@ private:
   bool initialized;
 
   void sendFormattedMessage(const String& level, const String& source, const String& message);
+  bool shouldProcessMessage(const String& level);
 };
 
+#if SERIAL_DEBUG == 1 && WEB_DEBUG == 1
 #define DEBUG_SERIAL DebugManager::getInstance().getDebugPrint()
 #define DEBUG_MGR DebugManager::getInstance()
+#elif SERIAL_DEBUG == 1 && WEB_DEBUG == 0
+#define DEBUG_SERIAL Serial
+#define DEBUG_MGR DebugManager::getInstance()
+#elif SERIAL_DEBUG == 0 && WEB_DEBUG == 1
+#define DEBUG_SERIAL DebugManager::getInstance().getDebugPrint()
+#define DEBUG_MGR DebugManager::getInstance()
+#else
+#define DEBUG_SERIAL \
+  if (false) Serial
+#define DEBUG_MGR \
+  if (false) DebugManager::getInstance()
+#endif
 
 #endif

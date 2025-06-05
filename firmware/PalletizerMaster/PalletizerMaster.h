@@ -4,9 +4,9 @@
 #define ENABLE_MODULE_NODEF_SERIAL_ENHANCED
 #define ENABLE_MODULE_NODEF_DIGITAL_OUTPUT
 
-#define DEBUG 1
+#include "DebugConfig.h"
 
-#if DEBUG
+#if SERIAL_DEBUG == 1
 #define DEBUG_PRINT(x) Serial.print(x)
 #define DEBUG_PRINTLN(x) Serial.println(x)
 #else

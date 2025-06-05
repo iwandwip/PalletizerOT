@@ -29,13 +29,19 @@ PalletizerServer* DebugPrint::getServer() {
 size_t DebugPrint::write(uint8_t c) {
   if (!enabled || !hwSerial) return 0;
 
+#if SERIAL_DEBUG == 1
   size_t result = hwSerial->write(c);
+#else
+  size_t result = 1;
+#endif
 
+#if WEB_DEBUG == 1
   if (c == '\n') {
     processLine();
   } else if (c != '\r') {
     lineBuffer += (char)c;
   }
+#endif
 
   return result;
 }
@@ -43,8 +49,13 @@ size_t DebugPrint::write(uint8_t c) {
 size_t DebugPrint::write(const uint8_t* buffer, size_t size) {
   if (!enabled || !hwSerial) return 0;
 
+#if SERIAL_DEBUG == 1
   size_t result = hwSerial->write(buffer, size);
+#else
+  size_t result = size;
+#endif
 
+#if WEB_DEBUG == 1
   for (size_t i = 0; i < size; i++) {
     if (buffer[i] == '\n') {
       processLine();
@@ -52,11 +63,13 @@ size_t DebugPrint::write(const uint8_t* buffer, size_t size) {
       lineBuffer += (char)buffer[i];
     }
   }
+#endif
 
   return result;
 }
 
 void DebugPrint::processLine() {
+#if WEB_DEBUG == 1
   if (lineBuffer.length() > 0 && palletizerServer) {
     String level = detectLevel(lineBuffer);
 
@@ -66,6 +79,7 @@ void DebugPrint::processLine() {
 
     lineBuffer = "";
   }
+#endif
 }
 
 String DebugPrint::detectLevel(const String& line) {
@@ -84,6 +98,7 @@ String DebugPrint::detectLevel(const String& line) {
 }
 
 bool DebugPrint::isDuplicateMessage(const String& level, const String& source, const String& message) {
+#if WEB_DEBUG == 1
   unsigned long currentTime = millis();
   String messageKey = level + ":" + source + ":" + message;
 
@@ -99,6 +114,7 @@ bool DebugPrint::isDuplicateMessage(const String& level, const String& source, c
   lastMessageKey = messageKey;
   lastMessageTime = currentTime;
   duplicateCount = 0;
+#endif
   return false;
 }
 
@@ -121,40 +137,65 @@ void DebugManager::setEnabled(bool enabled) {
 }
 
 void DebugManager::print(const String& message) {
+#if SERIAL_DEBUG == 1 || WEB_DEBUG == 1
   debugPrint.print(message);
+#endif
 }
 
 void DebugManager::println(const String& message) {
+#if SERIAL_DEBUG == 1 || WEB_DEBUG == 1
   debugPrint.println(message);
+#endif
 }
 
 void DebugManager::print(const String& source, const String& message) {
+#if SERIAL_DEBUG == 1 || WEB_DEBUG == 1
   debugPrint.setSource(source);
   debugPrint.print(message);
+#endif
 }
 
 void DebugManager::println(const String& source, const String& message) {
+#if SERIAL_DEBUG == 1 || WEB_DEBUG == 1
   debugPrint.setSource(source);
   debugPrint.println(message);
+#endif
 }
 
 void DebugManager::info(const String& source, const String& message) {
-  sendFormattedMessage("INFO", source, message);
+#if DEBUG_LEVEL_INFO == 1
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", source, message);
+  }
+#endif
 }
 
 void DebugManager::warning(const String& source, const String& message) {
-  sendFormattedMessage("WARNING", source, message);
+#if DEBUG_LEVEL_WARNING == 1
+  if (shouldProcessMessage("WARNING")) {
+    sendFormattedMessage("WARNING", source, message);
+  }
+#endif
 }
 
 void DebugManager::error(const String& source, const String& message) {
-  sendFormattedMessage("ERROR", source, message);
+#if DEBUG_LEVEL_ERROR == 1
+  if (shouldProcessMessage("ERROR")) {
+    sendFormattedMessage("ERROR", source, message);
+  }
+#endif
 }
 
 void DebugManager::debug(const String& source, const String& message) {
-  sendFormattedMessage("DEBUG", source, message);
+#if DEBUG_LEVEL_DEBUG == 1
+  if (shouldProcessMessage("DEBUG")) {
+    sendFormattedMessage("DEBUG", source, message);
+  }
+#endif
 }
 
 void DebugManager::sequence(const String& source, int current, int total, const String& message) {
+#if DEBUG_LEVEL_INFO == 1
   static String lastSequenceMsg = "";
   static unsigned long lastSequenceTime = 0;
 
@@ -168,10 +209,14 @@ void DebugManager::sequence(const String& source, int current, int total, const 
   lastSequenceMsg = currentMsg;
   lastSequenceTime = currentTime;
 
-  sendFormattedMessage("INFO", source, currentMsg);
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", source, currentMsg);
+  }
+#endif
 }
 
 void DebugManager::motion(const String& axis, long position, float speed, unsigned long delay) {
+#if DEBUG_LEVEL_INFO == 1
   String msg = "🎯 " + axis + "(" + String(position);
   if (delay > 0) {
     msg += ",d" + String(delay);
@@ -180,28 +225,43 @@ void DebugManager::motion(const String& axis, long position, float speed, unsign
     msg += "," + String(speed, 0);
   }
   msg += ")";
-  sendFormattedMessage("INFO", "MOTION", msg);
+
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", "MOTION", msg);
+  }
+#endif
 }
 
 void DebugManager::sync(const String& type, const String& message) {
+#if DEBUG_LEVEL_INFO == 1
   String msg = "🔄 " + type + " - " + message;
-  sendFormattedMessage("INFO", "SYNC", msg);
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", "SYNC", msg);
+  }
+#endif
 }
 
 void DebugManager::function(const String& funcName, bool entering, int commandCount) {
+#if DEBUG_LEVEL_INFO == 1
   if (entering) {
     String msg = "└─ Entering function " + funcName;
     if (commandCount > 0) {
       msg += " (" + String(commandCount) + " commands)";
     }
-    sendFormattedMessage("INFO", "FUNCTION", msg);
+    if (shouldProcessMessage("INFO")) {
+      sendFormattedMessage("INFO", "FUNCTION", msg);
+    }
   } else {
     String msg = "✅ Function " + funcName + " completed";
-    sendFormattedMessage("INFO", "FUNCTION", msg);
+    if (shouldProcessMessage("INFO")) {
+      sendFormattedMessage("INFO", "FUNCTION", msg);
+    }
   }
+#endif
 }
 
 void DebugManager::progress(int current, int total, const String& task) {
+#if DEBUG_LEVEL_INFO == 1
   static String lastProgressMsg = "";
   static unsigned long lastProgressTime = 0;
 
@@ -226,10 +286,14 @@ void DebugManager::progress(int current, int total, const String& task) {
   lastProgressMsg = progressBar;
   lastProgressTime = currentTime;
 
-  sendFormattedMessage("INFO", "PROGRESS", progressBar);
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", "PROGRESS", progressBar);
+  }
+#endif
 }
 
 void DebugManager::separator() {
+#if DEBUG_LEVEL_INFO == 1
   static unsigned long lastSeparatorTime = 0;
   unsigned long currentTime = millis();
 
@@ -238,7 +302,10 @@ void DebugManager::separator() {
   }
 
   lastSeparatorTime = currentTime;
-  sendFormattedMessage("INFO", "SYSTEM", "════════════════════════════════════════");
+  if (shouldProcessMessage("INFO")) {
+    sendFormattedMessage("INFO", "SYSTEM", "════════════════════════════════════════");
+  }
+#endif
 }
 
 DebugPrint& DebugManager::getDebugPrint() {
@@ -263,11 +330,15 @@ void DebugManager::sendFormattedMessage(const String& level, const String& sourc
   lastManagerMsg = messageKey;
   lastManagerTime = currentTime;
 
+#if WEB_DEBUG == 1
   if (debugPrint.getServer()) {
     debugPrint.getServer()->sendDebugMessage(level, source, message);
   }
+#endif
+
   debugPrint.setSource(source);
 
+#if SERIAL_DEBUG == 1
   if (level == "ERROR") {
     debugPrint.println("[ERROR] " + message);
   } else if (level == "WARNING") {
@@ -277,4 +348,14 @@ void DebugManager::sendFormattedMessage(const String& level, const String& sourc
   } else {
     debugPrint.println(message);
   }
+#endif
+}
+
+bool DebugManager::shouldProcessMessage(const String& level) {
+#if WEB_DEBUG == 0 && SERIAL_DEBUG == 0
+  if (level == "ERROR") return true;
+  return false;
+#else
+  return true;
+#endif
 }

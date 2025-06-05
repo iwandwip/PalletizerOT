@@ -2,6 +2,7 @@
 #define PALLETIZER_SCRIPT_PARSER_H
 
 #include "Arduino.h"
+#include "DebugConfig.h"
 
 class PalletizerMaster;
 
@@ -33,8 +34,6 @@ public:
   void setParsingMode(bool mode);
 
 private:
-  static const int MAX_FUNCTIONS = 20;
-
   PalletizerMaster* palletizerMaster;
   Function userFunctions[MAX_FUNCTIONS];
   int functionCount;

@@ -1,9 +1,17 @@
 #include "PalletizerServer.h"
 
 PalletizerServer::PalletizerServer(PalletizerMaster *master, WiFiMode mode, const char *ap_ssid, const char *ap_password)
-  : palletizerMaster(master), server(80), events("/events"), debugEvents("/debug"), wifiMode(mode), ssid(ap_ssid), password(ap_password) {
+  : palletizerMaster(master), server(80), events("/events")
+#if WEB_DEBUG == 1
+    ,
+    debugEvents("/debug")
+#endif
+    ,
+    wifiMode(mode), ssid(ap_ssid), password(ap_password) {
   cacheMutex = xSemaphoreCreateMutex();
+#if WEB_DEBUG == 1
   debugMutex = xSemaphoreCreateMutex();
+#endif
 }
 
 void PalletizerServer::begin() {
@@ -13,8 +21,8 @@ void PalletizerServer::begin() {
     WiFi.softAPConfig(apIP, apIP, netMsk);
     WiFi.softAP(ssid, password);
     IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP Mode - IP address: ");
-    Serial.println(IP);
+    DEBUG_SERIAL_PRINT("AP Mode - IP address: ");
+    DEBUG_SERIAL_PRINTLN(IP);
   } else {
     WiFi.setSleep(false);
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
@@ -23,20 +31,20 @@ void PalletizerServer::begin() {
 
     WiFi.begin(ssid, password);
     int attempts = 0;
-    Serial.print("Connecting to WiFi");
+    DEBUG_SERIAL_PRINT("Connecting to WiFi");
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
       delay(500);
-      Serial.print(".");
+      DEBUG_SERIAL_PRINT(".");
       attempts++;
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println();
-      Serial.print("STA Mode - Connected to WiFi. IP address: ");
-      Serial.println(WiFi.localIP());
+      DEBUG_SERIAL_PRINTLN();
+      DEBUG_SERIAL_PRINT("STA Mode - Connected to WiFi. IP address: ");
+      DEBUG_SERIAL_PRINTLN(WiFi.localIP());
     } else {
-      Serial.println();
-      Serial.println("Failed to connect to WiFi. Falling back to AP mode.");
+      DEBUG_SERIAL_PRINTLN();
+      DEBUG_SERIAL_PRINTLN("Failed to connect to WiFi. Falling back to AP mode.");
       WiFi.disconnect();
 
       IPAddress apIP(192, 168, 4, 1);
@@ -44,19 +52,19 @@ void PalletizerServer::begin() {
       WiFi.softAPConfig(apIP, apIP, netMsk);
       WiFi.softAP("ESP32_Palletizer_Fallback", "palletizer123");
       IPAddress IP = WiFi.softAPIP();
-      Serial.print("Fallback AP Mode - IP address: ");
-      Serial.println(IP);
+      DEBUG_SERIAL_PRINT("Fallback AP Mode - IP address: ");
+      DEBUG_SERIAL_PRINTLN(IP);
     }
   }
 
   if (MDNS.begin("palletizer")) {
-    Serial.println("mDNS responder started. Access at: http://palletizer.local");
+    DEBUG_SERIAL_PRINTLN("mDNS responder started. Access at: http://palletizer.local");
     MDNS.addService("http", "tcp", 80);
   }
 
   setupRoutes();
   server.begin();
-  Serial.println("HTTP server started");
+  DEBUG_SERIAL_PRINTLN("HTTP server started");
 
   sendDebugMessage("INFO", "SERVER", "System initialized");
 }
@@ -65,6 +73,7 @@ void PalletizerServer::update() {
 }
 
 void PalletizerServer::sendDebugMessage(const String &level, const String &source, const String &message) {
+#if WEB_DEBUG == 1
   if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (debugCaptureEnabled && debugEvents.count() > 0) {
       unsigned long currentTime = millis();
@@ -78,10 +87,13 @@ void PalletizerServer::sendDebugMessage(const String &level, const String &sourc
     }
     xSemaphoreGive(debugMutex);
   }
+#endif
 }
 
 void PalletizerServer::enableDebugCapture(bool enable) {
+#if WEB_DEBUG == 1
   debugCaptureEnabled = enable;
+#endif
 }
 
 void PalletizerServer::setupRoutes() {
@@ -125,6 +137,7 @@ void PalletizerServer::setupRoutes() {
     this->handleClearTimeoutStats(request);
   });
 
+#if WEB_DEBUG == 1
   server.on("/debug/buffer", HTTP_GET, [this](AsyncWebServerRequest *request) {
     this->handleGetDebugBuffer(request);
   });
@@ -136,6 +149,7 @@ void PalletizerServer::setupRoutes() {
   server.on("/debug/toggle", HTTP_POST, [this](AsyncWebServerRequest *request) {
     this->handleToggleDebugCapture(request);
   });
+#endif
 
   server.on(
     "/upload", HTTP_POST,
@@ -151,12 +165,15 @@ void PalletizerServer::setupRoutes() {
     sendStatusEvent(statusStr);
   });
 
+#if WEB_DEBUG == 1
   debugEvents.onConnect([this](AsyncEventSourceClient *client) {
     sendDebugMessage("INFO", "DEBUG", "Client connected to debug stream");
   });
 
-  server.addHandler(&events);
   server.addHandler(&debugEvents);
+#endif
+
+  server.addHandler(&events);
 
   server.on("/wifi_info", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String info = "{";
@@ -407,6 +424,7 @@ void PalletizerServer::handleClearTimeoutStats(AsyncWebServerRequest *request) {
   request->send(200, "text/plain", "Timeout statistics cleared successfully");
 }
 
+#if WEB_DEBUG == 1
 void PalletizerServer::handleGetDebugBuffer(AsyncWebServerRequest *request) {
   int startIndex = 0;
   if (request->hasParam("start")) {
@@ -432,6 +450,7 @@ void PalletizerServer::handleToggleDebugCapture(AsyncWebServerRequest *request) 
   String response = "{\"enabled\":" + String(debugCaptureEnabled ? "true" : "false") + "}";
   request->send(200, "application/json", response);
 }
+#endif
 
 void PalletizerServer::sendStatusEvent(const String &status) {
   String eventData = "{\"type\":\"status\",\"value\":\"" + status + "\"}";
@@ -443,10 +462,12 @@ void PalletizerServer::sendTimeoutEvent(int count, const String &type) {
   events.send(eventData.c_str(), "timeout", millis());
 }
 
+#if WEB_DEBUG == 1
 void PalletizerServer::sendDebugEvent(const DebugMessage &msg) {
   String eventData = formatDebugMessage(msg);
   debugEvents.send(eventData.c_str(), "debug", millis());
 }
+#endif
 
 void PalletizerServer::safeFileWrite(const String &path, const String &content) {
   if (LittleFS.exists(path)) {
@@ -510,6 +531,7 @@ void PalletizerServer::setCachedCommands(const String &commands) {
   xSemaphoreGive(cacheMutex);
 }
 
+#if WEB_DEBUG == 1
 void PalletizerServer::addDebugMessage(const String &level, const String &source, const String &message) {
   addDebugMessageInternal(level, source, message);
 }
@@ -611,3 +633,4 @@ bool PalletizerServer::isServerDuplicateMessage(const String &level, const Strin
 
   return false;
 }
+#endif
