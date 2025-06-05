@@ -12,9 +12,13 @@
 #define TX_PIN 17
 #define INDICATOR_PIN 26
 
-#define WIFI_MODE PalletizerServer::MODE_STA
-#define WIFI_SSID "silenceAndSleep"
-#define WIFI_PASSWORD "11111111"
+// #define WIFI_MODE PalletizerServer::MODE_STA
+// #define WIFI_SSID "silenceAndSleep"
+// #define WIFI_PASSWORD "11111111"
+
+#define WIFI_MODE PalletizerServer::MODE_AP
+#define WIFI_SSID "Palletizer"
+#define WIFI_PASSWORD ""
 
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
@@ -25,7 +29,7 @@ TaskHandle_t masterTaskHandle = NULL;
 void serverTask(void* pvParameters) {
   server.begin();
   DEBUG_MGR.begin(&Serial, &server);
-  DEBUG_MGR.setEnabled(false);
+  DEBUG_MGR.setEnabled(true);
   DEBUG_MGR.info("SYSTEM", "Server task started on Core 0");
 
   while (true) {
@@ -128,9 +132,7 @@ void loop() {
       ESP.restart();
     }
 
-    Serial.printf("Free heap: %d bytes, Largest block: %d bytes\n",
-                  ESP.getFreeHeap(),
-                  ESP.getMaxAllocHeap());
+    // Serial.printf("Free heap: %d bytes, Largest block: %d bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     UBaseType_t serverStackWatermark = uxTaskGetStackHighWaterMark(serverTaskHandle);
     UBaseType_t masterStackWatermark = uxTaskGetStackHighWaterMark(masterTaskHandle);

@@ -322,9 +322,28 @@ void PalletizerMaster::onCommandReceived(const String& data) {
 
   String trimmedData = data;
   trimmedData.trim();
-
   String upperData = trimmedData;
   upperData.toUpperCase();
+
+  if (upperData.startsWith("SPEED;")) {
+    processSpeedCommand(trimmedData);
+    return;
+  }
+
+  if (upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP") {
+    processSystemStateCommand(upperData);
+    return;
+  }
+
+  if (upperData == "ZERO") {
+    processStandardCommand(upperData);
+    return;
+  }
+
+  if (upperData.startsWith("SET(") || upperData == "WAIT") {
+    processSyncCommand(upperData);
+    return;
+  }
 
   if (trimmedData.startsWith("GROUP;")) {
     String groupCommands = trimmedData.substring(6);
@@ -349,22 +368,8 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     return;
   }
 
-  if (upperData.startsWith("SET(") || upperData == "WAIT") {
-    processSyncCommand(upperData);
-    return;
-  }
-
-  if (upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP") {
-    processSystemStateCommand(upperData);
-    return;
-  }
-
   if (!sequenceRunning && !waitingForCompletion && !scriptProcessing) {
-    if (upperData == "ZERO") {
-      processStandardCommand(upperData);
-    } else if (upperData.startsWith("SPEED;")) {
-      processSpeedCommand(trimmedData);
-    } else if (upperData == "END_QUEUE") {
+    if (upperData == "END_QUEUE") {
       DEBUG_PRINTLN("MASTER: Queue loading completed");
       scriptProcessing = false;
     } else {
@@ -1204,6 +1209,12 @@ void PalletizerMaster::logMotionCommand(const String& data) {
 bool PalletizerMaster::isScriptCommand(const String& command) {
   String trimmed = command;
   trimmed.trim();
+  String upperData = trimmed;
+  upperData.toUpperCase();
+
+  if (upperData.startsWith("SPEED;") || upperData.startsWith("SET(") || upperData == "WAIT" || upperData == "ZERO" || upperData == "IDLE" || upperData == "PLAY" || upperData == "PAUSE" || upperData == "STOP" || upperData.startsWith("GROUP(")) {
+    return false;
+  }
 
   if (trimmed.indexOf("FUNC(") != -1 || trimmed.indexOf("CALL(") != -1) {
     return true;
@@ -1220,7 +1231,7 @@ bool PalletizerMaster::isScriptCommand(const String& command) {
     }
   }
 
-  if (semicolonCount > 1) {
+  if (semicolonCount > 2) {
     return true;
   }
 
