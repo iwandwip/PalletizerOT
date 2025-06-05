@@ -210,6 +210,7 @@ private:
   bool isScriptCommand(const String& command);
   bool isCoordinateCommand(const String& command);
   bool isDuplicateMessage(const String& message);
+  bool isInvalidSpeedFragment(const String& command);
 };
 
 #endif

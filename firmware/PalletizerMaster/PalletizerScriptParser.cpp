@@ -62,7 +62,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
       if (scriptPart.length() > 0) {
         String statements[50];
         int statementCount = 0;
-        tokenizeStatementsWithGroupSupport(scriptPart, statements, statementCount);
+        tokenizeStatementsWithCommandSupport(scriptPart, statements, statementCount);
 
         for (int i = 0; i < statementCount; i++) {
           statements[i].trim();
@@ -109,7 +109,7 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
 
       String statements[50];
       int statementCount = 0;
-      tokenizeStatementsWithGroupSupport(userFunctions[i].body, statements, statementCount);
+      tokenizeStatementsWithCommandSupport(userFunctions[i].body, statements, statementCount);
 
       for (int j = 0; j < statementCount; j++) {
         statements[j].trim();
@@ -348,6 +348,71 @@ void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& in
   }
 }
 
+void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& input, String* statements, int& count) {
+  count = 0;
+  String current = "";
+  int parenDepth = 0;
+  bool inGroup = false;
+  bool inSpeedCommand = false;
+  int speedSemicolonCount = 0;
+
+  for (int i = 0; i < input.length() && count < 50; i++) {
+    char c = input.charAt(i);
+
+    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
+      inSpeedCommand = true;
+      speedSemicolonCount = 0;
+    }
+
+    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+      inGroup = true;
+      parenDepth = 0;
+    }
+
+    if (c == '(' && inGroup) {
+      parenDepth++;
+    } else if (c == ')' && inGroup) {
+      parenDepth--;
+      if (parenDepth == 0) {
+        inGroup = false;
+      }
+    }
+
+    if (c == ';') {
+      if (inSpeedCommand) {
+        speedSemicolonCount++;
+        if (speedSemicolonCount >= 2) {
+          current.trim();
+          if (current.length() > 0) {
+            statements[count] = current;
+            count++;
+          }
+          current = "";
+          inSpeedCommand = false;
+          speedSemicolonCount = 0;
+          continue;
+        }
+      } else if (!inGroup) {
+        current.trim();
+        if (current.length() > 0) {
+          statements[count] = current;
+          count++;
+        }
+        current = "";
+        continue;
+      }
+    }
+
+    current += c;
+  }
+
+  current.trim();
+  if (current.length() > 0 && count < 50) {
+    statements[count] = current;
+    count++;
+  }
+}
+
 void PalletizerScriptParser::processSingleStatement(const String& statement) {
   String cleanStatement = statement;
   trimWhitespace(cleanStatement);
@@ -439,6 +504,6 @@ void PalletizerScriptParser::debugLog(const String& level, const String& source,
 int PalletizerScriptParser::countStatementsInBody(const String& body) {
   String statements[50];
   int count = 0;
-  tokenizeStatementsWithGroupSupport(body, statements, count);
+  tokenizeStatementsWithCommandSupport(body, statements, count);
   return count;
 }

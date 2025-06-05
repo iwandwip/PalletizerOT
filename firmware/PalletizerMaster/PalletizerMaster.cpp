@@ -800,7 +800,7 @@ void PalletizerMaster::processNextCommand() {
     return;
   }
 
-  if (isScriptCommand(trimmedCommand)) {
+  if (upperData.startsWith("CALL(")) {
     processScriptCommand(trimmedCommand);
   } else if (upperData == "ZERO") {
     processStandardCommand(upperData);
@@ -810,6 +810,10 @@ void PalletizerMaster::processNextCommand() {
     processSyncCommand(upperData);
   } else if (isCoordinateCommand(trimmedCommand)) {
     processCoordinateData(trimmedCommand);
+  } else if (isInvalidSpeedFragment(trimmedCommand)) {
+    DEBUG_PRINTLN("MASTER: Skipping invalid speed fragment: " + trimmedCommand);
+  } else if (isScriptCommand(trimmedCommand)) {
+    processScriptCommand(trimmedCommand);
   } else {
     DEBUG_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
   }
@@ -1275,5 +1279,20 @@ bool PalletizerMaster::isDuplicateMessage(const String& message) {
   debugTracker.lastMessage = message;
   debugTracker.lastTimestamp = currentTime;
   debugTracker.duplicateCount = 0;
+  return false;
+}
+
+bool PalletizerMaster::isInvalidSpeedFragment(const String& command) {
+  String trimmed = command;
+  trimmed.trim();
+
+  if (trimmed == "SPEED" || trimmed == "x" || trimmed == "y" || trimmed == "z" || trimmed == "t" || trimmed == "g") {
+    return true;
+  }
+
+  if (trimmed.length() <= 4 && trimmed.toInt() > 0) {
+    return true;
+  }
+
   return false;
 }

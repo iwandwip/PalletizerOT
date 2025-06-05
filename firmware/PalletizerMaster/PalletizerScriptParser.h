@@ -47,6 +47,7 @@ private:
   String extractFunctionName(const String& funcDef);
   void tokenizeStatements(const String& input, String* statements, int& count);
   void tokenizeStatementsWithGroupSupport(const String& input, String* statements, int& count);
+  void tokenizeStatementsWithCommandSupport(const String& input, String* statements, int& count);
   void processSingleStatement(const String& statement);
   int findMatchingBrace(const String& script, int openPos);
   void trimWhitespace(String& str);
