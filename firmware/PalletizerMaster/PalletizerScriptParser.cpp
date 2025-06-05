@@ -62,7 +62,7 @@ void PalletizerScriptParser::parseScript(const String& script) {
       if (scriptPart.length() > 0) {
         String statements[50];
         int statementCount = 0;
-        tokenizeStatementsWithGroupSupport(scriptPart, statements, statementCount);
+        tokenizeStatementsWithCommandSupport(scriptPart, statements, statementCount);
 
         for (int i = 0; i < statementCount; i++) {
           statements[i].trim();
@@ -109,7 +109,7 @@ bool PalletizerScriptParser::callFunction(const String& funcName) {
 
       String statements[50];
       int statementCount = 0;
-      tokenizeStatementsWithGroupSupport(userFunctions[i].body, statements, statementCount);
+      tokenizeStatementsWithCommandSupport(userFunctions[i].body, statements, statementCount);
 
       for (int j = 0; j < statementCount; j++) {
         statements[j].trim();
@@ -227,16 +227,16 @@ void PalletizerScriptParser::processGroupCommand(const String& groupStatement) {
   debugLog("INFO", "GROUP", "🔄 Processing GROUP command");
   debugLog("INFO", "GROUP", "└─ Content: " + groupContent);
 
-  String groupCommand = "GROUP;" + groupContent;
+  String groupCommand = "GROUP(" + groupContent + ")";
   if (parsingMode) {
     queueCommand(groupCommand);
   } else {
-    palletizerMaster->getCommandProcessor().processCommand(groupCommand);
+    palletizerMaster->processCommand(groupCommand);
   }
 }
 
 void PalletizerScriptParser::queueCommand(const String& command) {
-  palletizerMaster->getQueueManager().addToQueue(command);
+  palletizerMaster->addCommandToQueue(command);
 }
 
 void PalletizerScriptParser::setParsingMode(bool mode) {
@@ -348,6 +348,71 @@ void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& in
   }
 }
 
+void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& input, String* statements, int& count) {
+  count = 0;
+  String current = "";
+  int parenDepth = 0;
+  bool inGroup = false;
+  bool inSpeedCommand = false;
+  int speedSemicolonCount = 0;
+
+  for (int i = 0; i < input.length() && count < 50; i++) {
+    char c = input.charAt(i);
+
+    if (current.length() == 0 && input.substring(i).startsWith("SPEED;")) {
+      inSpeedCommand = true;
+      speedSemicolonCount = 0;
+    }
+
+    if (input.substring(i).startsWith("GROUP(") && !inGroup && !inSpeedCommand) {
+      inGroup = true;
+      parenDepth = 0;
+    }
+
+    if (c == '(' && inGroup) {
+      parenDepth++;
+    } else if (c == ')' && inGroup) {
+      parenDepth--;
+      if (parenDepth == 0) {
+        inGroup = false;
+      }
+    }
+
+    if (c == ';') {
+      if (inSpeedCommand) {
+        speedSemicolonCount++;
+        if (speedSemicolonCount >= 2) {
+          current.trim();
+          if (current.length() > 0) {
+            statements[count] = current;
+            count++;
+          }
+          current = "";
+          inSpeedCommand = false;
+          speedSemicolonCount = 0;
+          continue;
+        }
+      } else if (!inGroup) {
+        current.trim();
+        if (current.length() > 0) {
+          statements[count] = current;
+          count++;
+        }
+        current = "";
+        continue;
+      }
+    }
+
+    current += c;
+  }
+
+  current.trim();
+  if (current.length() > 0 && count < 50) {
+    statements[count] = current;
+    count++;
+  }
+}
+
 void PalletizerScriptParser::processSingleStatement(const String& statement) {
   String cleanStatement = statement;
   trimWhitespace(cleanStatement);
@@ -361,22 +426,22 @@ void PalletizerScriptParser::processSingleStatement(const String& statement) {
 
   if (cleanStatement.startsWith("SET(") || cleanStatement == "WAIT") {
     debugLog("INFO", "SYNC", "🔄 " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement == "ZERO" || cleanStatement == "IDLE" || cleanStatement == "PLAY" || cleanStatement == "PAUSE" || cleanStatement == "STOP") {
     debugLog("INFO", "SYSTEM", "⚙️ " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("SPEED;")) {
     debugLog("INFO", "SPEED", "⚡ " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.indexOf('(') != -1 && (cleanStatement.startsWith("X(") || cleanStatement.startsWith("Y(") || cleanStatement.startsWith("Z(") || cleanStatement.startsWith("T(") || cleanStatement.startsWith("G("))) {
     debugLog("INFO", "MOTION", "🎯 " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.indexOf(',') != -1) {
     debugLog("INFO", "MULTI", "🎯 " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement.startsWith("GRIPPER;") || cleanStatement.startsWith("TOOL;")) {
     debugLog("INFO", "TOOL", "🔧 " + cleanStatement);
-    palletizerMaster->getCommandProcessor().processCommand(cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   }
 }
 
@@ -439,6 +504,6 @@ void PalletizerScriptParser::debugLog(const String& level, const String& source,
 int PalletizerScriptParser::countStatementsInBody(const String& body) {
   String statements[50];
   int count = 0;
-  tokenizeStatementsWithGroupSupport(body, statements, count);
+  tokenizeStatementsWithCommandSupport(body, statements, count);
   return count;
 }

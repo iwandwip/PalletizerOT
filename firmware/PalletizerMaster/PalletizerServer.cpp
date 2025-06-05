@@ -1,29 +1,29 @@
 #include "PalletizerServer.h"
 
-PalletizerServer::PalletizerServer(PalletizerMaster* master, WiFiMode mode, const char* ssid, const char* password)
-  : palletizerMaster(master), server(80), events("/events"), debugEvents("/debug"),
-    wifiMode(mode), ssid(ssid), password(password) {
-
+PalletizerServer::PalletizerServer(PalletizerMaster *master, WiFiMode mode, const char *ap_ssid, const char *ap_password)
+  : palletizerMaster(master), server(80), events("/events"), debugEvents("/debug"), wifiMode(mode), ssid(ap_ssid), password(ap_password) {
   cacheMutex = xSemaphoreCreateMutex();
   debugMutex = xSemaphoreCreateMutex();
-
-  for (int i = 0; i < DEBUG_BUFFER_SIZE; i++) {
-    debugBuffer[i].timestamp = 0;
-    debugBuffer[i].level = "";
-    debugBuffer[i].source = "";
-    debugBuffer[i].message = "";
-  }
 }
 
 void PalletizerServer::begin() {
   if (wifiMode == MODE_AP) {
+    IPAddress apIP(192, 168, 4, 1);
+    IPAddress netMsk(255, 255, 255, 0);
+    WiFi.softAPConfig(apIP, apIP, netMsk);
     WiFi.softAP(ssid, password);
-    Serial.println("AP Mode - IP: " + WiFi.softAPIP().toString());
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP Mode - IP address: ");
+    Serial.println(IP);
   } else {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
+    WiFi.setSleep(false);
+    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
 
+    WiFi.begin(ssid, password);
     int attempts = 0;
+    Serial.print("Connecting to WiFi");
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
       delay(500);
       Serial.print(".");
@@ -31,54 +31,53 @@ void PalletizerServer::begin() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("STA Mode - IP: " + WiFi.localIP().toString());
-
-      if (MDNS.begin("palletizer")) {
-        Serial.println("mDNS responder started: palletizer.local");
-      }
+      Serial.println();
+      Serial.print("STA Mode - Connected to WiFi. IP address: ");
+      Serial.println(WiFi.localIP());
     } else {
-      Serial.println("WiFi connection failed, switching to AP mode");
-      WiFi.softAP(ssid, "palletizer123");
+      Serial.println();
+      Serial.println("Failed to connect to WiFi. Falling back to AP mode.");
+      WiFi.disconnect();
+
+      IPAddress apIP(192, 168, 4, 1);
+      IPAddress netMsk(255, 255, 255, 0);
+      WiFi.softAPConfig(apIP, apIP, netMsk);
+      WiFi.softAP("ESP32_Palletizer_Fallback", "palletizer123");
+      IPAddress IP = WiFi.softAPIP();
+      Serial.print("Fallback AP Mode - IP address: ");
+      Serial.println(IP);
     }
   }
 
+  if (MDNS.begin("palletizer")) {
+    Serial.println("mDNS responder started. Access at: http://palletizer.local");
+    MDNS.addService("http", "tcp", 80);
+  }
+
   setupRoutes();
-
-  server.addHandler(&events);
-  server.addHandler(&debugEvents);
   server.begin();
-
   Serial.println("HTTP server started");
+
+  sendDebugMessage("INFO", "SERVER", "System initialized");
 }
 
 void PalletizerServer::update() {
-  PalletizerMaster::SystemState currentState = palletizerMaster->getSystemState();
-  unsigned long currentTime = millis();
-
-  if (currentState != lastReportedState || (currentTime - lastStateUpdate) > STATE_UPDATE_INTERVAL) {
-    sendStatusEvent(getStatusString(currentState));
-    lastReportedState = currentState;
-    lastStateUpdate = currentTime;
-  }
 }
 
-void PalletizerServer::sendDebugMessage(const String& level, const String& source, const String& message) {
-  if (!debugCaptureEnabled) return;
+void PalletizerServer::sendDebugMessage(const String &level, const String &source, const String &message) {
+  if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    if (debugCaptureEnabled && debugEvents.count() > 0) {
+      unsigned long currentTime = millis();
 
-  unsigned long currentTime = millis();
-  if (isServerDuplicateMessage(level, source, message, currentTime)) {
-    return;
+      if (isServerDuplicateMessage(level, source, message, currentTime)) {
+        xSemaphoreGive(debugMutex);
+        return;
+      }
+
+      addDebugMessageInternal(level, source, message);
+    }
+    xSemaphoreGive(debugMutex);
   }
-
-  addDebugMessage(level, source, message);
-
-  DebugMessage msg;
-  msg.timestamp = currentTime;
-  msg.level = level;
-  msg.source = source;
-  msg.message = message;
-
-  sendDebugEvent(msg);
 }
 
 void PalletizerServer::enableDebugCapture(bool enable) {
@@ -86,90 +85,125 @@ void PalletizerServer::enableDebugCapture(bool enable) {
 }
 
 void PalletizerServer::setupRoutes() {
-  server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+  server.serveStatic("/", LittleFS, "/")
+    .setDefaultFile("index.html")
+    .setCacheControl("max-age=600");
 
-  server.on("/command", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleCommand(request);
+  server.on("/command", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleCommand(request);
   });
 
-  server.on("/write", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleWriteCommand(request);
+  server.on("/write", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleWriteCommand(request);
   });
 
-  server.on("/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetStatus(request);
+  server.on("/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleGetStatus(request);
   });
 
-  server.on("/commands", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetCommands(request);
+  server.on("/get_commands", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleGetCommands(request);
   });
 
-  server.on("/download", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleDownloadCommands(request);
+  server.on("/download_commands", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleDownloadCommands(request);
   });
 
-  server.on("/timeout-config", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetTimeoutConfig(request);
+  server.on("/timeout_config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleGetTimeoutConfig(request);
   });
 
-  server.on("/timeout-config", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleSetTimeoutConfig(request);
+  server.on("/timeout_config", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleSetTimeoutConfig(request);
   });
 
-  server.on("/timeout-stats", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetTimeoutStats(request);
+  server.on("/timeout_stats", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleGetTimeoutStats(request);
   });
 
-  server.on("/clear-timeout-stats", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleClearTimeoutStats(request);
+  server.on("/clear_timeout_stats", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleClearTimeoutStats(request);
   });
 
-  server.on("/debug-buffer", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetDebugBuffer(request);
+  server.on("/debug/buffer", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    this->handleGetDebugBuffer(request);
   });
 
-  server.on("/clear-debug", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleClearDebugBuffer(request);
+  server.on("/debug/clear", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleClearDebugBuffer(request);
   });
 
-  server.on("/toggle-debug", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleToggleDebugCapture(request);
+  server.on("/debug/toggle", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    this->handleToggleDebugCapture(request);
   });
 
   server.on(
-    "/upload", HTTP_POST, [this](AsyncWebServerRequest* request) {
-      request->send(200, "text/plain", "Upload completed");
+    "/upload", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      request->send(200, "text/plain", "File uploaded successfully. Click PLAY to execute.");
     },
-    [this](AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
-      handleUpload(request, filename, index, data, len, final);
+    [this](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+      this->handleUpload(request, filename, index, data, len, final);
     });
+
+  events.onConnect([this](AsyncEventSourceClient *client) {
+    String statusStr = getStatusString(palletizerMaster->getSystemState());
+    sendStatusEvent(statusStr);
+  });
+
+  debugEvents.onConnect([this](AsyncEventSourceClient *client) {
+    sendDebugMessage("INFO", "DEBUG", "Client connected to debug stream");
+  });
+
+  server.addHandler(&events);
+  server.addHandler(&debugEvents);
+
+  server.on("/wifi_info", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String info = "{";
+    if (wifiMode == MODE_AP) {
+      info += "\"mode\":\"AP\",";
+      info += "\"ssid\":\"" + String(ssid) + "\",";
+      info += "\"ip\":\"" + WiFi.softAPIP().toString() + "\"";
+    } else {
+      info += "\"mode\":\"STA\",";
+      info += "\"ssid\":\"" + String(ssid) + "\",";
+      info += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+      info += "\"connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false");
+    }
+    info += "}";
+    request->send(200, "application/json", info);
+  });
+
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    if (request->method() == HTTP_OPTIONS) {
+      request->send(200);
+    } else {
+      request->send(404, "text/plain", "Not found");
+    }
+  });
 }
 
-void PalletizerServer::handleUpload(AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
-  static File uploadFile;
+void PalletizerServer::handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+  static String tempBuffer = "";
 
   if (!index) {
-    String path = "/upload_" + filename;
-    uploadFile = LittleFS.open(path, "w");
-    if (!uploadFile) {
-      request->send(500, "text/plain", "Failed to create file");
-      return;
-    }
+    tempBuffer = "";
+    ensureFileExists("/queue.txt");
+    sendDebugMessage("INFO", "UPLOAD", "Started receiving file: " + filename);
   }
 
-  if (uploadFile && len) {
-    uploadFile.write(data, len);
-  }
+  String dataStr = String((char *)data, len);
+  tempBuffer += dataStr;
 
   if (final) {
-    if (uploadFile) {
-      uploadFile.close();
-      sendDebugMessage("INFO", "UPLOAD", "File uploaded: " + filename);
-    }
+    safeFileWrite("/queue.txt", tempBuffer);
+    invalidateCache();
+    sendDebugMessage("INFO", "UPLOAD", "File saved: " + String(tempBuffer.length()) + " bytes");
+    tempBuffer = "";
   }
 }
 
-void PalletizerServer::handleCommand(AsyncWebServerRequest* request) {
+void PalletizerServer::handleCommand(AsyncWebServerRequest *request) {
   String command = "";
 
   if (request->hasParam("cmd", true)) {
@@ -177,14 +211,45 @@ void PalletizerServer::handleCommand(AsyncWebServerRequest* request) {
   }
 
   if (command.length() > 0) {
+    sendDebugMessage("INFO", "COMMAND", "Received: " + command);
+
+    String upperCommand = command;
+    upperCommand.toUpperCase();
+
+    String commandType = "UNKNOWN";
+    if (command.indexOf("FUNC(") != -1) {
+      commandType = "SCRIPT_WITH_FUNCTIONS";
+    } else if (command.indexOf("CALL(") != -1) {
+      commandType = "SCRIPT_WITH_CALLS";
+    } else if (upperCommand == "PLAY" || upperCommand == "PAUSE" || upperCommand == "STOP" || upperCommand == "IDLE") {
+      commandType = "SYSTEM_CONTROL";
+    } else if (upperCommand == "ZERO") {
+      commandType = "HOMING";
+    } else if (upperCommand.startsWith("SPEED;")) {
+      commandType = "SPEED_CONTROL";
+    } else if (upperCommand.startsWith("SET(") || upperCommand == "WAIT") {
+      commandType = "SYNC_COMMAND";
+    } else if (command.indexOf("NEXT") != -1) {
+      commandType = "LEGACY_BATCH";
+    } else if (command.indexOf('(') != -1 && command.indexOf(',') != -1) {
+      commandType = "LEGACY_COORDINATES";
+    }
+
+    sendDebugMessage("INFO", "PARSER", "Command type: " + commandType);
+
+    unsigned long startTime = millis();
     palletizerMaster->processCommand(command);
-    request->send(200, "text/plain", "Command executed: " + command);
+    unsigned long parseTime = millis() - startTime;
+
+    sendDebugMessage("INFO", "PARSER", "Parse completed in " + String(parseTime) + "ms");
+
+    request->send(200, "text/plain", "Command sent: " + command);
   } else {
     request->send(400, "text/plain", "No command provided");
   }
 }
 
-void PalletizerServer::handleWriteCommand(AsyncWebServerRequest* request) {
+void PalletizerServer::handleWriteCommand(AsyncWebServerRequest *request) {
   String commands = "";
 
   if (request->hasParam("text", true)) {
@@ -201,23 +266,13 @@ void PalletizerServer::handleWriteCommand(AsyncWebServerRequest* request) {
   }
 }
 
-void PalletizerServer::handleGetStatus(AsyncWebServerRequest* request) {
-  PalletizerMaster::SystemState state = palletizerMaster->getSystemState();
-  QueueManager::ExecutionInfo execInfo = palletizerMaster->getQueueManager().getExecutionInfo();
-
-  String response = "{";
-  response += "\"state\":\"" + getStatusString(state) + "\",";
-  response += "\"queueSize\":" + String(palletizerMaster->getQueueManager().getQueueSize()) + ",";
-  response += "\"currentCommand\":" + String(execInfo.currentCommand) + ",";
-  response += "\"totalCommands\":" + String(execInfo.totalCommands) + ",";
-  response += "\"isExecuting\":" + String(execInfo.isExecuting ? "true" : "false") + ",";
-  response += "\"freeHeap\":" + String(ESP.getFreeHeap());
-  response += "}";
-
+void PalletizerServer::handleGetStatus(AsyncWebServerRequest *request) {
+  String statusStr = getStatusString(palletizerMaster->getSystemState());
+  String response = "{\"status\":\"" + statusStr + "\"}";
   request->send(200, "application/json", response);
 }
 
-void PalletizerServer::handleGetCommands(AsyncWebServerRequest* request) {
+void PalletizerServer::handleGetCommands(AsyncWebServerRequest *request) {
   String commands = getCachedCommands();
 
   if (commands.length() == 0 && !commandsCacheValid) {
@@ -240,7 +295,7 @@ void PalletizerServer::handleGetCommands(AsyncWebServerRequest* request) {
   request->send(200, "text/plain", commands);
 }
 
-void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest* request) {
+void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest *request) {
   String commands = getCachedCommands();
 
   if (commands.length() == 0 && !commandsCacheValid) {
@@ -260,13 +315,13 @@ void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest* request) {
     setCachedCommands(commands);
   }
 
-  AsyncWebServerResponse* response = request->beginResponse(200, "text/plain", commands);
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", commands);
   response->addHeader("Content-Disposition", "attachment; filename=palletizer_commands.txt");
   request->send(response);
 }
 
-void PalletizerServer::handleGetTimeoutConfig(AsyncWebServerRequest* request) {
-  QueueManager::TimeoutConfig config = palletizerMaster->getQueueManager().getTimeoutConfig();
+void PalletizerServer::handleGetTimeoutConfig(AsyncWebServerRequest *request) {
+  PalletizerMaster::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
 
   String response = "{";
   response += "\"maxWaitTime\":" + String(config.maxWaitTime) + ",";
@@ -279,8 +334,8 @@ void PalletizerServer::handleGetTimeoutConfig(AsyncWebServerRequest* request) {
   request->send(200, "application/json", response);
 }
 
-void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest* request) {
-  QueueManager::TimeoutConfig config = palletizerMaster->getQueueManager().getTimeoutConfig();
+void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest *request) {
+  PalletizerMaster::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
   bool configChanged = false;
 
   if (request->hasParam("maxWaitTime", true)) {
@@ -294,7 +349,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest* request) {
   if (request->hasParam("strategy", true)) {
     int newStrategy = request->getParam("strategy", true)->value().toInt();
     if (newStrategy >= 0 && newStrategy <= 3) {
-      config.strategy = (QueueManager::WaitTimeoutStrategy)newStrategy;
+      config.strategy = (PalletizerMaster::WaitTimeoutStrategy)newStrategy;
       configChanged = true;
     }
   }
@@ -322,7 +377,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest* request) {
   }
 
   if (configChanged) {
-    palletizerMaster->getQueueManager().setTimeoutConfig(config);
+    palletizerMaster->setTimeoutConfig(config);
     sendDebugMessage("INFO", "CONFIG", "Timeout configuration updated");
     request->send(200, "text/plain", "Timeout configuration updated successfully");
   } else {
@@ -330,7 +385,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest* request) {
   }
 }
 
-void PalletizerServer::handleGetTimeoutStats(AsyncWebServerRequest* request) {
+void PalletizerServer::handleGetTimeoutStats(AsyncWebServerRequest *request) {
   PalletizerMaster::TimeoutStats stats = palletizerMaster->getTimeoutStats();
   float successRate = palletizerMaster->getTimeoutSuccessRate();
 
@@ -346,13 +401,13 @@ void PalletizerServer::handleGetTimeoutStats(AsyncWebServerRequest* request) {
   request->send(200, "application/json", response);
 }
 
-void PalletizerServer::handleClearTimeoutStats(AsyncWebServerRequest* request) {
+void PalletizerServer::handleClearTimeoutStats(AsyncWebServerRequest *request) {
   palletizerMaster->clearTimeoutStats();
   sendDebugMessage("INFO", "STATS", "Timeout statistics cleared");
   request->send(200, "text/plain", "Timeout statistics cleared successfully");
 }
 
-void PalletizerServer::handleGetDebugBuffer(AsyncWebServerRequest* request) {
+void PalletizerServer::handleGetDebugBuffer(AsyncWebServerRequest *request) {
   int startIndex = 0;
   if (request->hasParam("start")) {
     startIndex = request->getParam("start")->value().toInt();
@@ -362,40 +417,38 @@ void PalletizerServer::handleGetDebugBuffer(AsyncWebServerRequest* request) {
   request->send(200, "application/json", response);
 }
 
-void PalletizerServer::handleClearDebugBuffer(AsyncWebServerRequest* request) {
-  if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    debugBufferHead = 0;
-    debugBufferTail = 0;
-    debugMessageCount = 0;
-    xSemaphoreGive(debugMutex);
-  }
+void PalletizerServer::handleClearDebugBuffer(AsyncWebServerRequest *request) {
+  xSemaphoreTake(debugMutex, portMAX_DELAY);
+  debugBufferHead = 0;
+  debugBufferTail = 0;
+  debugMessageCount = 0;
+  xSemaphoreGive(debugMutex);
 
-  sendDebugMessage("INFO", "DEBUG", "Debug buffer cleared");
-  request->send(200, "text/plain", "Debug buffer cleared successfully");
+  request->send(200, "text/plain", "Debug buffer cleared");
 }
 
-void PalletizerServer::handleToggleDebugCapture(AsyncWebServerRequest* request) {
+void PalletizerServer::handleToggleDebugCapture(AsyncWebServerRequest *request) {
   debugCaptureEnabled = !debugCaptureEnabled;
-  String status = debugCaptureEnabled ? "enabled" : "disabled";
-  sendDebugMessage("INFO", "DEBUG", "Debug capture " + status);
-  request->send(200, "text/plain", "Debug capture " + status);
+  String response = "{\"enabled\":" + String(debugCaptureEnabled ? "true" : "false") + "}";
+  request->send(200, "application/json", response);
 }
 
-void PalletizerServer::sendStatusEvent(const String& status) {
-  events.send(status.c_str(), "status", millis());
+void PalletizerServer::sendStatusEvent(const String &status) {
+  String eventData = "{\"type\":\"status\",\"value\":\"" + status + "\"}";
+  events.send(eventData.c_str(), "message", millis());
 }
 
-void PalletizerServer::sendTimeoutEvent(int count, const String& type) {
-  String data = "{\"count\":" + String(count) + ",\"type\":\"" + type + "\"}";
-  events.send(data.c_str(), "timeout", millis());
+void PalletizerServer::sendTimeoutEvent(int count, const String &type) {
+  String eventData = "{\"type\":\"timeout\",\"count\":" + String(count) + ",\"eventType\":\"" + type + "\",\"time\":" + String(millis()) + "}";
+  events.send(eventData.c_str(), "timeout", millis());
 }
 
-void PalletizerServer::sendDebugEvent(const DebugMessage& msg) {
-  String data = formatDebugMessage(msg);
-  debugEvents.send(data.c_str(), "debug", millis());
+void PalletizerServer::sendDebugEvent(const DebugMessage &msg) {
+  String eventData = formatDebugMessage(msg);
+  debugEvents.send(eventData.c_str(), "debug", millis());
 }
 
-void PalletizerServer::safeFileWrite(const String& path, const String& content) {
+void PalletizerServer::safeFileWrite(const String &path, const String &content) {
   if (LittleFS.exists(path)) {
     LittleFS.remove(path);
     delay(10);
@@ -408,7 +461,7 @@ void PalletizerServer::safeFileWrite(const String& path, const String& content) 
   }
 }
 
-bool PalletizerServer::ensureFileExists(const String& path) {
+bool PalletizerServer::ensureFileExists(const String &path) {
   if (!LittleFS.exists(path)) {
     File file = LittleFS.open(path, "w");
     if (file) {
@@ -422,49 +475,46 @@ bool PalletizerServer::ensureFileExists(const String& path) {
 
 String PalletizerServer::getStatusString(PalletizerMaster::SystemState state) {
   switch (state) {
-    case PalletizerMaster::STATE_IDLE: return "IDLE";
-    case PalletizerMaster::STATE_RUNNING: return "RUNNING";
-    case PalletizerMaster::STATE_PAUSED: return "PAUSED";
-    case PalletizerMaster::STATE_STOPPING: return "STOPPING";
-    default: return "UNKNOWN";
+    case PalletizerMaster::STATE_IDLE:
+      return "IDLE";
+    case PalletizerMaster::STATE_RUNNING:
+      return "RUNNING";
+    case PalletizerMaster::STATE_PAUSED:
+      return "PAUSED";
+    case PalletizerMaster::STATE_STOPPING:
+      return "STOPPING";
+    default:
+      return "UNKNOWN";
   }
 }
 
 void PalletizerServer::invalidateCache() {
-  if (xSemaphoreTake(cacheMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    commandsCacheValid = false;
-    cachedCommands = "";
-    xSemaphoreGive(cacheMutex);
-  }
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  commandsCacheValid = false;
+  cachedCommands = "";
+  xSemaphoreGive(cacheMutex);
 }
 
 String PalletizerServer::getCachedCommands() {
-  String result = "";
-  if (xSemaphoreTake(cacheMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    if (commandsCacheValid) {
-      result = cachedCommands;
-    }
-    xSemaphoreGive(cacheMutex);
-  }
+  String result;
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  result = cachedCommands;
+  xSemaphoreGive(cacheMutex);
   return result;
 }
 
-void PalletizerServer::setCachedCommands(const String& commands) {
-  if (xSemaphoreTake(cacheMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    cachedCommands = commands;
-    commandsCacheValid = true;
-    xSemaphoreGive(cacheMutex);
-  }
+void PalletizerServer::setCachedCommands(const String &commands) {
+  xSemaphoreTake(cacheMutex, portMAX_DELAY);
+  cachedCommands = commands;
+  commandsCacheValid = true;
+  xSemaphoreGive(cacheMutex);
 }
 
-void PalletizerServer::addDebugMessage(const String& level, const String& source, const String& message) {
-  if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    addDebugMessageInternal(level, source, message);
-    xSemaphoreGive(debugMutex);
-  }
+void PalletizerServer::addDebugMessage(const String &level, const String &source, const String &message) {
+  addDebugMessageInternal(level, source, message);
 }
 
-void PalletizerServer::addDebugMessageInternal(const String& level, const String& source, const String& message) {
+void PalletizerServer::addDebugMessageInternal(const String &level, const String &source, const String &message) {
   debugBuffer[debugBufferTail].timestamp = millis();
   debugBuffer[debugBufferTail].level = level;
   debugBuffer[debugBufferTail].source = source;
@@ -477,35 +527,35 @@ void PalletizerServer::addDebugMessageInternal(const String& level, const String
   } else {
     debugBufferHead = (debugBufferHead + 1) % DEBUG_BUFFER_SIZE;
   }
+
+  DebugMessage msg = debugBuffer[(debugBufferTail - 1 + DEBUG_BUFFER_SIZE) % DEBUG_BUFFER_SIZE];
+  sendDebugEvent(msg);
 }
 
 String PalletizerServer::getDebugBufferJSON(int startIndex) {
+  xSemaphoreTake(debugMutex, portMAX_DELAY);
+
   String json = "{\"messages\":[";
+  int count = 0;
+  int index = debugBufferHead;
 
-  if (xSemaphoreTake(debugMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    int currentIndex = debugBufferHead;
-    int count = 0;
-    bool first = true;
-
-    while (count < debugMessageCount && count < 100) {
-      if (count >= startIndex) {
-        if (!first) json += ",";
-        json += formatDebugMessage(debugBuffer[currentIndex]);
-        first = false;
-      }
-
-      currentIndex = (currentIndex + 1) % DEBUG_BUFFER_SIZE;
+  for (int i = 0; i < debugMessageCount && i < startIndex + 100; i++) {
+    if (i >= startIndex) {
+      if (count > 0) json += ",";
+      json += formatDebugMessage(debugBuffer[index]);
       count++;
     }
-
-    xSemaphoreGive(debugMutex);
+    index = (index + 1) % DEBUG_BUFFER_SIZE;
   }
 
-  json += "],\"total\":" + String(debugMessageCount) + "}";
+  json += "],\"total\":" + String(debugMessageCount) + ",\"start\":" + String(startIndex) + ",\"count\":" + String(count) + "}";
+
+  xSemaphoreGive(debugMutex);
+
   return json;
 }
 
-String PalletizerServer::formatDebugMessage(const DebugMessage& msg) {
+String PalletizerServer::formatDebugMessage(const DebugMessage &msg) {
   String json = "{";
   json += "\"timestamp\":" + String(msg.timestamp) + ",";
   json += "\"level\":\"" + msg.level + "\",";
@@ -515,18 +565,49 @@ String PalletizerServer::formatDebugMessage(const DebugMessage& msg) {
   return json;
 }
 
-bool PalletizerServer::isServerDuplicateMessage(const String& level, const String& source, const String& message, unsigned long currentTime) {
-  String messageKey = level + ":" + source + ":" + message;
-
-  if (serverDebugTracker.lastMessage == messageKey && (currentTime - serverDebugTracker.lastTimestamp) < 100) {
+bool PalletizerServer::isServerDuplicateMessage(const String &level, const String &source, const String &message, unsigned long currentTime) {
+  if (serverDebugTracker.lastMessage == message && serverDebugTracker.lastLevel == level && serverDebugTracker.lastSource == source && (currentTime - serverDebugTracker.lastTimestamp) < 100) {
     serverDebugTracker.duplicateCount++;
     return true;
   }
 
-  serverDebugTracker.lastMessage = messageKey;
+  if (message.indexOf("▶️ EXECUTION STARTED") != -1) {
+    static unsigned long lastExecutionStart = 0;
+    if ((currentTime - lastExecutionStart) < 500) {
+      return true;
+    }
+    lastExecutionStart = currentTime;
+  }
+
+  if (message.indexOf("📊 Execution Summary:") != -1 || message.indexOf("════════════════════════════════════════") != -1) {
+    static unsigned long lastPerformanceMsg = 0;
+    if ((currentTime - lastPerformanceMsg) < 1000) {
+      return true;
+    }
+    lastPerformanceMsg = currentTime;
+  }
+
+  if (message.indexOf("[████████████████████]") != -1) {
+    static unsigned long lastProgressMsg = 0;
+    if ((currentTime - lastProgressMsg) < 300) {
+      return true;
+    }
+    lastProgressMsg = currentTime;
+  }
+
+  if (message.indexOf("🔄 [") != -1 && message.indexOf("] Executing:") != -1) {
+    static String lastSequenceMsg = "";
+    if (message == lastSequenceMsg) {
+      return true;
+    }
+    lastSequenceMsg = message;
+  }
+
+  serverDebugTracker.lastMessage = message;
   serverDebugTracker.lastLevel = level;
   serverDebugTracker.lastSource = source;
   serverDebugTracker.lastTimestamp = currentTime;
   serverDebugTracker.duplicateCount = 0;
+
   return false;
 }

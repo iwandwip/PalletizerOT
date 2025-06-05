@@ -33,11 +33,23 @@ export default function SpeedPanel({
   const [activeTab, setActiveTab] = useState("global")
 
   const presetSpeeds = [
-    { label: "25%", value: 250 },
-    { label: "50%", value: 500 },
-    { label: "75%", value: 750 },
-    { label: "100%", value: 1000 }
+    { label: "25%", value: 2500 },
+    { label: "50%", value: 5000 },
+    { label: "75%", value: 7500 },
+    { label: "100%", value: 10000 }
   ]
+
+  const handleGlobalSpeedInput = (value: string) => {
+    const numValue = parseInt(value) || 10
+    const clampedValue = Math.max(10, Math.min(10000, numValue))
+    onGlobalSpeedChange(clampedValue)
+  }
+
+  const handleAxisSpeedInput = (axisId: string, value: string) => {
+    const numValue = parseInt(value) || 10
+    const clampedValue = Math.max(10, Math.min(10000, numValue))
+    onAxisSpeedChange(axisId, clampedValue)
+  }
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -45,14 +57,14 @@ export default function SpeedPanel({
         <TabsTrigger value="global">Global Speed</TabsTrigger>
         <TabsTrigger value="individual">Individual</TabsTrigger>
       </TabsList>
-      
+
       <TabsContent value="global" className="space-y-4 mt-4">
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <Slider
               value={[globalSpeed]}
               onValueChange={(value) => onGlobalSpeedChange(value[0])}
-              max={1000}
+              max={10000}
               min={10}
               step={10}
               className="flex-1"
@@ -60,13 +72,13 @@ export default function SpeedPanel({
             <Input
               type="number"
               value={globalSpeed}
-              onChange={(e) => onGlobalSpeedChange(parseInt(e.target.value) || 10)}
+              onChange={(e) => handleGlobalSpeedInput(e.target.value)}
               min={10}
-              max={1000}
-              className="w-20"
+              max={10000}
+              className="w-24"
             />
           </div>
-          
+
           <div className="grid grid-cols-4 gap-2">
             {presetSpeeds.map((preset) => (
               <Button
@@ -80,13 +92,13 @@ export default function SpeedPanel({
               </Button>
             ))}
           </div>
-          
+
           <Button onClick={onSetAllSpeeds} className="w-full">
             Set All Axes
           </Button>
         </div>
       </TabsContent>
-      
+
       <TabsContent value="individual" className="space-y-3 mt-4">
         {axes.map((axis) => (
           <div key={axis.id} className="flex items-center gap-3">
@@ -96,7 +108,7 @@ export default function SpeedPanel({
             <Slider
               value={[axis.speed]}
               onValueChange={(value) => onAxisSpeedChange(axis.id, value[0])}
-              max={1000}
+              max={10000}
               min={10}
               step={10}
               className="flex-1"
@@ -104,16 +116,16 @@ export default function SpeedPanel({
             <Input
               type="number"
               value={axis.speed}
-              onChange={(e) => onAxisSpeedChange(axis.id, parseInt(e.target.value) || 10)}
+              onChange={(e) => handleAxisSpeedInput(axis.id, e.target.value)}
               min={10}
-              max={1000}
-              className="w-16 text-sm"
+              max={10000}
+              className="w-20 text-sm"
             />
             <Button
               size="sm"
               variant="outline"
               onClick={() => onSetAxisSpeed(axis.id)}
-              className="text-xs"
+              className="text-xs px-3"
             >
               Set
             </Button>

@@ -22,14 +22,14 @@ interface ErrorNotification {
 
 export default function PalletizerControl() {
   const [axes, setAxes] = useState<Axis[]>([
-    { id: 'x', name: 'X', speed: 200 },
-    { id: 'y', name: 'Y', speed: 200 },
-    { id: 'z', name: 'Z', speed: 200 },
-    { id: 't', name: 'T', speed: 200 },
-    { id: 'g', name: 'G', speed: 364 },
+    { id: 'x', name: 'X', speed: 1000 },
+    { id: 'y', name: 'Y', speed: 1000 },
+    { id: 'z', name: 'Z', speed: 1000 },
+    { id: 't', name: 'T', speed: 1000 },
+    { id: 'g', name: 'G', speed: 1000 },
   ])
   
-  const [globalSpeed, setGlobalSpeed] = useState(200)
+  const [globalSpeed, setGlobalSpeed] = useState(1000)
   const [commandText, setCommandText] = useState('')
   const [darkMode, setDarkMode] = useState(false)
   const [errors, setErrors] = useState<ErrorNotification[]>([])
@@ -84,15 +84,17 @@ export default function PalletizerControl() {
   }
 
   const handleGlobalSpeedChange = (speed: number) => {
-    setGlobalSpeed(speed)
+    const clampedSpeed = Math.max(10, Math.min(10000, speed))
+    setGlobalSpeed(clampedSpeed)
     setAxes(prev => prev.map(axis => 
-      axis.id !== 'g' ? { ...axis, speed } : axis
+      axis.id !== 'g' ? { ...axis, speed: clampedSpeed } : axis
     ))
   }
 
   const handleAxisSpeedChange = (axisId: string, speed: number) => {
+    const clampedSpeed = Math.max(10, Math.min(10000, speed))
     setAxes(prev => prev.map(axis => 
-      axis.id === axisId ? { ...axis, speed } : axis
+      axis.id === axisId ? { ...axis, speed: clampedSpeed } : axis
     ))
   }
 
@@ -285,7 +287,7 @@ export default function PalletizerControl() {
         </div>
 
         <footer className="text-center text-sm text-muted-foreground py-4">
-          ESP32 Palletizer System - Built with Next.js & shadcn/ui
+          Palletizer - Orang Tua Group
         </footer>
       </div>
 
