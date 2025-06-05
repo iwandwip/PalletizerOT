@@ -82,7 +82,7 @@ void setup() {
   xReturned = xTaskCreatePinnedToCore(
     serverTask,
     "Server_Task",
-    16384,
+    20480,
     NULL,
     3,
     &serverTaskHandle,
@@ -98,7 +98,7 @@ void setup() {
   xReturned = xTaskCreatePinnedToCore(
     masterTask,
     "Master_Task",
-    8192,
+    12288,
     NULL,
     2,
     &masterTaskHandle,

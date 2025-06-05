@@ -31,7 +31,7 @@ public:
   void enableDebugCapture(bool enable);
 
 private:
-  static const int DEBUG_BUFFER_SIZE = 1000;
+  static const int DEBUG_BUFFER_SIZE = 25;
 
   struct ServerDebugTracker {
     String lastMessage;
