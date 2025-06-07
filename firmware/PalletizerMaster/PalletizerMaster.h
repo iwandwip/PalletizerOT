@@ -75,18 +75,22 @@ private:
   void onCommandReceived(const String& data);
   void onSlaveData(const String& data);
   void onSystemStateChange(const String& newState);
+  void onGroupCommand(const String& groupCommands);
   void processSystemStateCommand(const String& command);
   void setSystemState(SystemState newState);
   void sendStateUpdate();
   void setOnLedIndicator(LedIndicator index);
   bool checkAllSlavesCompleted();
-  void handleCompletionCheck();
+  void handleIndicatorBasedCompletion();
+  void handleSequenceCompletion();
+  void resetExecutionFlags();
   void handleGroupExecution(const String& groupCommands);
   bool shouldClearQueue(const String& data);
   bool isRealScriptCommand(const String& command);
   void parseInlineCommands(const String& commands);
   static void onSlaveDataWrapper(const String& data);
   static void onSystemStateChangeWrapper(const String& newState);
+  static void onGroupCommandWrapper(const String& groupCommands);
 };
 
 #endif

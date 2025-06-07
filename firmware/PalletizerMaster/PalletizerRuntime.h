@@ -52,6 +52,7 @@ public:
   };
 
   typedef void (*SystemStateCallback)(const String& newState);
+  typedef void (*GroupCommandCallback)(const String& groupCommands);
 
   PalletizerRuntime(PalletizerProtocol* protocol);
   void begin();
@@ -82,8 +83,8 @@ public:
   bool isWaitingForDetect();
   void setScriptParser(PalletizerScriptParser* parser);
   void setSystemStateCallback(SystemStateCallback callback);
+  void setGroupCommandCallback(GroupCommandCallback callback);
   void setSingleCommandFlags();
-  void notifyCommandSent();
   void notifySingleCommandComplete();
   bool isSingleCommandExecuting();
 
@@ -91,6 +92,7 @@ private:
   PalletizerProtocol* protocol;
   PalletizerScriptParser* scriptParser;
   SystemStateCallback systemStateCallback;
+  GroupCommandCallback groupCommandCallback;
 
   const String queueFilePath = "/queue.txt";
   const String queueIndexPath = "/queue_index.txt";

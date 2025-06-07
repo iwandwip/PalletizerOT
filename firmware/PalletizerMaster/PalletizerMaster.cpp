@@ -32,12 +32,13 @@ void PalletizerMaster::begin() {
   runtime->begin();
   runtime->setScriptParser(&scriptParser);
   runtime->setSystemStateCallback(onSystemStateChangeWrapper);
+  runtime->setGroupCommandCallback(onGroupCommandWrapper);
 
   if (indicatorEnabled) {
     pinMode(indicatorPin, INPUT_PULLUP);
     DEBUG_SERIAL_PRINTLN("MASTER: Indicator pin enabled on pin " + String(indicatorPin));
   } else {
-    DEBUG_SERIAL_PRINTLN("MASTER: Indicator pin disabled");
+    DEBUG_SERIAL_PRINTLN("MASTER: Indicator pin disabled - using message-based completion");
   }
 
   systemState = STATE_IDLE;
@@ -52,7 +53,7 @@ void PalletizerMaster::update() {
   if (waitingForGroupDelay && millis() >= groupCommandTimer) {
     waitingForGroupDelay = false;
     sequenceRunning = true;
-    waitingForCompletion = indicatorEnabled;
+    waitingForCompletion = true;
     lastCheckTime = millis();
 
     DEBUG_MGR.info("GROUP", "✅ GROUP delay completed, starting completion monitoring");
@@ -63,8 +64,10 @@ void PalletizerMaster::update() {
     }
   }
 
-  if (indicatorEnabled && (waitingForCompletion || runtime->isSingleCommandExecuting()) && (sequenceRunning || runtime->isSingleCommandExecuting())) {
-    handleCompletionCheck();
+  if ((sequenceRunning && waitingForCompletion) || runtime->isSingleCommandExecuting()) {
+    if (indicatorEnabled) {
+      handleIndicatorBasedCompletion();
+    }
   }
 
   if (systemState == STATE_STOPPING && !sequenceRunning && !waitingForCompletion && !runtime->isWaitingForSync() && !runtime->isWaitingForDetect() && !runtime->isSingleCommandExecuting()) {
@@ -161,6 +164,11 @@ void PalletizerMaster::processGroupCommand(const String& groupCommands) {
   DEBUG_MGR.info("GROUP", "└─ GROUP setup complete, waiting for delay...");
 }
 
+void PalletizerMaster::onGroupCommand(const String& groupCommands) {
+  DEBUG_SERIAL_PRINTLN("MASTER: GROUP command callback received from Runtime");
+  processGroupCommand(groupCommands);
+}
+
 void PalletizerMaster::addCommandToQueue(const String& command) {
   runtime->addCommandToQueue(command);
 }
@@ -192,7 +200,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
     protocol->sendCommandToAllSlaves(PalletizerProtocol::CMD_ZERO);
     delay(100);
     sequenceRunning = true;
-    waitingForCompletion = indicatorEnabled;
+    waitingForCompletion = true;
     lastCheckTime = millis();
     return;
   }
@@ -254,25 +262,9 @@ void PalletizerMaster::onSlaveData(const String& data) {
     return;
   }
 
-  if (!indicatorEnabled && waitingForCompletion && sequenceRunning && isSequenceCompleted) {
-    sequenceRunning = false;
-    waitingForCompletion = false;
-    groupExecutionActive = false;
-    DEBUG_SERIAL_PRINTLN("MASTER: All slaves completed sequence (based on message)");
-
-    if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-      DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
-      runtime->processNextCommand();
-    } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-      PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
-      if (execInfo.isExecuting) {
-        runtime->updateExecutionInfo(false);
-      }
-      setSystemState(STATE_IDLE);
-    } else if (systemState == STATE_STOPPING) {
-      runtime->clearQueue();
-      setSystemState(STATE_IDLE);
-    }
+  if (sequenceRunning && waitingForCompletion && isSequenceCompleted) {
+    handleSequenceCompletion();
+    return;
   }
 
   if (isPositionReached) {
@@ -285,8 +277,35 @@ void PalletizerMaster::onSlaveData(const String& data) {
     DEBUG_MGR.error("GROUP", "❌ Error in GROUP execution - aborting sequence");
     runtime->clearQueue();
     setSystemState(STATE_IDLE);
-    groupExecutionActive = false;
+    resetExecutionFlags();
   }
+}
+
+void PalletizerMaster::handleSequenceCompletion() {
+  DEBUG_SERIAL_PRINTLN("MASTER: Sequence completed - processing next command");
+
+  resetExecutionFlags();
+
+  if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+    DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
+    runtime->processNextCommand();
+  } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+    PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
+    if (execInfo.isExecuting) {
+      runtime->updateExecutionInfo(false);
+    }
+    setSystemState(STATE_IDLE);
+  } else if (systemState == STATE_STOPPING) {
+    runtime->clearQueue();
+    setSystemState(STATE_IDLE);
+  }
+}
+
+void PalletizerMaster::resetExecutionFlags() {
+  sequenceRunning = false;
+  waitingForCompletion = false;
+  groupExecutionActive = false;
+  waitingForGroupDelay = false;
 }
 
 void PalletizerMaster::onSystemStateChange(const String& newState) {
@@ -409,7 +428,7 @@ bool PalletizerMaster::checkAllSlavesCompleted() {
   return digitalRead(indicatorPin) == HIGH;
 }
 
-void PalletizerMaster::handleCompletionCheck() {
+void PalletizerMaster::handleIndicatorBasedCompletion() {
   if (millis() - lastCheckTime > 50) {
     lastCheckTime = millis();
 
@@ -423,21 +442,8 @@ void PalletizerMaster::handleCompletionCheck() {
       }
 
       if (sequenceRunning && waitingForCompletion) {
-        sequenceRunning = false;
-        waitingForCompletion = false;
-        groupExecutionActive = false;
-        DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
-
-        if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-          DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
-          runtime->processNextCommand();
-        } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-          PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
-          if (execInfo.isExecuting) {
-            runtime->updateExecutionInfo(false);
-          }
-          setSystemState(STATE_IDLE);
-        }
+        DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence (indicator-based)");
+        handleSequenceCompletion();
       }
     }
   }
@@ -480,5 +486,11 @@ void PalletizerMaster::onSlaveDataWrapper(const String& data) {
 void PalletizerMaster::onSystemStateChangeWrapper(const String& newState) {
   if (instance) {
     instance->onSystemStateChange(newState);
+  }
+}
+
+void PalletizerMaster::onGroupCommandWrapper(const String& groupCommands) {
+  if (instance) {
+    instance->onGroupCommand(groupCommands);
   }
 }

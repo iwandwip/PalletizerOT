@@ -7,7 +7,7 @@
 #define QUEUE_OPERATION_MODE QUEUE_MODE_APPEND
 
 PalletizerRuntime::PalletizerRuntime(PalletizerProtocol* protocol)
-  : protocol(protocol), scriptParser(nullptr), systemStateCallback(nullptr),
+  : protocol(protocol), scriptParser(nullptr), systemStateCallback(nullptr), groupCommandCallback(nullptr),
     queueSize(0), queueHead(0), syncSetPin(SYNC_SET_PIN), syncWaitPin(SYNC_WAIT_PIN),
     waitingForSync(false), waitStartTime(0), waitStartTimeForStats(0),
     waitingForDetect(false), detectStartTime(0), debounceStartTime(0), inDebouncePhase(false),
@@ -208,8 +208,13 @@ void PalletizerRuntime::processNextCommand() {
 
     if (endPos > startPos) {
       String groupCommands = trimmedCommand.substring(startPos, endPos);
-      notifyCommandSent();
-      protocol->sendGroupCommands(groupCommands);
+      DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP command detected - notifying Master");
+      if (groupCommandCallback) {
+        groupCommandCallback(groupCommands);
+      } else {
+        DEBUG_SERIAL_PRINTLN("RUNTIME: WARNING - No GROUP callback registered!");
+        protocol->sendGroupCommands(groupCommands);
+      }
       processingCommand = false;
       return;
     }
@@ -217,8 +222,13 @@ void PalletizerRuntime::processNextCommand() {
 
   if (trimmedCommand.startsWith("GROUP;")) {
     String groupCommands = trimmedCommand.substring(6);
-    notifyCommandSent();
-    protocol->sendGroupCommands(groupCommands);
+    DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP; command detected - notifying Master");
+    if (groupCommandCallback) {
+      groupCommandCallback(groupCommands);
+    } else {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: WARNING - No GROUP callback registered!");
+      protocol->sendGroupCommands(groupCommands);
+    }
     processingCommand = false;
     return;
   }
@@ -253,10 +263,6 @@ void PalletizerRuntime::processNextCommand() {
 void PalletizerRuntime::setSingleCommandFlags() {
   singleCommandExecuting = true;
   DEBUG_SERIAL_PRINTLN("RUNTIME: Single command started - awaiting completion");
-}
-
-void PalletizerRuntime::notifyCommandSent() {
-  singleCommandExecuting = false;
 }
 
 void PalletizerRuntime::notifySingleCommandComplete() {
@@ -494,6 +500,10 @@ void PalletizerRuntime::setScriptParser(PalletizerScriptParser* parser) {
 
 void PalletizerRuntime::setSystemStateCallback(SystemStateCallback callback) {
   systemStateCallback = callback;
+}
+
+void PalletizerRuntime::setGroupCommandCallback(GroupCommandCallback callback) {
+  groupCommandCallback = callback;
 }
 
 bool PalletizerRuntime::initFileSystem() {
