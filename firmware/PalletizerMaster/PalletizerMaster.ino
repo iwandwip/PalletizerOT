@@ -3,8 +3,6 @@
 
 #include "DebugConfig.h"
 #include "PalletizerMaster.h"
-#include "PalletizerProtocol.h"
-#include "PalletizerRuntime.h"
 #include "PalletizerServer.h"
 #include "DebugManager.h"
 #include "LittleFS.h"
