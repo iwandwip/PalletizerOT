@@ -246,6 +246,8 @@ void PalletizerServer::handleCommand(AsyncWebServerRequest *request) {
       commandType = "SPEED_CONTROL";
     } else if (upperCommand.startsWith("SET(") || upperCommand == "WAIT") {
       commandType = "SYNC_COMMAND";
+    } else if (upperCommand == "DETECT") {
+      commandType = "DETECT_COMMAND";
     } else if (command.indexOf("NEXT") != -1) {
       commandType = "LEGACY_BATCH";
     } else if (command.indexOf('(') != -1 && command.indexOf(',') != -1) {
@@ -338,7 +340,7 @@ void PalletizerServer::handleDownloadCommands(AsyncWebServerRequest *request) {
 }
 
 void PalletizerServer::handleGetTimeoutConfig(AsyncWebServerRequest *request) {
-  PalletizerMaster::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
+  PalletizerRuntime::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
 
   String response = "{";
   response += "\"maxWaitTime\":" + String(config.maxWaitTime) + ",";
@@ -352,7 +354,7 @@ void PalletizerServer::handleGetTimeoutConfig(AsyncWebServerRequest *request) {
 }
 
 void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest *request) {
-  PalletizerMaster::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
+  PalletizerRuntime::TimeoutConfig config = palletizerMaster->getTimeoutConfig();
   bool configChanged = false;
 
   if (request->hasParam("maxWaitTime", true)) {
@@ -366,7 +368,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest *request) {
   if (request->hasParam("strategy", true)) {
     int newStrategy = request->getParam("strategy", true)->value().toInt();
     if (newStrategy >= 0 && newStrategy <= 3) {
-      config.strategy = (PalletizerMaster::WaitTimeoutStrategy)newStrategy;
+      config.strategy = (PalletizerRuntime::WaitTimeoutStrategy)newStrategy;
       configChanged = true;
     }
   }
@@ -403,7 +405,7 @@ void PalletizerServer::handleSetTimeoutConfig(AsyncWebServerRequest *request) {
 }
 
 void PalletizerServer::handleGetTimeoutStats(AsyncWebServerRequest *request) {
-  PalletizerMaster::TimeoutStats stats = palletizerMaster->getTimeoutStats();
+  PalletizerRuntime::TimeoutStats stats = palletizerMaster->getTimeoutStats();
   float successRate = palletizerMaster->getTimeoutSuccessRate();
 
   String response = "{";

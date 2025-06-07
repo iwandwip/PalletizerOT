@@ -7,7 +7,7 @@
 // Set these to 1 to enable, 0 to disable
 
 #define WEB_DEBUG 0     // Debug messages to website (0=OFF, 1=ON)
-#define SERIAL_DEBUG 0  // Debug messages to serial monitor (0=OFF, 1=ON)
+#define SERIAL_DEBUG 1  // Debug messages to serial monitor (0=OFF, 1=ON)
 #define MEMORY_DEBUG 0
 
 // ==========================================
