@@ -33,23 +33,23 @@ void PalletizerMaster::begin() {
 
   if (indicatorEnabled) {
     pinMode(indicatorPin, INPUT_PULLUP);
-    DEBUG_PRINTLN("MASTER: Indicator pin enabled on pin " + String(indicatorPin));
+    DEBUG_SERIAL_PRINTLN("MASTER: Indicator pin enabled on pin " + String(indicatorPin));
   } else {
-    DEBUG_PRINTLN("MASTER: Indicator pin disabled");
+    DEBUG_SERIAL_PRINTLN("MASTER: Indicator pin disabled");
   }
 
   if (!initFileSystem()) {
-    DEBUG_PRINTLN("MASTER: Failed to initialize file system");
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to initialize file system");
   } else {
-    DEBUG_PRINTLN("MASTER: File system initialized");
+    DEBUG_SERIAL_PRINTLN("MASTER: File system initialized");
     clearQueue();
     loadTimeoutConfig();
   }
 
   systemState = STATE_IDLE;
   sendStateUpdate();
-  DEBUG_PRINTLN("MASTER: System initialized");
-  DEBUG_PRINTLN("MASTER: Sync pins initialized - Set:" + String(syncSetPin) + " Wait:" + String(syncWaitPin));
+  DEBUG_SERIAL_PRINTLN("MASTER: System initialized");
+  DEBUG_SERIAL_PRINTLN("MASTER: Sync pins initialized - Set:" + String(syncSetPin) + " Wait:" + String(syncWaitPin));
 }
 
 void PalletizerMaster::update() {
@@ -135,7 +135,7 @@ void PalletizerMaster::update() {
         DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
 
         if (!isQueueEmpty() && systemState == STATE_RUNNING) {
-          DEBUG_PRINTLN("MASTER: Processing next command from queue");
+          DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
           processNextCommand();
         } else if (isQueueEmpty() && systemState == STATE_RUNNING) {
           if (executionInfo.isExecuting) {
@@ -180,7 +180,7 @@ void PalletizerMaster::setTimeoutConfig(const TimeoutConfig& config) {
   if (config.saveToFile) {
     saveTimeoutConfig();
   }
-  DEBUG_PRINTLN("MASTER: Timeout config updated - timeout:" + String(config.maxWaitTime) + "ms strategy:" + String(config.strategy));
+  DEBUG_SERIAL_PRINTLN("MASTER: Timeout config updated - timeout:" + String(config.maxWaitTime) + "ms strategy:" + String(config.strategy));
 }
 
 PalletizerMaster::TimeoutConfig PalletizerMaster::getTimeoutConfig() {
@@ -192,7 +192,7 @@ void PalletizerMaster::setWaitTimeout(unsigned long timeoutMs) {
   if (timeoutConfig.saveToFile) {
     saveTimeoutConfig();
   }
-  DEBUG_PRINTLN("MASTER: Wait timeout set to " + String(timeoutMs) + "ms");
+  DEBUG_SERIAL_PRINTLN("MASTER: Wait timeout set to " + String(timeoutMs) + "ms");
 }
 
 void PalletizerMaster::setTimeoutStrategy(WaitTimeoutStrategy strategy) {
@@ -200,7 +200,7 @@ void PalletizerMaster::setTimeoutStrategy(WaitTimeoutStrategy strategy) {
   if (timeoutConfig.saveToFile) {
     saveTimeoutConfig();
   }
-  DEBUG_PRINTLN("MASTER: Timeout strategy set to " + String(strategy));
+  DEBUG_SERIAL_PRINTLN("MASTER: Timeout strategy set to " + String(strategy));
 }
 
 void PalletizerMaster::setMaxTimeoutWarning(int maxWarning) {
@@ -208,7 +208,7 @@ void PalletizerMaster::setMaxTimeoutWarning(int maxWarning) {
   if (timeoutConfig.saveToFile) {
     saveTimeoutConfig();
   }
-  DEBUG_PRINTLN("MASTER: Max timeout warning set to " + String(maxWarning));
+  DEBUG_SERIAL_PRINTLN("MASTER: Max timeout warning set to " + String(maxWarning));
 }
 
 PalletizerMaster::TimeoutStats PalletizerMaster::getTimeoutStats() {
@@ -221,7 +221,7 @@ void PalletizerMaster::clearTimeoutStats() {
   timeoutStats.lastTimeoutTime = 0;
   timeoutStats.totalWaitTime = 0;
   timeoutStats.currentRetryCount = 0;
-  DEBUG_PRINTLN("MASTER: Timeout statistics cleared");
+  DEBUG_SERIAL_PRINTLN("MASTER: Timeout statistics cleared");
 }
 
 float PalletizerMaster::getTimeoutSuccessRate() {
@@ -233,7 +233,7 @@ float PalletizerMaster::getTimeoutSuccessRate() {
 bool PalletizerMaster::saveTimeoutConfig() {
   File configFile = LittleFS.open(timeoutConfigPath, "w");
   if (!configFile) {
-    DEBUG_PRINTLN("MASTER: Failed to save timeout config");
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to save timeout config");
     return false;
   }
 
@@ -247,19 +247,19 @@ bool PalletizerMaster::saveTimeoutConfig() {
 
   configFile.print(jsonConfig);
   ensureFileIsClosed(configFile);
-  DEBUG_PRINTLN("MASTER: Timeout config saved");
+  DEBUG_SERIAL_PRINTLN("MASTER: Timeout config saved");
   return true;
 }
 
 bool PalletizerMaster::loadTimeoutConfig() {
   if (!LittleFS.exists(timeoutConfigPath)) {
-    DEBUG_PRINTLN("MASTER: No timeout config file found, using defaults");
+    DEBUG_SERIAL_PRINTLN("MASTER: No timeout config file found, using defaults");
     return false;
   }
 
   File configFile = LittleFS.open(timeoutConfigPath, "r");
   if (!configFile) {
-    DEBUG_PRINTLN("MASTER: Failed to load timeout config");
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to load timeout config");
     return false;
   }
 
@@ -308,7 +308,7 @@ bool PalletizerMaster::loadTimeoutConfig() {
     timeoutConfig.saveToFile = (value == "true");
   }
 
-  DEBUG_PRINTLN("MASTER: Timeout config loaded - timeout:" + String(timeoutConfig.maxWaitTime) + "ms");
+  DEBUG_SERIAL_PRINTLN("MASTER: Timeout config loaded - timeout:" + String(timeoutConfig.maxWaitTime) + "ms");
   return true;
 }
 
@@ -368,7 +368,7 @@ void PalletizerMaster::checkSlaveData() {
 }
 
 void PalletizerMaster::onCommandReceived(const String& data) {
-  DEBUG_PRINTLN("COMMAND→MASTER: " + data);
+  DEBUG_SERIAL_PRINTLN("COMMAND→MASTER: " + data);
   requestNextCommand = false;
 
   String trimmedData = data;
@@ -419,14 +419,14 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   }
 
   if (isRealScriptCommand(trimmedData)) {
-    DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
+    DEBUG_SERIAL_PRINTLN("MASTER: Detected script format - processing directly");
     processScriptCommand(trimmedData);
     return;
   }
 
   if (!sequenceRunning && !waitingForCompletion && !scriptProcessing) {
     if (upperData == "END_QUEUE") {
-      DEBUG_PRINTLN("MASTER: Queue loading completed");
+      DEBUG_SERIAL_PRINTLN("MASTER: Queue loading completed");
       scriptProcessing = false;
     } else {
       if (shouldClearQueue(trimmedData)) {
@@ -436,7 +436,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
         }
       }
 
-      DEBUG_PRINTLN("MASTER: Processing as inline commands");
+      DEBUG_SERIAL_PRINTLN("MASTER: Processing as inline commands");
       processInlineCommands(trimmedData);
     }
   } else if (trimmedData != "END_QUEUE") {
@@ -447,7 +447,7 @@ void PalletizerMaster::onCommandReceived(const String& data) {
       }
     }
 
-    DEBUG_PRINTLN("MASTER: Processing as inline commands");
+    DEBUG_SERIAL_PRINTLN("MASTER: Processing as inline commands");
     processInlineCommands(trimmedData);
   }
 }
@@ -460,10 +460,10 @@ void PalletizerMaster::onSlaveData(const String& data) {
       sequenceRunning = false;
       waitingForCompletion = false;
       groupExecutionActive = false;
-      DEBUG_PRINTLN("MASTER: All slaves completed sequence (based on message)");
+      DEBUG_SERIAL_PRINTLN("MASTER: All slaves completed sequence (based on message)");
 
       if (!isQueueEmpty() && systemState == STATE_RUNNING) {
-        DEBUG_PRINTLN("MASTER: Processing next command from queue");
+        DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
         processNextCommand();
       } else if (isQueueEmpty() && systemState == STATE_RUNNING) {
         if (executionInfo.isExecuting) {
@@ -546,7 +546,7 @@ void PalletizerMaster::processSpeedCommand(const String& data) {
 }
 
 void PalletizerMaster::processCoordinateData(const String& data) {
-  DEBUG_PRINTLN("MASTER: Processing coordinates");
+  DEBUG_SERIAL_PRINTLN("MASTER: Processing coordinates");
   currentCommand = CMD_RUN;
   logMotionCommand(data);
   parseCoordinateData(data);
@@ -563,14 +563,14 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
   unsigned long currentTime = millis();
 
   if (command == lastStateCommand && (currentTime - lastStateTime) < 200) {
-    DEBUG_PRINTLN("MASTER: Ignoring duplicate state command: " + command);
+    DEBUG_SERIAL_PRINTLN("MASTER: Ignoring duplicate state command: " + command);
     return;
   }
 
   lastStateCommand = command;
   lastStateTime = currentTime;
 
-  DEBUG_PRINTLN("MASTER: Processing system state command: " + command);
+  DEBUG_SERIAL_PRINTLN("MASTER: Processing system state command: " + command);
 
   if (command == "IDLE") {
     if (systemState == STATE_RUNNING || systemState == STATE_PAUSED) {
@@ -585,7 +585,7 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
     }
   } else if (command == "PLAY") {
     if (systemState == STATE_RUNNING) {
-      DEBUG_PRINTLN("MASTER: Already running, ignoring duplicate PLAY");
+      DEBUG_SERIAL_PRINTLN("MASTER: Already running, ignoring duplicate PLAY");
       return;
     }
 
@@ -633,7 +633,7 @@ void PalletizerMaster::processSetCommand(const String& data) {
       digitalWrite(syncSetPin, LOW);
       DEBUG_MGR.sync("SET(0)", "Sync signal LOW");
     } else {
-      DEBUG_PRINTLN("MASTER: Invalid SET value: " + value);
+      DEBUG_SERIAL_PRINTLN("MASTER: Invalid SET value: " + value);
     }
   }
 }
@@ -663,12 +663,12 @@ void PalletizerMaster::processDetectCommand() {
 void PalletizerMaster::processScriptCommand(const String& script) {
   static bool scriptInProgress = false;
   if (scriptInProgress) {
-    DEBUG_PRINTLN("MASTER: Script already processing, ignoring duplicate");
+    DEBUG_SERIAL_PRINTLN("MASTER: Script already processing, ignoring duplicate");
     return;
   }
 
   scriptInProgress = true;
-  DEBUG_PRINTLN("MASTER: Processing script command");
+  DEBUG_SERIAL_PRINTLN("MASTER: Processing script command");
 
   scriptProcessing = true;
   queueClearRequested = false;
@@ -697,7 +697,7 @@ void PalletizerMaster::sendCommandToAllSlaves(Command cmd) {
   for (int i = 0; i < 5; i++) {
     String command = String(slaveIds[i]) + ";" + String(cmd);
     sendToSlave(command);
-    DEBUG_PRINTLN("MASTER→SLAVE: " + command);
+    DEBUG_SERIAL_PRINTLN("MASTER→SLAVE: " + command);
   }
 }
 
@@ -722,7 +722,7 @@ void PalletizerMaster::parseCoordinateData(const String& data) {
 
     String command = slaveId + ";" + String(currentCommand) + ";" + params;
     sendToSlave(command);
-    DEBUG_PRINTLN("MASTER→SLAVE: " + command);
+    DEBUG_SERIAL_PRINTLN("MASTER→SLAVE: " + command);
 
     pos = data.indexOf(',', closePos);
     pos = (pos == -1) ? data.length() : pos + 1;
@@ -892,7 +892,7 @@ void PalletizerMaster::initDetectPins() {
     pinMode(DETECT_PINS[i], INPUT_PULLUP);
     currentPinStates[i] = digitalRead(DETECT_PINS[i]);
     lastPinStates[i] = currentPinStates[i];
-    DEBUG_PRINTLN("MASTER: Detect pins initialized - Pins: " + String(DETECT_PINS[i]));
+    DEBUG_SERIAL_PRINTLN("MASTER: Detect pins initialized - Pins: " + String(DETECT_PINS[i]));
   }
 }
 
@@ -902,7 +902,7 @@ void PalletizerMaster::addToQueue(const String& command) {
 
   unsigned long currentTime = millis();
   if (currentTime - lastAddTime < 50 && command == lastAddCommand) {
-    DEBUG_PRINTLN("MASTER: Ignoring duplicate queue add: " + command);
+    DEBUG_SERIAL_PRINTLN("MASTER: Ignoring duplicate queue add: " + command);
     return;
   }
 
@@ -912,10 +912,10 @@ void PalletizerMaster::addToQueue(const String& command) {
   if (appendToQueueFile(command)) {
     queueSize++;
     writeQueueIndex();
-    DEBUG_PRINTLN("MASTER: Added command to queue: " + command + " (Queue size: " + String(queueSize) + ")");
+    DEBUG_SERIAL_PRINTLN("MASTER: Added command to queue: " + command + " (Queue size: " + String(queueSize) + ")");
     executionInfo.totalCommands++;
   } else {
-    DEBUG_PRINTLN("MASTER: Failed to add command to queue: " + command);
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to add command to queue: " + command);
   }
 }
 
@@ -929,7 +929,7 @@ String PalletizerMaster::getFromQueue() {
   queueSize--;
   writeQueueIndex();
 
-  DEBUG_PRINTLN("MASTER: Processing command from queue: " + command + " (Queue size: " + String(queueSize) + ")");
+  DEBUG_SERIAL_PRINTLN("MASTER: Processing command from queue: " + command + " (Queue size: " + String(queueSize) + ")");
 
   return command;
 }
@@ -946,22 +946,22 @@ void PalletizerMaster::processNextCommand() {
   static bool processingCommand = false;
 
   if (processingCommand) {
-    DEBUG_PRINTLN("MASTER: Already processing command, skipping duplicate");
+    DEBUG_SERIAL_PRINTLN("MASTER: Already processing command, skipping duplicate");
     return;
   }
 
   if (groupExecutionActive || waitingForGroupDelay) {
-    DEBUG_PRINTLN("MASTER: GROUP command active, deferring next command");
+    DEBUG_SERIAL_PRINTLN("MASTER: GROUP command active, deferring next command");
     return;
   }
 
   if (isQueueEmpty()) {
-    DEBUG_PRINTLN("MASTER: Command queue is empty");
+    DEBUG_SERIAL_PRINTLN("MASTER: Command queue is empty");
     return;
   }
 
   if (systemState != STATE_RUNNING) {
-    DEBUG_PRINTLN("MASTER: Not processing command because system is not in RUNNING state");
+    DEBUG_SERIAL_PRINTLN("MASTER: Not processing command because system is not in RUNNING state");
     return;
   }
 
@@ -1021,11 +1021,11 @@ void PalletizerMaster::processNextCommand() {
   } else if (isCoordinateCommand(trimmedCommand)) {
     processCoordinateData(trimmedCommand);
   } else if (isInvalidSpeedFragment(trimmedCommand)) {
-    DEBUG_PRINTLN("MASTER: Skipping invalid speed fragment: " + trimmedCommand);
+    DEBUG_SERIAL_PRINTLN("MASTER: Skipping invalid speed fragment: " + trimmedCommand);
   } else if (isRealScriptCommand(trimmedCommand)) {
     processScriptCommand(trimmedCommand);
   } else {
-    DEBUG_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
+    DEBUG_SERIAL_PRINTLN("MASTER: Unknown command format: " + trimmedCommand);
   }
 
   processingCommand = false;
@@ -1034,7 +1034,7 @@ void PalletizerMaster::processNextCommand() {
 void PalletizerMaster::requestCommand() {
   if (!isQueueFull() && !requestNextCommand) {
     requestNextCommand = true;
-    DEBUG_PRINTLN("MASTER: Ready for next command");
+    DEBUG_SERIAL_PRINTLN("MASTER: Ready for next command");
   }
 }
 
@@ -1050,7 +1050,7 @@ void PalletizerMaster::clearQueue() {
 
     bool removed = LittleFS.remove(queueFilePath);
     if (!removed) {
-      DEBUG_PRINTLN("MASTER: Warning - could not remove queue file");
+      DEBUG_SERIAL_PRINTLN("MASTER: Warning - could not remove queue file");
     }
   }
 
@@ -1058,7 +1058,7 @@ void PalletizerMaster::clearQueue() {
   if (queueFile) {
     ensureFileIsClosed(queueFile);
   } else {
-    DEBUG_PRINTLN("MASTER: Failed to create new queue file");
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to create new queue file");
   }
 
   queueHead = 0;
@@ -1068,7 +1068,7 @@ void PalletizerMaster::clearQueue() {
   executionInfo.totalCommands = 0;
   executionInfo.currentCommand = 0;
 
-  DEBUG_PRINTLN("MASTER: Command queue cleared");
+  DEBUG_SERIAL_PRINTLN("MASTER: Command queue cleared");
 }
 
 bool PalletizerMaster::initFileSystem() {
@@ -1167,7 +1167,7 @@ int PalletizerMaster::getQueueCount() {
 void PalletizerMaster::setSystemState(SystemState newState) {
   if (systemState != newState) {
     systemState = newState;
-    DEBUG_PRINTLN("MASTER: System state changed to " + String(systemState));
+    DEBUG_SERIAL_PRINTLN("MASTER: System state changed to " + String(systemState));
     sendStateUpdate();
 
     if (newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !isQueueEmpty()) {
@@ -1200,7 +1200,7 @@ void PalletizerMaster::sendStateUpdate() {
       stateStr = "UNKNOWN";
       break;
   }
-  DEBUG_PRINTLN("MASTER: STATE:" + stateStr);
+  DEBUG_SERIAL_PRINTLN("MASTER: STATE:" + stateStr);
 }
 
 void PalletizerMaster::setOnLedIndicator(LedIndicator index) {
@@ -1215,17 +1215,17 @@ void PalletizerMaster::setOnLedIndicator(LedIndicator index) {
 
 void PalletizerMaster::loadCommandsFromFile() {
   if (!LittleFS.exists(queueFilePath)) {
-    DEBUG_PRINTLN("MASTER: No saved commands found");
+    DEBUG_SERIAL_PRINTLN("MASTER: No saved commands found");
     return;
   }
 
   File file = LittleFS.open(queueFilePath, "r");
   if (!file) {
-    DEBUG_PRINTLN("MASTER: Failed to open queue file");
+    DEBUG_SERIAL_PRINTLN("MASTER: Failed to open queue file");
     return;
   }
 
-  DEBUG_PRINTLN("MASTER: Loading commands from file...");
+  DEBUG_SERIAL_PRINTLN("MASTER: Loading commands from file...");
 
   String allCommands = file.readString();
   ensureFileIsClosed(file);
@@ -1234,17 +1234,17 @@ void PalletizerMaster::loadCommandsFromFile() {
 
   if (allCommands.length() > 0) {
     if (isRealScriptCommand(allCommands)) {
-      DEBUG_PRINTLN("MASTER: Detected script format - processing directly");
+      DEBUG_SERIAL_PRINTLN("MASTER: Detected script format - processing directly");
       processScriptCommand(allCommands);
     } else {
-      DEBUG_PRINTLN("MASTER: Processing as inline commands");
+      DEBUG_SERIAL_PRINTLN("MASTER: Processing as inline commands");
       processInlineCommands(allCommands);
       processCommand("END_QUEUE");
     }
-    DEBUG_PRINTLN("MASTER: Commands loaded from file successfully");
+    DEBUG_SERIAL_PRINTLN("MASTER: Commands loaded from file successfully");
     DEBUG_MGR.info("EXECUTOR", "Total Commands in Queue: " + String(executionInfo.totalCommands));
   } else {
-    DEBUG_PRINTLN("MASTER: No valid commands found in file");
+    DEBUG_SERIAL_PRINTLN("MASTER: No valid commands found in file");
   }
 }
 
@@ -1257,10 +1257,10 @@ void PalletizerMaster::handleWaitTimeout() {
       waitingForSync = false;
 
       if (timeoutStats.totalTimeouts >= timeoutConfig.maxTimeoutWarning) {
-        DEBUG_PRINTLN("MASTER: WARNING - Frequent WAIT timeouts detected!");
+        DEBUG_SERIAL_PRINTLN("MASTER: WARNING - Frequent WAIT timeouts detected!");
 
         if (timeoutStats.totalTimeouts >= timeoutConfig.maxTimeoutWarning * 2) {
-          DEBUG_PRINTLN("MASTER: Too many timeouts - auto pausing");
+          DEBUG_SERIAL_PRINTLN("MASTER: Too many timeouts - auto pausing");
           setSystemState(STATE_PAUSED);
           return;
         }
@@ -1301,7 +1301,7 @@ void PalletizerMaster::handleWaitTimeout() {
 
 void PalletizerMaster::resetTimeoutCounter() {
   if (timeoutStats.totalTimeouts > 0) {
-    DEBUG_PRINTLN("MASTER: WAIT successful - resetting timeout counter");
+    DEBUG_SERIAL_PRINTLN("MASTER: WAIT successful - resetting timeout counter");
     timeoutStats.currentRetryCount = 0;
   }
 }
@@ -1357,7 +1357,7 @@ void PalletizerMaster::updateExecutionInfo(bool start) {
 
   if (start) {
     if (executionActive || executionInfoActive) {
-      DEBUG_PRINTLN("MASTER: Execution already active, ignoring duplicate start");
+      DEBUG_SERIAL_PRINTLN("MASTER: Execution already active, ignoring duplicate start");
       return;
     }
 
@@ -1372,7 +1372,7 @@ void PalletizerMaster::updateExecutionInfo(bool start) {
     DEBUG_MGR.info("EXECUTOR", "▶️ EXECUTION STARTED");
   } else {
     if (!executionActive || !executionInfoActive) {
-      DEBUG_PRINTLN("MASTER: Execution not active, ignoring duplicate end");
+      DEBUG_SERIAL_PRINTLN("MASTER: Execution not active, ignoring duplicate end");
       return;
     }
 

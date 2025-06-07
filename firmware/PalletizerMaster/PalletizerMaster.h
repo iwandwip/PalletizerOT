@@ -6,14 +6,6 @@
 
 #include "DebugConfig.h"
 
-#if SERIAL_DEBUG == 1
-#define DEBUG_PRINT(x) Serial.print(x)
-#define DEBUG_PRINTLN(x) Serial.println(x)
-#else
-#define DEBUG_PRINT(x)
-#define DEBUG_PRINTLN(x)
-#endif
-
 #define QUEUE_MODE_APPEND 0
 #define QUEUE_MODE_OVERWRITE 1
 #define QUEUE_OPERATION_MODE QUEUE_MODE_APPEND
