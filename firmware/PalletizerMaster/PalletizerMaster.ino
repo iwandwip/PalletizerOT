@@ -18,8 +18,8 @@
 #define INDICATOR_PIN 26
 
 #if DEVELOPMENT_MODE == 1
-#define WIFI_MODE PalletizerServer::MODE_AP
-#define WIFI_SSID "Palletizer.DEV"
+#define WIFI_MODE PalletizerServer::MODE_STA
+#define WIFI_SSID "silenceAndSleep"
 #define WIFI_PASSWORD "11111111"
 #else
 #define WIFI_MODE PalletizerServer::MODE_AP
