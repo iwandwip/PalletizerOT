@@ -21,10 +21,10 @@
 #define SYNC_SET_PIN 25
 #define SYNC_WAIT_PIN 27
 
-const int DETECT_PINS[] = { 39, 36 };
+const int DETECT_PINS[] = { 36 };
 const int DETECT_PIN_COUNT = sizeof(DETECT_PINS) / sizeof(DETECT_PINS[0]);
 #define DETECT_DEBOUNCE_MS 1000
-#define DETECT_TIMEOUT_MS 10000
+#define DETECT_TIMEOUT_MS 60000
 
 #include "Kinematrix.h"
 #include "FS.h"

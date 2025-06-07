@@ -892,8 +892,8 @@ void PalletizerMaster::initDetectPins() {
     pinMode(DETECT_PINS[i], INPUT_PULLUP);
     currentPinStates[i] = digitalRead(DETECT_PINS[i]);
     lastPinStates[i] = currentPinStates[i];
+    DEBUG_PRINTLN("MASTER: Detect pins initialized - Pins: " + String(DETECT_PINS[i]));
   }
-  DEBUG_PRINTLN("MASTER: Detect pins initialized - Pins: " + String(DETECT_PINS[0]) + ", " + String(DETECT_PINS[1]));
 }
 
 void PalletizerMaster::addToQueue(const String& command) {
