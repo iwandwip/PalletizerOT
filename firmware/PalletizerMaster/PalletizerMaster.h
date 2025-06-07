@@ -21,6 +21,11 @@
 #define SYNC_SET_PIN 25
 #define SYNC_WAIT_PIN 27
 
+const int DETECT_PINS[] = { 39, 36 };
+const int DETECT_PIN_COUNT = sizeof(DETECT_PINS) / sizeof(DETECT_PINS[0]);
+#define DETECT_DEBOUNCE_MS 1000
+#define DETECT_TIMEOUT_MS 10000
+
 #include "Kinematrix.h"
 #include "FS.h"
 #include "LittleFS.h"
@@ -35,7 +40,8 @@ public:
     CMD_SETSPEED = 6,
     CMD_SET = 7,
     CMD_WAIT = 8,
-    CMD_GROUP = 9
+    CMD_GROUP = 9,
+    CMD_DETECT = 10
   };
 
   enum SystemState {
@@ -153,6 +159,13 @@ private:
   bool waitingForSync;
   unsigned long waitStartTime;
 
+  bool waitingForDetect;
+  unsigned long detectStartTime;
+  unsigned long debounceStartTime;
+  bool inDebouncePhase;
+  bool currentPinStates[5];
+  bool lastPinStates[5];
+
   TimeoutConfig timeoutConfig;
   TimeoutStats timeoutStats;
   unsigned long waitStartTimeForStats;
@@ -176,6 +189,7 @@ private:
   void processSyncCommand(const String& command);
   void processSetCommand(const String& data);
   void processWaitCommand();
+  void processDetectCommand();
   void processScriptCommand(const String& script);
   void processInlineCommands(const String& commands);
   void sendCommandToAllSlaves(Command cmd);
@@ -184,6 +198,10 @@ private:
   void parseInlineCommands(const String& input, String* statements, int& count);
   bool checkAllSlavesCompleted();
   bool checkSyncTimeout();
+  bool checkAllPinsLow();
+  bool checkDetectTimeout();
+  void resetDetectionState();
+  void initDetectPins();
   void addToQueue(const String& command);
   String getFromQueue();
   bool isQueueEmpty();

@@ -6,6 +6,7 @@ PalletizerMaster* PalletizerMaster::instance = nullptr;
 PalletizerMaster::PalletizerMaster(int rxPin, int txPin, int indicatorPin)
   : rxPin(rxPin), txPin(txPin), rxIndicatorLed(2), indicatorPin(indicatorPin),
     syncSetPin(SYNC_SET_PIN), syncWaitPin(SYNC_WAIT_PIN), waitingForSync(false), waitStartTime(0),
+    waitingForDetect(false), detectStartTime(0), debounceStartTime(0), inDebouncePhase(false),
     scriptParser(this), ledIndicator{
       DigitalOut(27, true),
       DigitalOut(14, true),
@@ -13,6 +14,11 @@ PalletizerMaster::PalletizerMaster(int rxPin, int txPin, int indicatorPin)
     } {
   instance = this;
   indicatorEnabled = (indicatorPin != -1);
+
+  for (int i = 0; i < 5; i++) {
+    currentPinStates[i] = true;
+    lastPinStates[i] = true;
+  }
 }
 
 void PalletizerMaster::begin() {
@@ -22,6 +28,8 @@ void PalletizerMaster::begin() {
   pinMode(syncSetPin, OUTPUT);
   pinMode(syncWaitPin, INPUT_PULLDOWN);
   digitalWrite(syncSetPin, LOW);
+
+  initDetectPins();
 
   if (indicatorEnabled) {
     pinMode(indicatorPin, INPUT_PULLUP);
@@ -72,6 +80,39 @@ void PalletizerMaster::update() {
       }
     } else if (checkSyncTimeout()) {
       handleWaitTimeout();
+    }
+
+    return;
+  }
+
+  if (waitingForDetect) {
+    if (checkAllPinsLow()) {
+      if (!inDebouncePhase) {
+        inDebouncePhase = true;
+        debounceStartTime = millis();
+        DEBUG_MGR.info("DETECT", "🔍 All pins LOW detected, starting debounce (" + String(DETECT_DEBOUNCE_MS) + "ms)");
+      } else if (millis() - debounceStartTime >= DETECT_DEBOUNCE_MS) {
+        DEBUG_MGR.info("DETECT", "✅ Detection confirmed - continuing execution");
+        resetDetectionState();
+
+        if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+          processNextCommand();
+        }
+      }
+    } else {
+      if (inDebouncePhase) {
+        DEBUG_MGR.warning("DETECT", "🔄 Pin went HIGH during debounce - resetting detection");
+        inDebouncePhase = false;
+      }
+    }
+
+    if (checkDetectTimeout()) {
+      DEBUG_MGR.warning("DETECT", "⏰ Detection timeout after " + String(DETECT_TIMEOUT_MS) + "ms - skipping");
+      resetDetectionState();
+
+      if (!isQueueEmpty() && systemState == STATE_RUNNING) {
+        processNextCommand();
+      }
     }
 
     return;
@@ -300,7 +341,7 @@ void PalletizerMaster::addCommandToQueue(const String& command) {
 }
 
 bool PalletizerMaster::canProcessNextCommand() {
-  return !requestNextCommand && !isQueueFull() && !waitingForSync && !scriptProcessing && !waitingForGroupDelay && !groupExecutionActive && !sequenceRunning && !waitingForCompletion;
+  return !requestNextCommand && !isQueueFull() && !waitingForSync && !waitingForDetect && !scriptProcessing && !waitingForGroupDelay && !groupExecutionActive && !sequenceRunning && !waitingForCompletion;
 }
 
 void PalletizerMaster::checkSlaveData() {
@@ -352,6 +393,11 @@ void PalletizerMaster::onCommandReceived(const String& data) {
 
   if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
+    return;
+  }
+
+  if (upperData == "DETECT") {
+    processDetectCommand();
     return;
   }
 
@@ -599,6 +645,21 @@ void PalletizerMaster::processWaitCommand() {
   waitStartTimeForStats = millis();
 }
 
+void PalletizerMaster::processDetectCommand() {
+  DEBUG_MGR.info("DETECT", "🎯 DETECT command received");
+  String pinStatus = "⏳ Monitoring pins [";
+  for (int i = 0; i < DETECT_PIN_COUNT; i++) {
+    if (i > 0) pinStatus += ", ";
+    pinStatus += String(DETECT_PINS[i]);
+  }
+  pinStatus += "]";
+  DEBUG_MGR.info("DETECT", pinStatus);
+
+  waitingForDetect = true;
+  detectStartTime = millis();
+  inDebouncePhase = false;
+}
+
 void PalletizerMaster::processScriptCommand(const String& script) {
   static bool scriptInProgress = false;
   if (scriptInProgress) {
@@ -805,6 +866,36 @@ bool PalletizerMaster::checkSyncTimeout() {
   return waitingForSync && (millis() - waitStartTime) > timeoutConfig.maxWaitTime;
 }
 
+bool PalletizerMaster::checkAllPinsLow() {
+  for (int i = 0; i < DETECT_PIN_COUNT; i++) {
+    currentPinStates[i] = digitalRead(DETECT_PINS[i]);
+    if (currentPinStates[i] == HIGH) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool PalletizerMaster::checkDetectTimeout() {
+  return waitingForDetect && (millis() - detectStartTime) > DETECT_TIMEOUT_MS;
+}
+
+void PalletizerMaster::resetDetectionState() {
+  waitingForDetect = false;
+  inDebouncePhase = false;
+  detectStartTime = 0;
+  debounceStartTime = 0;
+}
+
+void PalletizerMaster::initDetectPins() {
+  for (int i = 0; i < DETECT_PIN_COUNT; i++) {
+    pinMode(DETECT_PINS[i], INPUT_PULLUP);
+    currentPinStates[i] = digitalRead(DETECT_PINS[i]);
+    lastPinStates[i] = currentPinStates[i];
+  }
+  DEBUG_PRINTLN("MASTER: Detect pins initialized - Pins: " + String(DETECT_PINS[0]) + ", " + String(DETECT_PINS[1]));
+}
+
 void PalletizerMaster::addToQueue(const String& command) {
   static unsigned long lastAddTime = 0;
   static String lastAddCommand = "";
@@ -925,6 +1016,8 @@ void PalletizerMaster::processNextCommand() {
     processSpeedCommand(trimmedCommand);
   } else if (upperData.startsWith("SET(") || upperData == "WAIT") {
     processSyncCommand(upperData);
+  } else if (upperData == "DETECT") {
+    processDetectCommand();
   } else if (isCoordinateCommand(trimmedCommand)) {
     processCoordinateData(trimmedCommand);
   } else if (isInvalidSpeedFragment(trimmedCommand)) {

@@ -433,6 +433,9 @@ void PalletizerScriptParser::processSingleStatement(const String& statement) {
   if (cleanStatement.startsWith("SET(") || cleanStatement == "WAIT") {
     debugLog("INFO", "SYNC", "🔄 " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
+  } else if (cleanStatement == "DETECT") {
+    debugLog("INFO", "DETECT", "🎯 " + cleanStatement);
+    palletizerMaster->processCommand(cleanStatement);
   } else if (cleanStatement == "ZERO" || cleanStatement == "IDLE" || cleanStatement == "PLAY" || cleanStatement == "PAUSE" || cleanStatement == "STOP") {
     debugLog("INFO", "SYSTEM", "⚙️ " + cleanStatement);
     palletizerMaster->processCommand(cleanStatement);
