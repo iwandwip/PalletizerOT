@@ -189,7 +189,9 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
 
     if (isValidSlaveId(slaveId)) {
       formatSlaveCommand(slaveId, CMD_SETSPEED, speedValue);
-      DEBUG_MGR.info("PROTOCOL", "Set " + slaveId.toUpperCase() + " axis speed to " + speedValue);
+      String upperSlaveId = slaveId;
+      upperSlaveId.toUpperCase();
+      DEBUG_MGR.info("PROTOCOL", "Set " + upperSlaveId + " axis speed to " + speedValue);
     }
   } else {
     while (params.endsWith(";")) {
