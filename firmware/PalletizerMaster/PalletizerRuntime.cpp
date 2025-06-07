@@ -11,7 +11,8 @@ PalletizerRuntime::PalletizerRuntime(PalletizerProtocol* protocol)
     queueSize(0), queueHead(0), syncSetPin(SYNC_SET_PIN), syncWaitPin(SYNC_WAIT_PIN),
     waitingForSync(false), waitStartTime(0), waitStartTimeForStats(0),
     waitingForDetect(false), detectStartTime(0), debounceStartTime(0), inDebouncePhase(false),
-    executionInfoActive(false), progressLoggingActive(false), systemRunning(false), scriptProcessing(false) {
+    executionInfoActive(false), progressLoggingActive(false), systemRunning(false), scriptProcessing(false),
+    singleCommandExecuting(false) {
 
   for (int i = 0; i < 5; i++) {
     currentPinStates[i] = true;
@@ -207,6 +208,7 @@ void PalletizerRuntime::processNextCommand() {
 
     if (endPos > startPos) {
       String groupCommands = trimmedCommand.substring(startPos, endPos);
+      notifyCommandSent();
       protocol->sendGroupCommands(groupCommands);
       processingCommand = false;
       return;
@@ -215,6 +217,7 @@ void PalletizerRuntime::processNextCommand() {
 
   if (trimmedCommand.startsWith("GROUP;")) {
     String groupCommands = trimmedCommand.substring(6);
+    notifyCommandSent();
     protocol->sendGroupCommands(groupCommands);
     processingCommand = false;
     return;
@@ -223,6 +226,7 @@ void PalletizerRuntime::processNextCommand() {
   if (upperData.startsWith("CALL(")) {
     processScriptCommand(trimmedCommand);
   } else if (upperData == "ZERO") {
+    setSingleCommandFlags();
     protocol->sendCommandToAllSlaves(PalletizerProtocol::CMD_ZERO);
   } else if (upperData.startsWith("SPEED;")) {
     protocol->sendSpeedCommand(trimmedCommand);
@@ -233,6 +237,7 @@ void PalletizerRuntime::processNextCommand() {
   } else if (upperData == "DETECT") {
     processDetectCommand();
   } else if (isCoordinateCommand(trimmedCommand)) {
+    setSingleCommandFlags();
     protocol->sendCoordinateData(trimmedCommand, PalletizerProtocol::CMD_RUN);
   } else if (isInvalidSpeedFragment(trimmedCommand)) {
     DEBUG_SERIAL_PRINTLN("RUNTIME: Skipping invalid speed fragment: " + trimmedCommand);
@@ -243,6 +248,39 @@ void PalletizerRuntime::processNextCommand() {
   }
 
   processingCommand = false;
+}
+
+void PalletizerRuntime::setSingleCommandFlags() {
+  singleCommandExecuting = true;
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Single command started - awaiting completion");
+}
+
+void PalletizerRuntime::notifyCommandSent() {
+  singleCommandExecuting = false;
+}
+
+void PalletizerRuntime::notifySingleCommandComplete() {
+  if (singleCommandExecuting) {
+    singleCommandExecuting = false;
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Single command completed");
+
+    if (!isQueueEmpty() && systemRunning) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Processing next command from queue");
+      processNextCommand();
+    } else if (isQueueEmpty() && systemRunning) {
+      PalletizerRuntime::ExecutionInfo execInfo = getExecutionInfo();
+      if (execInfo.isExecuting) {
+        updateExecutionInfo(false);
+      }
+      if (systemStateCallback) {
+        systemStateCallback("IDLE");
+      }
+    }
+  }
+}
+
+bool PalletizerRuntime::isSingleCommandExecuting() {
+  return singleCommandExecuting;
 }
 
 void PalletizerRuntime::processScriptCommand(const String& script) {
@@ -357,7 +395,7 @@ void PalletizerRuntime::processSetCommand(const String& data) {
 }
 
 bool PalletizerRuntime::canProcessNextCommand() {
-  return !isQueueFull() && !waitingForSync && !waitingForDetect && !scriptProcessing;
+  return !isQueueFull() && !waitingForSync && !waitingForDetect && !scriptProcessing && !singleCommandExecuting;
 }
 
 void PalletizerRuntime::setSystemRunning(bool running) {

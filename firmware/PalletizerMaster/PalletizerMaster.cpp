@@ -63,11 +63,11 @@ void PalletizerMaster::update() {
     }
   }
 
-  if (indicatorEnabled && waitingForCompletion && sequenceRunning) {
+  if (indicatorEnabled && (waitingForCompletion || runtime->isSingleCommandExecuting()) && (sequenceRunning || runtime->isSingleCommandExecuting())) {
     handleCompletionCheck();
   }
 
-  if (systemState == STATE_STOPPING && !sequenceRunning && !waitingForCompletion && !runtime->isWaitingForSync() && !runtime->isWaitingForDetect()) {
+  if (systemState == STATE_STOPPING && !sequenceRunning && !waitingForCompletion && !runtime->isWaitingForSync() && !runtime->isWaitingForDetect() && !runtime->isSingleCommandExecuting()) {
     setSystemState(STATE_IDLE);
   }
 
@@ -245,30 +245,37 @@ void PalletizerMaster::onSlaveData(const String& data) {
     slaveDataCallback(data);
   }
 
-  if (!indicatorEnabled && waitingForCompletion && sequenceRunning) {
-    if (data.indexOf("SEQUENCE COMPLETED") != -1) {
-      sequenceRunning = false;
-      waitingForCompletion = false;
-      groupExecutionActive = false;
-      DEBUG_SERIAL_PRINTLN("MASTER: All slaves completed sequence (based on message)");
+  bool isSequenceCompleted = data.indexOf("SEQUENCE COMPLETED") != -1;
+  bool isPositionReached = data.indexOf("POSITION REACHED") != -1;
 
-      if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-        DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
-        runtime->processNextCommand();
-      } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-        PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
-        if (execInfo.isExecuting) {
-          runtime->updateExecutionInfo(false);
-        }
-        setSystemState(STATE_IDLE);
-      } else if (systemState == STATE_STOPPING) {
-        runtime->clearQueue();
-        setSystemState(STATE_IDLE);
+  if (runtime->isSingleCommandExecuting() && (isSequenceCompleted || isPositionReached)) {
+    DEBUG_SERIAL_PRINTLN("MASTER: Single command completed (message-based)");
+    runtime->notifySingleCommandComplete();
+    return;
+  }
+
+  if (!indicatorEnabled && waitingForCompletion && sequenceRunning && isSequenceCompleted) {
+    sequenceRunning = false;
+    waitingForCompletion = false;
+    groupExecutionActive = false;
+    DEBUG_SERIAL_PRINTLN("MASTER: All slaves completed sequence (based on message)");
+
+    if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+      DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
+      runtime->processNextCommand();
+    } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+      PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
+      if (execInfo.isExecuting) {
+        runtime->updateExecutionInfo(false);
       }
+      setSystemState(STATE_IDLE);
+    } else if (systemState == STATE_STOPPING) {
+      runtime->clearQueue();
+      setSystemState(STATE_IDLE);
     }
   }
 
-  if (data.indexOf("POSITION REACHED") != -1) {
+  if (isPositionReached) {
     String axis = data.substring(0, data.indexOf(";"));
     axis.toUpperCase();
     DEBUG_MGR.info("MOTION", "✅ " + axis + " axis reached target position");
@@ -308,7 +315,7 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
 
   if (command == "IDLE") {
     if (systemState == STATE_RUNNING || systemState == STATE_PAUSED) {
-      if (sequenceRunning) {
+      if (sequenceRunning || runtime->isSingleCommandExecuting()) {
         setSystemState(STATE_STOPPING);
       } else {
         runtime->clearQueue();
@@ -329,13 +336,13 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
 
     runtime->updateExecutionInfo(true);
     setSystemState(STATE_RUNNING);
-    if (!sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty()) {
+    if (!sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting()) {
       runtime->processNextCommand();
     }
   } else if (command == "PAUSE") {
     setSystemState(STATE_PAUSED);
   } else if (command == "STOP") {
-    if (sequenceRunning) {
+    if (sequenceRunning || runtime->isSingleCommandExecuting()) {
       setSystemState(STATE_STOPPING);
     } else {
       runtime->clearQueue();
@@ -352,7 +359,7 @@ void PalletizerMaster::setSystemState(SystemState newState) {
     runtime->setSystemRunning(newState == STATE_RUNNING);
     sendStateUpdate();
 
-    if (newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty()) {
+    if (newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting()) {
       runtime->processNextCommand();
     }
   }
@@ -409,20 +416,28 @@ void PalletizerMaster::handleCompletionCheck() {
     bool allCompleted = checkAllSlavesCompleted();
 
     if (allCompleted) {
-      sequenceRunning = false;
-      waitingForCompletion = false;
-      groupExecutionActive = false;
-      DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
+      if (runtime->isSingleCommandExecuting()) {
+        DEBUG_SERIAL_PRINTLN("MASTER: Single command completed (indicator-based)");
+        runtime->notifySingleCommandComplete();
+        return;
+      }
 
-      if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-        DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
-        runtime->processNextCommand();
-      } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-        PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
-        if (execInfo.isExecuting) {
-          runtime->updateExecutionInfo(false);
+      if (sequenceRunning && waitingForCompletion) {
+        sequenceRunning = false;
+        waitingForCompletion = false;
+        groupExecutionActive = false;
+        DEBUG_MGR.info("EXECUTOR", "All slaves completed sequence");
+
+        if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+          DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
+          runtime->processNextCommand();
+        } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
+          PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
+          if (execInfo.isExecuting) {
+            runtime->updateExecutionInfo(false);
+          }
+          setSystemState(STATE_IDLE);
         }
-        setSystemState(STATE_IDLE);
       }
     }
   }

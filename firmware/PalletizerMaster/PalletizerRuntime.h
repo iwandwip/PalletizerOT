@@ -82,6 +82,10 @@ public:
   bool isWaitingForDetect();
   void setScriptParser(PalletizerScriptParser* parser);
   void setSystemStateCallback(SystemStateCallback callback);
+  void setSingleCommandFlags();
+  void notifyCommandSent();
+  void notifySingleCommandComplete();
+  bool isSingleCommandExecuting();
 
 private:
   PalletizerProtocol* protocol;
@@ -112,6 +116,7 @@ private:
   bool progressLoggingActive;
   bool systemRunning;
   bool scriptProcessing;
+  bool singleCommandExecuting;
 
   TimeoutConfig timeoutConfig;
   TimeoutStats timeoutStats;
