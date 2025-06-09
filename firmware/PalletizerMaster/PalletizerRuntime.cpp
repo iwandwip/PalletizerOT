@@ -12,7 +12,7 @@ PalletizerRuntime::PalletizerRuntime(PalletizerProtocol* protocol)
     waitingForSync(false), waitStartTime(0), waitStartTimeForStats(0),
     waitingForDetect(false), detectStartTime(0), debounceStartTime(0), inDebouncePhase(false),
     executionInfoActive(false), progressLoggingActive(false), systemRunning(false), scriptProcessing(false),
-    singleCommandExecuting(false), xCommandMutex(NULL), xStateMutex(NULL) {
+    singleCommandExecuting(false), needProcessNext(false), xCommandMutex(NULL), xStateMutex(NULL) {
 
   for (int i = 0; i < 5; i++) {
     currentPinStates[i] = true;
@@ -47,7 +47,17 @@ void PalletizerRuntime::update() {
   if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
     bool localWaitingForSync = waitingForSync;
     bool localWaitingForDetect = waitingForDetect;
+    bool localNeedProcessNext = needProcessNext;
     xSemaphoreGive(xStateMutex);
+
+    if (localNeedProcessNext && systemRunning && !isQueueEmpty()) {
+      if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+        needProcessNext = false;
+        xSemaphoreGive(xStateMutex);
+      }
+      processNextCommand();
+      return;
+    }
 
     if (localWaitingForSync) {
       if (digitalRead(syncWaitPin) == HIGH) {
@@ -56,7 +66,7 @@ void PalletizerRuntime::update() {
         updateTimeoutStats(true);
 
         if (!isQueueEmpty() && systemRunning) {
-          processNextCommand();
+          triggerNextCommand();
         }
       } else if (checkSyncTimeout()) {
         handleWaitTimeout();
@@ -75,7 +85,7 @@ void PalletizerRuntime::update() {
           resetDetectionState();
 
           if (!isQueueEmpty() && systemRunning) {
-            processNextCommand();
+            triggerNextCommand();
           }
         }
       } else {
@@ -90,7 +100,7 @@ void PalletizerRuntime::update() {
         resetDetectionState();
 
         if (!isQueueEmpty() && systemRunning) {
-          processNextCommand();
+          triggerNextCommand();
         }
       }
       return;
@@ -175,7 +185,7 @@ void PalletizerRuntime::clearQueue() {
 }
 
 void PalletizerRuntime::processNextCommand() {
-  if (xSemaphoreTake(xCommandMutex, pdMS_TO_TICKS(10))) {
+  if (xSemaphoreTake(xCommandMutex, pdMS_TO_TICKS(100))) {
     static bool processingCommand = false;
 
     if (processingCommand) {
@@ -301,8 +311,8 @@ void PalletizerRuntime::notifySingleCommandComplete() {
     DEBUG_SERIAL_PRINTLN("RUNTIME: Single command completed");
 
     if (!isQueueEmpty() && systemRunning) {
-      DEBUG_SERIAL_PRINTLN("RUNTIME: Processing next command from queue");
-      processNextCommand();
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Triggering next command processing");
+      triggerNextCommand();
     } else if (isQueueEmpty() && systemRunning) {
       PalletizerRuntime::ExecutionInfo execInfo = getExecutionInfo();
       if (execInfo.isExecuting) {
@@ -312,6 +322,13 @@ void PalletizerRuntime::notifySingleCommandComplete() {
         systemStateCallback("IDLE");
       }
     }
+  }
+}
+
+void PalletizerRuntime::triggerNextCommand() {
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(10))) {
+    needProcessNext = true;
+    xSemaphoreGive(xStateMutex);
   }
 }
 
@@ -348,7 +365,7 @@ void PalletizerRuntime::processDetectCommand() {
       DEBUG_MGR.error("DETECT", "❌ DETECT flag recovery failed - skipping command");
 
       if (!isQueueEmpty() && systemRunning) {
-        processNextCommand();
+        triggerNextCommand();
       }
       return;
     } else {
@@ -792,7 +809,7 @@ void PalletizerRuntime::handleWaitTimeout() {
       }
 
       if (!isQueueEmpty() && systemRunning) {
-        processNextCommand();
+        triggerNextCommand();
       }
       break;
 

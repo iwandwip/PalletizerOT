@@ -305,9 +305,9 @@ void PalletizerMaster::handleSequenceCompletion() {
   resetExecutionFlags();
 
   if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
-    DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
+    DEBUG_SERIAL_PRINTLN("MASTER: Triggering next command from queue");
     if (canProcessNextCommand()) {
-      runtime->processNextCommand();
+      runtime->triggerNextCommand();
     }
   } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
     PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
@@ -380,7 +380,7 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
 
     bool canStart = !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting();
     if (canStart && canProcessNextCommand()) {
-      runtime->processNextCommand();
+      runtime->triggerNextCommand();
     }
   } else if (command == "PAUSE") {
     setSystemState(STATE_PAUSED);
@@ -406,7 +406,7 @@ void PalletizerMaster::setSystemState(SystemState newState) {
 
     bool canStart = newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting();
     if (canStart && canProcessNextCommand()) {
-      runtime->processNextCommand();
+      runtime->triggerNextCommand();
     }
   }
 }

@@ -89,6 +89,7 @@ public:
   void setSingleCommandFlags();
   void notifySingleCommandComplete();
   bool isSingleCommandExecuting();
+  void triggerNextCommand();
   void testParseInlineCommands(const String& input, String* statements, int& count);
 
 private:
@@ -122,6 +123,7 @@ private:
   volatile bool systemRunning;
   volatile bool scriptProcessing;
   volatile bool singleCommandExecuting;
+  volatile bool needProcessNext;
 
   TimeoutConfig timeoutConfig;
   TimeoutStats timeoutStats;
