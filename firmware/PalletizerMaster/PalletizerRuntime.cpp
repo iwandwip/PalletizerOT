@@ -244,8 +244,12 @@ void PalletizerRuntime::processNextCommand() {
     processSetCommand(trimmedCommand);
   } else if (upperData == "WAIT") {
     processWaitCommand();
+    processingCommand = false;
+    return;
   } else if (upperData == "DETECT") {
     processDetectCommand();
+    processingCommand = false;
+    return;
   } else if (isCoordinateCommand(trimmedCommand)) {
     setSingleCommandFlags();
     protocol->sendCoordinateData(trimmedCommand, PalletizerProtocol::CMD_RUN);
