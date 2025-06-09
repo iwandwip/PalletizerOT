@@ -3,9 +3,8 @@
 
 #define ENABLE_MODULE_NODEF_SERIAL_ENHANCED
 
-#define TESTING_MODE 1
+#define TESTING_MODE 0
 #define TESTING_SENSOR_DEBUG 0
-#define MEMORY_OPTIMIZED 1
 
 #if TESTING_MODE
 #define DEBUG 1
@@ -13,7 +12,7 @@
 #define DEBUG 0
 #endif
 
-#if DEBUG && !MEMORY_OPTIMIZED
+#if DEBUG
 #define DEBUG_PRINT(x) Serial.print(x)
 #define DEBUG_PRINTLN(x) Serial.println(x)
 #else
@@ -79,14 +78,11 @@ public:
 
   void begin();
   void update();
-  static void onMasterDataWrapper(const String& data);
 
 private:
-  static StepperSlave* instance;
-
   static const int MAX_MOTIONS = 3;
-  static const int MAX_BUFFER_SIZE = 128;
-  static const int MAX_COMMAND_SIZE = 32;
+  static const int MAX_BUFFER_SIZE = 256;
+  static const int MAX_COMMAND_SIZE = 64;
   const float SPEED_RATIO = 0.6;
   const float HOMING_SPEED = 200.0;
   const float HOMING_ACCEL = 100.0;
@@ -100,7 +96,6 @@ private:
   bool invertEnableLogic;
 
   SoftwareSerial masterCommSerial;
-  EnhancedSerial masterSerial;
 
   AccelStepper stepper;
   float maxSpeed = 200.0;
@@ -123,9 +118,8 @@ private:
   char dataBuffer[MAX_BUFFER_SIZE];
   int bufferIndex = 0;
 
-  void onMasterData(const String& data);
-  void checkDirectSerial();
-  void processIncomingData(const char* data);
+  void checkSerial();
+  void processCompleteData(const char* data);
   void processCommand(const char* data);
   void sendFeedback(const char* message);
 
@@ -149,11 +143,9 @@ private:
   bool processPacketData(const char* packet);
   bool validatePacketCRC(const char* packet);
   uint8_t calculateCRC8(const char* data, int len);
-  bool extractRelevantCommand(const char* packetContent, char* output);
+  bool extractMyCommand(const char* packet, char* output);
   void addToBuffer(char c);
   void clearBuffer();
-  bool isPacketComplete();
-  int findPacketEnd();
 };
 
 #endif

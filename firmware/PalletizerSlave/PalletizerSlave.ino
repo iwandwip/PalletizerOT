@@ -53,23 +53,8 @@ void setup() {
   pinMode(12, OUTPUT);
   digitalWrite(12, LOW);
 #endif
-
-#if TESTING_MODE
-  Serial.print(F("SLAVE "));
-  Serial.print(SLAVE_ADDR);
-  Serial.println(F(" READY"));
-#endif
 }
 
 void loop() {
-#if TESTING_SENSOR_DEBUG
-  static uint32_t sensorDebugTimer;
-  if (millis() - sensorDebugTimer >= 2000) {
-    sensorDebugTimer = millis();
-    Serial.print(F("S:"));
-    Serial.println(digitalRead(SENSOR_PIN));
-  }
-#endif
-
   slave.update();
 }

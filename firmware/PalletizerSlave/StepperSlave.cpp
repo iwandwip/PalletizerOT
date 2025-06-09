@@ -1,16 +1,5 @@
 #include "StepperSlave.h"
 
-StepperSlave* StepperSlave::instance = nullptr;
-
-const char MSG_INIT[] PROGMEM = "SLAVE INIT";
-const char MSG_ZERO_DONE[] PROGMEM = "ZERO DONE";
-const char MSG_SPEED_SET[] PROGMEM = "SPEED SET TO ";
-const char MSG_INVALID_SPEED[] PROGMEM = "INVALID SPEED VALUE";
-const char MSG_MOVING_TO[] PROGMEM = "MOVING TO ";
-const char MSG_POSITION_REACHED[] PROGMEM = "POSITION REACHED";
-const char MSG_SEQUENCE_COMPLETED[] PROGMEM = "SEQUENCE COMPLETED";
-const char MSG_DELAYING[] PROGMEM = "DELAYING";
-
 StepperSlave::StepperSlave(
   char id, int rxPin, int txPin, int clkPin, int cwPin, int enPin, int sensorPin,
   int brakePin, bool invertBrakeLogic, int indicatorPin, bool invertEnableLogic,
@@ -26,7 +15,6 @@ StepperSlave::StepperSlave(
     invertEnableLogic(invertEnableLogic),
     bufferIndex(0) {
 
-  instance = this;
   brakeReleaseDelay = brakeReleaseDelayMs;
   brakeEngageDelay = brakeEngageDelayMs;
   acceleration = maxSpeed * SPEED_RATIO;
@@ -36,12 +24,6 @@ StepperSlave::StepperSlave(
 void StepperSlave::begin() {
   Serial.begin(9600);
   masterCommSerial.begin(9600);
-#if TESTING_MODE
-  masterSerial.begin(&Serial);
-#else
-  masterSerial.begin(&masterCommSerial);
-#endif
-  masterSerial.setDataCallback(onMasterDataWrapper);
 
   if (enPin != NOT_CONNECTED) {
     pinMode(enPin, OUTPUT);
@@ -66,64 +48,45 @@ void StepperSlave::begin() {
   stepper.setMaxSpeed(maxSpeed);
   stepper.setCurrentPosition(0);
 
-  DEBUG_PRINTLN(MSG_INIT);
+  DEBUG_PRINT("SLAVE ");
+  DEBUG_PRINT(slaveId);
+  DEBUG_PRINTLN(" READY");
 }
 
 void StepperSlave::update() {
-  masterSerial.checkCallback();
-
-  static unsigned long lastCheck = 0;
-  if (millis() - lastCheck > 20) {
-    lastCheck = millis();
-    checkDirectSerial();
-  }
+  checkSerial();
 
   if (motorState != MOTOR_PAUSED) {
     handleMotion();
   }
 }
 
-void StepperSlave::checkDirectSerial() {
+void StepperSlave::checkSerial() {
   while (masterCommSerial.available() > 0) {
     char c = masterCommSerial.read();
+
     if (c == '\n' || c == '\r') {
       if (bufferIndex > 0) {
         dataBuffer[bufferIndex] = '\0';
-        processIncomingData(dataBuffer);
+        processCompleteData(dataBuffer);
         clearBuffer();
       }
-    } else if (c >= 32 && c <= 126 && bufferIndex < MAX_BUFFER_SIZE - 1) {
+    } else if (c >= 32 && c <= 126) {
       addToBuffer(c);
     }
   }
 }
 
-void StepperSlave::onMasterDataWrapper(const String& data) {
-  if (instance && data.length() < MAX_BUFFER_SIZE) {
-    data.toCharArray(instance->dataBuffer, MAX_BUFFER_SIZE);
-    instance->processIncomingData(instance->dataBuffer);
-  }
-}
-
-void StepperSlave::onMasterData(const String& data) {
-  if (data.length() < MAX_BUFFER_SIZE) {
-    data.toCharArray(dataBuffer, MAX_BUFFER_SIZE);
-    processIncomingData(dataBuffer);
-  }
-}
-
-void StepperSlave::processIncomingData(const char* data) {
+void StepperSlave::processCompleteData(const char* data) {
   if (isPacketFormat(data)) {
-    if (processPacketData(data)) {
-      DEBUG_PRINTLN("PKT OK");
-    }
+    processPacketData(data);
   } else {
     processCommand(data);
   }
 }
 
 bool StepperSlave::isPacketFormat(const char* data) {
-  return (data[0] == '#');
+  return (data[0] == '#' && strchr(data, '*') != NULL && strrchr(data, '#') != data);
 }
 
 bool StepperSlave::processPacketData(const char* packet) {
@@ -131,9 +94,9 @@ bool StepperSlave::processPacketData(const char* packet) {
     return false;
   }
 
-  char command[MAX_COMMAND_SIZE];
-  if (extractRelevantCommand(packet, command)) {
-    processCommand(command);
+  char myCommand[MAX_COMMAND_SIZE];
+  if (extractMyCommand(packet, myCommand)) {
+    processCommand(myCommand);
     return true;
   }
 
@@ -141,21 +104,22 @@ bool StepperSlave::processPacketData(const char* packet) {
 }
 
 bool StepperSlave::validatePacketCRC(const char* packet) {
-  char* asterisk = strrchr(packet, '*');
-  char* endHash = strrchr(packet, '#');
+  char* firstHash = strchr(packet, '#');
+  char* asterisk = strchr(packet, '*');
+  char* lastHash = strrchr(packet, '#');
 
-  if (!asterisk || !endHash || asterisk >= endHash) {
+  if (!firstHash || !asterisk || !lastHash || firstHash >= asterisk || asterisk >= lastHash) {
     return false;
   }
 
-  int contentLen = asterisk - packet - 1;
+  int contentLen = asterisk - firstHash - 1;
   if (contentLen <= 0) return false;
 
-  uint8_t expectedCRC = calculateCRC8(packet + 1, contentLen);
+  uint8_t expectedCRC = calculateCRC8(firstHash + 1, contentLen);
 
   char crcStr[3];
-  int crcLen = endHash - asterisk - 1;
-  if (crcLen > 2) return false;
+  int crcLen = lastHash - asterisk - 1;
+  if (crcLen > 2 || crcLen <= 0) return false;
 
   strncpy(crcStr, asterisk + 1, crcLen);
   crcStr[crcLen] = '\0';
@@ -180,33 +144,40 @@ uint8_t StepperSlave::calculateCRC8(const char* data, int len) {
   return crc;
 }
 
-bool StepperSlave::extractRelevantCommand(const char* packetContent, char* output) {
-  char* start = strchr(packetContent, '#');
-  char* end = strchr(packetContent, '*');
+bool StepperSlave::extractMyCommand(const char* packet, char* output) {
+  char* firstHash = strchr(packet, '#');
+  char* asterisk = strchr(packet, '*');
 
-  if (!start || !end || start >= end) return false;
+  if (!firstHash || !asterisk || firstHash >= asterisk) {
+    return false;
+  }
 
-  start++;
+  char* content = firstHash + 1;
+  int contentLen = asterisk - content;
+
   char slavePrefix[3];
   slavePrefix[0] = slaveId;
   slavePrefix[1] = ';';
   slavePrefix[2] = '\0';
 
-  char* pos = start;
-  while (pos < end) {
+  char* pos = content;
+  char* endPos = content + contentLen;
+
+  while (pos < endPos) {
     char* comma = strchr(pos, ',');
-    char* cmdEnd = (comma && comma < end) ? comma : end;
+    char* cmdEnd = (comma && comma < endPos) ? comma : endPos;
 
     int cmdLen = cmdEnd - pos;
-    if (cmdLen < MAX_COMMAND_SIZE - 1) {
-      if (strncmp(pos, slavePrefix, 2) == 0 || strncmp(pos, "all;", 4) == 0) {
+
+    if (cmdLen < MAX_COMMAND_SIZE - 1 && cmdLen > 2) {
+      if (strncmp(pos, slavePrefix, 2) == 0) {
         strncpy(output, pos, cmdLen);
         output[cmdLen] = '\0';
         return true;
       }
     }
 
-    pos = comma ? comma + 1 : end;
+    pos = comma ? comma + 1 : endPos;
   }
 
   return false;
@@ -252,7 +223,7 @@ void StepperSlave::handleZeroCommand() {
   setIndicator(false);
 
   performHoming();
-  sendFeedback(MSG_ZERO_DONE);
+  sendFeedback("ZERO DONE");
 }
 
 void StepperSlave::handleMoveCommand(const char* params) {
@@ -275,14 +246,11 @@ void StepperSlave::handleSetSpeedCommand(const char* params) {
     acceleration = maxSpeed * SPEED_RATIO;
     stepper.setAcceleration(acceleration);
 
-    char response[32];
-    strcpy(response, MSG_SPEED_SET);
-    char speedStr[16];
-    dtostrf(maxSpeed, 0, 0, speedStr);
-    strcat(response, speedStr);
-    sendFeedback(response);
+    Serial.print(slaveId);
+    Serial.print(";SPEED SET TO ");
+    Serial.println(newSpeed, 0);
   } else {
-    sendFeedback(MSG_INVALID_SPEED);
+    sendFeedback("INVALID SPEED VALUE");
   }
 }
 
@@ -290,7 +258,11 @@ void StepperSlave::parsePositionSequence(const char* params) {
   queuedMotionsCount = 0;
   currentMotionIndex = 0;
 
-  char* token = strtok((char*)params, ";");
+  char paramsCopy[64];
+  strncpy(paramsCopy, params, 63);
+  paramsCopy[63] = '\0';
+
+  char* token = strtok(paramsCopy, ";");
   while (token && queuedMotionsCount < MAX_MOTIONS) {
     motionQueue[queuedMotionsCount].speed = maxSpeed;
     motionQueue[queuedMotionsCount].completed = false;
@@ -323,7 +295,7 @@ void StepperSlave::handleMotion() {
         executeCurrentMotion();
       } else {
         setIndicator(false);
-        sendFeedback(MSG_SEQUENCE_COMPLETED);
+        sendFeedback("SEQUENCE COMPLETED");
         hasReportedCompletion = true;
         motorState = MOTOR_IDLE;
       }
@@ -334,7 +306,7 @@ void StepperSlave::handleMotion() {
 void StepperSlave::executeCurrentMotion() {
   if (currentMotionIndex >= queuedMotionsCount) {
     setIndicator(false);
-    sendFeedback(MSG_SEQUENCE_COMPLETED);
+    sendFeedback("SEQUENCE COMPLETED");
     hasReportedCompletion = true;
     motorState = MOTOR_IDLE;
     return;
@@ -345,7 +317,7 @@ void StepperSlave::executeCurrentMotion() {
   if (motionQueue[currentMotionIndex].isDelayOnly) {
     motorState = MOTOR_DELAYING;
     delayStartTime = millis();
-    sendFeedback(MSG_DELAYING);
+    sendFeedback("DELAYING");
     return;
   }
 
@@ -355,17 +327,14 @@ void StepperSlave::executeCurrentMotion() {
   long targetPosition = motionQueue[currentMotionIndex].position;
   stepper.setMaxSpeed(motionQueue[currentMotionIndex].speed);
 
-  char moveMsg[32];
-  strcpy(moveMsg, MSG_MOVING_TO);
-  char posStr[16];
-  ltoa(targetPosition, posStr, 10);
-  strcat(moveMsg, posStr);
-  sendFeedback(moveMsg);
+  Serial.print(slaveId);
+  Serial.print(";MOVING TO ");
+  Serial.println(targetPosition);
 
   stepper.moveTo(targetPosition);
   stepper.runToPosition();
 
-  sendFeedback(MSG_POSITION_REACHED);
+  sendFeedback("POSITION REACHED");
   deactivateMotor();
 
   motionQueue[currentMotionIndex].completed = true;
@@ -376,7 +345,7 @@ void StepperSlave::executeCurrentMotion() {
     executeCurrentMotion();
   } else {
     setIndicator(false);
-    sendFeedback(MSG_SEQUENCE_COMPLETED);
+    sendFeedback("SEQUENCE COMPLETED");
     hasReportedCompletion = true;
   }
 }
@@ -483,5 +452,5 @@ void StepperSlave::addToBuffer(char c) {
 
 void StepperSlave::clearBuffer() {
   bufferIndex = 0;
-  memset(dataBuffer, 0, MAX_BUFFER_SIZE);
+  memset(dataBuffer, 0, sizeof(dataBuffer));
 }
