@@ -12,7 +12,7 @@ PalletizerRuntime::PalletizerRuntime(PalletizerProtocol* protocol)
     waitingForSync(false), waitStartTime(0), waitStartTimeForStats(0),
     waitingForDetect(false), detectStartTime(0), debounceStartTime(0), inDebouncePhase(false),
     executionInfoActive(false), progressLoggingActive(false), systemRunning(false), scriptProcessing(false),
-    singleCommandExecuting(false) {
+    singleCommandExecuting(false), xCommandMutex(NULL), xStateMutex(NULL) {
 
   for (int i = 0; i < 5; i++) {
     currentPinStates[i] = true;
@@ -21,6 +21,14 @@ PalletizerRuntime::PalletizerRuntime(PalletizerProtocol* protocol)
 }
 
 void PalletizerRuntime::begin() {
+  xCommandMutex = xSemaphoreCreateMutex();
+  xStateMutex = xSemaphoreCreateMutex();
+
+  if (xCommandMutex == NULL || xStateMutex == NULL) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: FATAL - Failed to create mutexes!");
+    ESP.restart();
+  }
+
   initSyncPins();
   initDetectPins();
 
@@ -32,55 +40,61 @@ void PalletizerRuntime::begin() {
     loadTimeoutConfig();
   }
 
-  DEBUG_SERIAL_PRINTLN("RUNTIME: Execution engine initialized");
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Execution engine initialized with thread safety");
 }
 
 void PalletizerRuntime::update() {
-  if (waitingForSync) {
-    if (digitalRead(syncWaitPin) == HIGH) {
-      DEBUG_MGR.sync("WAIT", "Sync signal received - continuing execution");
-      waitingForSync = false;
-      updateTimeoutStats(true);
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+    bool localWaitingForSync = waitingForSync;
+    bool localWaitingForDetect = waitingForDetect;
+    xSemaphoreGive(xStateMutex);
 
-      if (!isQueueEmpty() && systemRunning) {
-        processNextCommand();
+    if (localWaitingForSync) {
+      if (digitalRead(syncWaitPin) == HIGH) {
+        DEBUG_MGR.sync("WAIT", "Sync signal received - continuing execution");
+        setSyncFlag(false);
+        updateTimeoutStats(true);
+
+        if (!isQueueEmpty() && systemRunning) {
+          processNextCommand();
+        }
+      } else if (checkSyncTimeout()) {
+        handleWaitTimeout();
       }
-    } else if (checkSyncTimeout()) {
-      handleWaitTimeout();
+      return;
     }
-    return;
-  }
 
-  if (waitingForDetect) {
-    if (checkAllPinsLow()) {
-      if (!inDebouncePhase) {
-        inDebouncePhase = true;
-        debounceStartTime = millis();
-        DEBUG_MGR.info("DETECT", "🔍 All pins LOW detected, starting debounce (" + String(DETECT_DEBOUNCE_MS) + "ms)");
-      } else if (millis() - debounceStartTime >= DETECT_DEBOUNCE_MS) {
-        DEBUG_MGR.info("DETECT", "✅ Detection confirmed - continuing execution");
+    if (localWaitingForDetect) {
+      if (checkAllPinsLow()) {
+        if (!inDebouncePhase) {
+          inDebouncePhase = true;
+          debounceStartTime = millis();
+          DEBUG_MGR.info("DETECT", "🔍 All pins LOW detected, starting debounce (" + String(DETECT_DEBOUNCE_MS) + "ms)");
+        } else if (millis() - debounceStartTime >= DETECT_DEBOUNCE_MS) {
+          DEBUG_MGR.info("DETECT", "✅ Detection confirmed - continuing execution");
+          resetDetectionState();
+
+          if (!isQueueEmpty() && systemRunning) {
+            processNextCommand();
+          }
+        }
+      } else {
+        if (inDebouncePhase) {
+          DEBUG_MGR.warning("DETECT", "🔄 Pin went HIGH during debounce - resetting detection");
+          inDebouncePhase = false;
+        }
+      }
+
+      if (checkDetectTimeout()) {
+        DEBUG_MGR.warning("DETECT", "⏰ Detection timeout after " + String(DETECT_TIMEOUT_MS) + "ms - skipping");
         resetDetectionState();
 
         if (!isQueueEmpty() && systemRunning) {
           processNextCommand();
         }
       }
-    } else {
-      if (inDebouncePhase) {
-        DEBUG_MGR.warning("DETECT", "🔄 Pin went HIGH during debounce - resetting detection");
-        inDebouncePhase = false;
-      }
+      return;
     }
-
-    if (checkDetectTimeout()) {
-      DEBUG_MGR.warning("DETECT", "⏰ Detection timeout after " + String(DETECT_TIMEOUT_MS) + "ms - skipping");
-      resetDetectionState();
-
-      if (!isQueueEmpty() && systemRunning) {
-        processNextCommand();
-      }
-    }
-    return;
   }
 }
 
@@ -161,54 +175,79 @@ void PalletizerRuntime::clearQueue() {
 }
 
 void PalletizerRuntime::processNextCommand() {
-  static bool processingCommand = false;
+  if (xSemaphoreTake(xCommandMutex, pdMS_TO_TICKS(10))) {
+    static bool processingCommand = false;
 
-  if (processingCommand) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Already processing command, skipping duplicate");
-    return;
-  }
+    if (processingCommand) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Already processing command, skipping duplicate");
+      xSemaphoreGive(xCommandMutex);
+      return;
+    }
 
-  if (isQueueEmpty()) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Command queue is empty");
-    return;
-  }
+    if (!validateStateFlags()) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Cannot process next command - system blocked");
+      xSemaphoreGive(xCommandMutex);
+      return;
+    }
 
-  if (!systemRunning) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Not processing command because system is not running");
-    return;
-  }
+    if (isQueueEmpty()) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Command queue is empty");
+      xSemaphoreGive(xCommandMutex);
+      return;
+    }
 
-  processingCommand = true;
-  String command = getFromQueue();
-  executionInfo.currentCommand++;
+    if (!systemRunning) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Not processing command because system is not running");
+      xSemaphoreGive(xCommandMutex);
+      return;
+    }
 
-  DEBUG_MGR.sequence("EXECUTOR", executionInfo.currentCommand, executionInfo.totalCommands, "Executing: " + command);
-  logExecutionProgress();
+    processingCommand = true;
+    String command = getFromQueue();
+    executionInfo.currentCommand++;
 
-  String trimmedCommand = command;
-  trimmedCommand.trim();
-  String upperData = trimmedCommand;
-  upperData.toUpperCase();
+    DEBUG_MGR.sequence("EXECUTOR", executionInfo.currentCommand, executionInfo.totalCommands, "Executing: " + command);
+    logExecutionProgress();
 
-  if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(")") != -1) {
-    int startPos = 6;
-    int endPos = -1;
-    int parenCount = 1;
+    String trimmedCommand = command;
+    trimmedCommand.trim();
+    String upperData = trimmedCommand;
+    upperData.toUpperCase();
 
-    for (int i = startPos; i < trimmedCommand.length() && parenCount > 0; i++) {
-      if (trimmedCommand.charAt(i) == '(') {
-        parenCount++;
-      } else if (trimmedCommand.charAt(i) == ')') {
-        parenCount--;
-        if (parenCount == 0) {
-          endPos = i;
+    if (trimmedCommand.startsWith("GROUP(") && trimmedCommand.indexOf(")") != -1) {
+      int startPos = 6;
+      int endPos = -1;
+      int parenCount = 1;
+
+      for (int i = startPos; i < trimmedCommand.length() && parenCount > 0; i++) {
+        if (trimmedCommand.charAt(i) == '(') {
+          parenCount++;
+        } else if (trimmedCommand.charAt(i) == ')') {
+          parenCount--;
+          if (parenCount == 0) {
+            endPos = i;
+          }
         }
+      }
+
+      if (endPos > startPos) {
+        String groupCommands = trimmedCommand.substring(startPos, endPos);
+        DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP command detected - notifying Master");
+        if (groupCommandCallback) {
+          groupCommandCallback(groupCommands);
+        } else {
+          DEBUG_SERIAL_PRINTLN("RUNTIME: WARNING - No GROUP callback registered!");
+          protocol->sendGroupCommands(groupCommands);
+        }
+        processingCommand = false;
+        xSemaphoreGive(xCommandMutex);
+        return;
       }
     }
 
-    if (endPos > startPos) {
-      String groupCommands = trimmedCommand.substring(startPos, endPos);
-      DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP command detected - notifying Master");
+    if (trimmedCommand.startsWith("GROUP;")) {
+      String groupCommands = trimmedCommand.substring(6);
+      DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP; command detected - notifying Master");
       if (groupCommandCallback) {
         groupCommandCallback(groupCommands);
       } else {
@@ -216,52 +255,45 @@ void PalletizerRuntime::processNextCommand() {
         protocol->sendGroupCommands(groupCommands);
       }
       processingCommand = false;
+      xSemaphoreGive(xCommandMutex);
       return;
     }
-  }
 
-  if (trimmedCommand.startsWith("GROUP;")) {
-    String groupCommands = trimmedCommand.substring(6);
-    DEBUG_SERIAL_PRINTLN("RUNTIME: GROUP; command detected - notifying Master");
-    if (groupCommandCallback) {
-      groupCommandCallback(groupCommands);
+    if (upperData.startsWith("CALL(")) {
+      processScriptCommand(trimmedCommand);
+    } else if (upperData == "ZERO") {
+      setSingleCommandFlags();
+      protocol->sendCommandToAllSlaves(PalletizerProtocol::CMD_ZERO);
+    } else if (upperData.startsWith("SPEED;")) {
+      protocol->sendSpeedCommand(trimmedCommand);
+    } else if (upperData.startsWith("SET(")) {
+      processSetCommand(trimmedCommand);
+    } else if (upperData == "WAIT") {
+      processWaitCommand();
+      processingCommand = false;
+      xSemaphoreGive(xCommandMutex);
+      return;
+    } else if (upperData == "DETECT") {
+      processDetectCommand();
+      processingCommand = false;
+      xSemaphoreGive(xCommandMutex);
+      return;
+    } else if (isCoordinateCommand(trimmedCommand)) {
+      setSingleCommandFlags();
+      protocol->sendCoordinateData(trimmedCommand, PalletizerProtocol::CMD_RUN);
+    } else if (isInvalidSpeedFragment(trimmedCommand)) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Skipping invalid speed fragment: " + trimmedCommand);
+    } else if (isRealScriptCommand(trimmedCommand)) {
+      processScriptCommand(trimmedCommand);
     } else {
-      DEBUG_SERIAL_PRINTLN("RUNTIME: WARNING - No GROUP callback registered!");
-      protocol->sendGroupCommands(groupCommands);
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Unknown command format: " + trimmedCommand);
     }
-    processingCommand = false;
-    return;
-  }
 
-  if (upperData.startsWith("CALL(")) {
-    processScriptCommand(trimmedCommand);
-  } else if (upperData == "ZERO") {
-    setSingleCommandFlags();
-    protocol->sendCommandToAllSlaves(PalletizerProtocol::CMD_ZERO);
-  } else if (upperData.startsWith("SPEED;")) {
-    protocol->sendSpeedCommand(trimmedCommand);
-  } else if (upperData.startsWith("SET(")) {
-    processSetCommand(trimmedCommand);
-  } else if (upperData == "WAIT") {
-    processWaitCommand();
     processingCommand = false;
-    return;
-  } else if (upperData == "DETECT") {
-    processDetectCommand();
-    processingCommand = false;
-    return;
-  } else if (isCoordinateCommand(trimmedCommand)) {
-    setSingleCommandFlags();
-    protocol->sendCoordinateData(trimmedCommand, PalletizerProtocol::CMD_RUN);
-  } else if (isInvalidSpeedFragment(trimmedCommand)) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Skipping invalid speed fragment: " + trimmedCommand);
-  } else if (isRealScriptCommand(trimmedCommand)) {
-    processScriptCommand(trimmedCommand);
+    xSemaphoreGive(xCommandMutex);
   } else {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Unknown command format: " + trimmedCommand);
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Failed to acquire command mutex");
   }
-
-  processingCommand = false;
 }
 
 void PalletizerRuntime::setSingleCommandFlags() {
@@ -293,84 +325,31 @@ bool PalletizerRuntime::isSingleCommandExecuting() {
   return singleCommandExecuting;
 }
 
-void PalletizerRuntime::processScriptCommand(const String& script) {
-  static bool scriptInProgress = false;
-  if (scriptInProgress) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Script already processing, ignoring duplicate");
-    return;
-  }
-
-  scriptInProgress = true;
-  DEBUG_SERIAL_PRINTLN("RUNTIME: Processing script command");
-
-  if (scriptParser) {
-    scriptProcessing = true;
-    scriptParser->parseScript(script);
-    scriptProcessing = false;
-  } else {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Script parser not available");
-  }
-
-  scriptInProgress = false;
-}
-
-void PalletizerRuntime::processInlineCommands(const String& commands) {
-  String statements[50];
-  int statementCount = 0;
-
-  parseInlineCommands(commands, statements, statementCount);
-
-  for (int i = 0; i < statementCount; i++) {
-    statements[i].trim();
-    if (statements[i].length() > 0) {
-      addCommandToQueue(statements[i]);
-    }
-  }
-}
-
-void PalletizerRuntime::loadCommandsFromFile() {
-  if (!LittleFS.exists(queueFilePath)) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: No saved commands found");
-    return;
-  }
-
-  File file = LittleFS.open(queueFilePath, "r");
-  if (!file) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Failed to open queue file");
-    return;
-  }
-
-  DEBUG_SERIAL_PRINTLN("RUNTIME: Loading commands from file...");
-
-  String allCommands = file.readString();
-  ensureFileIsClosed(file);
-
-  clearQueue();
-
-  if (allCommands.length() > 0) {
-    if (isRealScriptCommand(allCommands)) {
-      DEBUG_SERIAL_PRINTLN("RUNTIME: Detected script format - processing directly");
-      processScriptCommand(allCommands);
-    } else {
-      DEBUG_SERIAL_PRINTLN("RUNTIME: Processing as inline commands");
-      processInlineCommands(allCommands);
-    }
-    DEBUG_SERIAL_PRINTLN("RUNTIME: Commands loaded from file successfully");
-    DEBUG_MGR.info("EXECUTOR", "Total Commands in Queue: " + String(executionInfo.totalCommands));
-  } else {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: No valid commands found in file");
-  }
-}
-
 void PalletizerRuntime::processWaitCommand() {
   DEBUG_MGR.sync("WAIT", "Waiting for sync signal HIGH");
-  waitingForSync = true;
+
+  if (!setSyncFlag(true)) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: ERROR - Failed to set WAIT flag!");
+    return;
+  }
+
   waitStartTime = millis();
   waitStartTimeForStats = millis();
+
+  DEBUG_SERIAL_PRINTLN("RUNTIME: WAIT command setup complete - blocking next commands");
 }
 
 void PalletizerRuntime::processDetectCommand() {
   DEBUG_MGR.info("DETECT", "🎯 DETECT command received");
+
+  if (!setDetectFlag(true)) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: ERROR - Failed to set DETECT flag!");
+    return;
+  }
+
+  detectStartTime = millis();
+  inDebouncePhase = false;
+
   String pinStatus = "⏳ Monitoring pins [";
   for (int i = 0; i < DETECT_PIN_COUNT; i++) {
     if (i > 0) pinStatus += ", ";
@@ -379,9 +358,13 @@ void PalletizerRuntime::processDetectCommand() {
   pinStatus += "]";
   DEBUG_MGR.info("DETECT", pinStatus);
 
-  waitingForDetect = true;
-  detectStartTime = millis();
-  inDebouncePhase = false;
+  delay(5);
+
+  if (!validateStateFlags()) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: ERROR - DETECT state validation failed!");
+  } else {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: DETECT command setup complete - blocking next commands");
+  }
 }
 
 void PalletizerRuntime::processSetCommand(const String& data) {
@@ -405,7 +388,62 @@ void PalletizerRuntime::processSetCommand(const String& data) {
 }
 
 bool PalletizerRuntime::canProcessNextCommand() {
-  return !isQueueFull() && !waitingForSync && !waitingForDetect && !scriptProcessing && !singleCommandExecuting;
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+    bool canProcess = !isQueueFull() && !waitingForSync && !waitingForDetect && !scriptProcessing && !singleCommandExecuting;
+
+    if (!canProcess) {
+      if (waitingForDetect) {
+        DEBUG_SERIAL_PRINTLN("RUNTIME: Blocking processNextCommand - waiting for DETECT");
+      } else if (waitingForSync) {
+        DEBUG_SERIAL_PRINTLN("RUNTIME: Blocking processNextCommand - waiting for SYNC");
+      }
+    }
+
+    xSemaphoreGive(xStateMutex);
+    return canProcess;
+  }
+  return false;
+}
+
+bool PalletizerRuntime::setDetectFlag(bool value) {
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(10))) {
+    waitingForDetect = value;
+    xSemaphoreGive(xStateMutex);
+
+    delay(1);
+
+    if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+      bool verified = (waitingForDetect == value);
+      xSemaphoreGive(xStateMutex);
+      return verified;
+    }
+  }
+  return false;
+}
+
+bool PalletizerRuntime::setSyncFlag(bool value) {
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(10))) {
+    waitingForSync = value;
+    xSemaphoreGive(xStateMutex);
+
+    delay(1);
+
+    if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+      bool verified = (waitingForSync == value);
+      xSemaphoreGive(xStateMutex);
+      return verified;
+    }
+  }
+  return false;
+}
+
+bool PalletizerRuntime::validateStateFlags() {
+  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
+    bool isValid = !waitingForSync && !waitingForDetect && !scriptProcessing && !singleCommandExecuting;
+    xSemaphoreGive(xStateMutex);
+    return isValid;
+  }
+  return false;
 }
 
 void PalletizerRuntime::setSystemRunning(bool running) {
@@ -510,6 +548,82 @@ void PalletizerRuntime::setGroupCommandCallback(GroupCommandCallback callback) {
   groupCommandCallback = callback;
 }
 
+void PalletizerRuntime::processScriptCommand(const String& script) {
+  static bool scriptInProgress = false;
+  if (scriptInProgress) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Script already processing, ignoring duplicate");
+    return;
+  }
+
+  scriptInProgress = true;
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Processing script command");
+
+  if (scriptParser) {
+    scriptProcessing = true;
+    scriptParser->parseScript(script);
+    scriptProcessing = false;
+  } else {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Script parser not available");
+  }
+
+  scriptInProgress = false;
+}
+
+void PalletizerRuntime::processInlineCommands(const String& commands) {
+  String statements[50];
+  int statementCount = 0;
+
+  parseInlineCommands(commands, statements, statementCount);
+
+  for (int i = 0; i < statementCount; i++) {
+    statements[i].trim();
+    if (statements[i].length() > 0) {
+      addCommandToQueue(statements[i]);
+    }
+  }
+}
+
+void PalletizerRuntime::loadCommandsFromFile() {
+  if (!LittleFS.exists(queueFilePath)) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: No saved commands found");
+    return;
+  }
+
+  File file = LittleFS.open(queueFilePath, "r");
+  if (!file) {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Failed to open queue file");
+    return;
+  }
+
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Loading commands from file...");
+
+  String allCommands = file.readString();
+  ensureFileIsClosed(file);
+
+  clearQueue();
+
+  if (allCommands.length() > 0) {
+    if (isRealScriptCommand(allCommands)) {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Detected script format - processing directly");
+      processScriptCommand(allCommands);
+    } else {
+      DEBUG_SERIAL_PRINTLN("RUNTIME: Processing as inline commands");
+      processInlineCommands(allCommands);
+    }
+    DEBUG_SERIAL_PRINTLN("RUNTIME: Commands loaded from file successfully");
+    DEBUG_MGR.info("EXECUTOR", "Total Commands in Queue: " + String(executionInfo.totalCommands));
+  } else {
+    DEBUG_SERIAL_PRINTLN("RUNTIME: No valid commands found in file");
+  }
+}
+
+void PalletizerRuntime::resetDetectionState() {
+  setDetectFlag(false);
+  inDebouncePhase = false;
+  detectStartTime = 0;
+  debounceStartTime = 0;
+}
+
 bool PalletizerRuntime::initFileSystem() {
   if (!LittleFS.begin(true)) {
     return false;
@@ -606,7 +720,7 @@ void PalletizerRuntime::initDetectPins() {
     currentPinStates[i] = digitalRead(DETECT_PINS[i]);
     lastPinStates[i] = currentPinStates[i];
   }
-  DEBUG_SERIAL_PRINTLN("RUNTIME: Detect pins initialized - Pins: " + String(DETECT_PINS[0]) + ", " + String(DETECT_PINS[1]));
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Detect pins initialized - Pin: " + String(DETECT_PINS[0]));
 }
 
 bool PalletizerRuntime::checkSyncTimeout() {
@@ -627,20 +741,13 @@ bool PalletizerRuntime::checkAllPinsLow() {
   return true;
 }
 
-void PalletizerRuntime::resetDetectionState() {
-  waitingForDetect = false;
-  inDebouncePhase = false;
-  detectStartTime = 0;
-  debounceStartTime = 0;
-}
-
 void PalletizerRuntime::handleWaitTimeout() {
   updateTimeoutStats(false);
 
   switch (timeoutConfig.strategy) {
     case TIMEOUT_SKIP_CONTINUE:
       DEBUG_MGR.warning("TIMEOUT", "⚠️ WAIT timeout #" + String(timeoutStats.totalTimeouts) + " - skipping and continuing");
-      waitingForSync = false;
+      setSyncFlag(false);
 
       if (timeoutStats.totalTimeouts >= timeoutConfig.maxTimeoutWarning) {
         DEBUG_SERIAL_PRINTLN("RUNTIME: WARNING - Frequent WAIT timeouts detected!");
@@ -661,7 +768,7 @@ void PalletizerRuntime::handleWaitTimeout() {
 
     case TIMEOUT_PAUSE_SYSTEM:
       DEBUG_MGR.warning("TIMEOUT", "⚠️ WAIT timeout - requesting system pause");
-      waitingForSync = false;
+      setSyncFlag(false);
       if (systemStateCallback) {
         systemStateCallback("PAUSE");
       }
@@ -669,7 +776,7 @@ void PalletizerRuntime::handleWaitTimeout() {
 
     case TIMEOUT_ABORT_RESET:
       DEBUG_MGR.error("TIMEOUT", "❌ WAIT timeout - requesting system reset");
-      waitingForSync = false;
+      setSyncFlag(false);
       clearQueue();
       if (systemStateCallback) {
         systemStateCallback("IDLE");
@@ -684,7 +791,7 @@ void PalletizerRuntime::handleWaitTimeout() {
       } else {
         DEBUG_MGR.error("TIMEOUT", "❌ WAIT timeout - max retries reached, requesting pause");
         timeoutStats.currentRetryCount = 0;
-        waitingForSync = false;
+        setSyncFlag(false);
         if (systemStateCallback) {
           systemStateCallback("PAUSE");
         }

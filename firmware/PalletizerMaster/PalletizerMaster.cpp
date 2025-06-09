@@ -43,7 +43,7 @@ void PalletizerMaster::begin() {
 
   systemState = STATE_IDLE;
   sendStateUpdate();
-  DEBUG_SERIAL_PRINTLN("MASTER: System orchestrator initialized");
+  DEBUG_SERIAL_PRINTLN("MASTER: System orchestrator initialized with enhanced state management");
 }
 
 void PalletizerMaster::update() {
@@ -70,7 +70,10 @@ void PalletizerMaster::update() {
     }
   }
 
-  if (systemState == STATE_STOPPING && !sequenceRunning && !waitingForCompletion && !runtime->isWaitingForSync() && !runtime->isWaitingForDetect() && !runtime->isSingleCommandExecuting()) {
+  bool isRuntimeBusy = runtime->isWaitingForSync() || runtime->isWaitingForDetect() || runtime->isSingleCommandExecuting();
+  bool isSystemBusy = sequenceRunning || waitingForCompletion || groupExecutionActive || waitingForGroupDelay;
+
+  if (systemState == STATE_STOPPING && !isRuntimeBusy && !isSystemBusy) {
     setSystemState(STATE_IDLE);
   }
 
@@ -174,7 +177,14 @@ void PalletizerMaster::addCommandToQueue(const String& command) {
 }
 
 bool PalletizerMaster::canProcessNextCommand() {
-  return runtime->canProcessNextCommand() && !waitingForGroupDelay && !groupExecutionActive && !sequenceRunning && !waitingForCompletion;
+  bool runtimeCanProcess = runtime->canProcessNextCommand();
+  bool masterCanProcess = !waitingForGroupDelay && !groupExecutionActive && !sequenceRunning && !waitingForCompletion;
+
+  if (!masterCanProcess) {
+    DEBUG_SERIAL_PRINTLN("MASTER: Blocking processNextCommand - master state busy");
+  }
+
+  return runtimeCanProcess && masterCanProcess;
 }
 
 void PalletizerMaster::onCommandReceived(const String& data) {
@@ -206,7 +216,11 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   }
 
   if (upperData.startsWith("SET(") || upperData == "WAIT" || upperData == "DETECT") {
-    runtime->addCommandToQueue(trimmedData);
+    if (canProcessNextCommand()) {
+      runtime->addCommandToQueue(trimmedData);
+    } else {
+      DEBUG_SERIAL_PRINTLN("MASTER: Cannot queue command - system busy");
+    }
     return;
   }
 
@@ -288,7 +302,9 @@ void PalletizerMaster::handleSequenceCompletion() {
 
   if (!runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
     DEBUG_SERIAL_PRINTLN("MASTER: Processing next command from queue");
-    runtime->processNextCommand();
+    if (canProcessNextCommand()) {
+      runtime->processNextCommand();
+    }
   } else if (runtime->isQueueEmpty() && systemState == STATE_RUNNING) {
     PalletizerRuntime::ExecutionInfo execInfo = runtime->getExecutionInfo();
     if (execInfo.isExecuting) {
@@ -333,8 +349,10 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
   DEBUG_SERIAL_PRINTLN("MASTER: Processing system state command: " + command);
 
   if (command == "IDLE") {
+    bool isSystemBusy = sequenceRunning || runtime->isSingleCommandExecuting() || runtime->isWaitingForSync() || runtime->isWaitingForDetect();
+
     if (systemState == STATE_RUNNING || systemState == STATE_PAUSED) {
-      if (sequenceRunning || runtime->isSingleCommandExecuting()) {
+      if (isSystemBusy) {
         setSystemState(STATE_STOPPING);
       } else {
         runtime->clearQueue();
@@ -355,13 +373,17 @@ void PalletizerMaster::processSystemStateCommand(const String& command) {
 
     runtime->updateExecutionInfo(true);
     setSystemState(STATE_RUNNING);
-    if (!sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting()) {
+
+    bool canStart = !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting();
+    if (canStart && canProcessNextCommand()) {
       runtime->processNextCommand();
     }
   } else if (command == "PAUSE") {
     setSystemState(STATE_PAUSED);
   } else if (command == "STOP") {
-    if (sequenceRunning || runtime->isSingleCommandExecuting()) {
+    bool isSystemBusy = sequenceRunning || runtime->isSingleCommandExecuting() || runtime->isWaitingForSync() || runtime->isWaitingForDetect();
+
+    if (isSystemBusy) {
       setSystemState(STATE_STOPPING);
     } else {
       runtime->clearQueue();
@@ -378,7 +400,8 @@ void PalletizerMaster::setSystemState(SystemState newState) {
     runtime->setSystemRunning(newState == STATE_RUNNING);
     sendStateUpdate();
 
-    if (newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting()) {
+    bool canStart = newState == STATE_RUNNING && !sequenceRunning && !waitingForCompletion && !runtime->isQueueEmpty() && !runtime->isSingleCommandExecuting();
+    if (canStart && canProcessNextCommand()) {
       runtime->processNextCommand();
     }
   }

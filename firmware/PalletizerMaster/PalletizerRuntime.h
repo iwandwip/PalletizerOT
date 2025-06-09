@@ -6,6 +6,8 @@
 #include "LittleFS.h"
 #include "DebugConfig.h"
 #include "PalletizerProtocol.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 const int DETECT_PINS[] = { 36 };
 const int DETECT_PIN_COUNT = sizeof(DETECT_PINS) / sizeof(DETECT_PINS[0]);
@@ -102,26 +104,29 @@ private:
 
   int syncSetPin;
   int syncWaitPin;
-  bool waitingForSync;
+  volatile bool waitingForSync;
   unsigned long waitStartTime;
   unsigned long waitStartTimeForStats;
 
-  bool waitingForDetect;
+  volatile bool waitingForDetect;
   unsigned long detectStartTime;
   unsigned long debounceStartTime;
-  bool inDebouncePhase;
+  volatile bool inDebouncePhase;
   bool currentPinStates[5];
   bool lastPinStates[5];
 
   ExecutionInfo executionInfo;
   bool executionInfoActive;
   bool progressLoggingActive;
-  bool systemRunning;
-  bool scriptProcessing;
-  bool singleCommandExecuting;
+  volatile bool systemRunning;
+  volatile bool scriptProcessing;
+  volatile bool singleCommandExecuting;
 
   TimeoutConfig timeoutConfig;
   TimeoutStats timeoutStats;
+
+  SemaphoreHandle_t xCommandMutex;
+  SemaphoreHandle_t xStateMutex;
 
   bool initFileSystem();
   bool writeQueueIndex();
@@ -147,6 +152,9 @@ private:
   bool isInvalidSpeedFragment(const String& command);
   bool isNumeric(const String& str);
   bool shouldClearQueue(const String& data);
+  bool setDetectFlag(bool value);
+  bool setSyncFlag(bool value);
+  bool validateStateFlags();
 };
 
 #endif
