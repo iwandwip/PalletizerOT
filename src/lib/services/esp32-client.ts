@@ -41,9 +41,10 @@ class ESP32Client {
   private connectionState: boolean = false
   private lastSuccessfulRequest: number = 0
   private consecutiveFailures: number = 0
+  private addressDetected: boolean = false
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || this.detectESP32Address()
+    this.baseUrl = baseUrl || 'http://192.168.4.1'
     this.timeout = 5000
     this.retryAttempts = 3
     this.retryDelay = 1000
@@ -57,19 +58,40 @@ class ESP32Client {
       'http://esp32.local'
     ]
     
-    const savedAddress = localStorage.getItem('esp32_address')
-    if (savedAddress) {
-      return savedAddress
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const savedAddress = localStorage.getItem('esp32_address')
+        if (savedAddress) {
+          return savedAddress
+        }
+      } catch (error) {
+        console.warn('Failed to access localStorage:', error)
+      }
     }
     
     return commonAddresses[0]
   }
 
   private saveESP32Address(address: string): void {
-    localStorage.setItem('esp32_address', address)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.setItem('esp32_address', address)
+      } catch (error) {
+        console.warn('Failed to save to localStorage:', error)
+      }
+    }
+  }
+
+  private ensureAddressDetected(): void {
+    if (!this.addressDetected) {
+      this.baseUrl = this.detectESP32Address()
+      this.addressDetected = true
+    }
   }
 
   async sendCommand(command: string): Promise<ESP32Response> {
+    this.ensureAddressDetected()
+    
     const maxRetries = this.retryAttempts
     let lastError: any = null
 
@@ -114,6 +136,8 @@ class ESP32Client {
   }
 
   async getStatus(): Promise<ESP32Status> {
+    this.ensureAddressDetected()
+    
     try {
       const response: AxiosResponse = await axios.get(
         `${this.baseUrl}/status`,
@@ -148,6 +172,8 @@ class ESP32Client {
   }
 
   async getSyncStatus(): Promise<SyncStatus | null> {
+    this.ensureAddressDetected()
+    
     try {
       const response: AxiosResponse = await axios.get(
         `${this.baseUrl}/sync_status`,
@@ -163,6 +189,8 @@ class ESP32Client {
   }
 
   async resetErrors(): Promise<ESP32Response> {
+    this.ensureAddressDetected()
+    
     try {
       const response: AxiosResponse = await axios.post(
         `${this.baseUrl}/reset_errors`,
@@ -183,6 +211,8 @@ class ESP32Client {
   }
 
   async checkConnection(): Promise<boolean> {
+    this.ensureAddressDetected()
+    
     try {
       const response: AxiosResponse = await axios.get(
         `${this.baseUrl}/ping`,
@@ -235,6 +265,7 @@ class ESP32Client {
     if (addresses.length > 0) {
       this.baseUrl = addresses[0]
       this.saveESP32Address(this.baseUrl)
+      this.addressDetected = true
       console.log(`ESP32 auto-detected at: ${this.baseUrl}`)
       return true
     }
@@ -246,9 +277,11 @@ class ESP32Client {
     this.baseUrl = address
     this.saveESP32Address(address)
     this.consecutiveFailures = 0
+    this.addressDetected = true
   }
 
   getAddress(): string {
+    this.ensureAddressDetected()
     return this.baseUrl
   }
 
