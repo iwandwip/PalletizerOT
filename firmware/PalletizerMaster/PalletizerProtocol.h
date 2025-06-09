@@ -79,12 +79,14 @@ private:
 
   void addCommandToBuffer(const String& slaveId, Command cmd, const String& params = "");
   void flushCommandBuffer();
+  void immediateFlush();
   void sendBatchedCommands();
   void sendLegacyCommand(const String& slaveId, Command cmd, const String& params = "");
   String buildPacket(const CommandItem* commands, int count);
   uint8_t calculateCRC8(const String& data);
   bool shouldFlushBuffer();
   void clearBuffer();
+  void forceBufferClear();
 };
 
 #endif

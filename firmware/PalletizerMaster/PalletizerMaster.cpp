@@ -49,7 +49,6 @@ void PalletizerMaster::begin() {
 }
 
 void PalletizerMaster::update() {
-  protocol->update();
   runtime->update();
 
   if (waitingForGroupDelay && millis() >= groupCommandTimer) {

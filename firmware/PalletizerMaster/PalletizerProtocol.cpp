@@ -233,7 +233,7 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
     if (isValidSlaveId(slaveId)) {
       if (currentPacketMode == PACKET_MODE_BATCH) {
         addCommandToBuffer(slaveId, CMD_SETSPEED, speedValue);
-        flushCommandBuffer();
+        immediateFlush();
       } else {
         sendLegacyCommand(slaveId, CMD_SETSPEED, speedValue);
       }
@@ -255,8 +255,8 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
       }
     }
 
-    if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
-      flushCommandBuffer();
+    if (currentPacketMode == PACKET_MODE_BATCH) {
+      immediateFlush();
     }
 
     DEBUG_MGR.info("PROTOCOL", "Set all axes speed to " + params);
@@ -279,6 +279,13 @@ void PalletizerProtocol::flushCommandBuffer() {
   if (bufferedCommandCount > 0) {
     sendBatchedCommands();
     clearBuffer();
+  }
+}
+
+void PalletizerProtocol::immediateFlush() {
+  if (bufferedCommandCount > 0) {
+    sendBatchedCommands();
+    forceBufferClear();
   }
 }
 
@@ -346,13 +353,23 @@ uint8_t PalletizerProtocol::calculateCRC8(const String& data) {
 bool PalletizerProtocol::shouldFlushBuffer() {
   if (bufferedCommandCount == 0) return false;
   if (bufferedCommandCount >= MAX_BATCH_COMMANDS) return true;
-  if (millis() - lastCommandTime >= BATCH_TIMEOUT_MS) return true;
+  if (lastCommandTime > 0 && (millis() - lastCommandTime) >= BATCH_TIMEOUT_MS) return true;
   return false;
 }
 
 void PalletizerProtocol::clearBuffer() {
   bufferedCommandCount = 0;
   lastCommandTime = 0;
+}
+
+void PalletizerProtocol::forceBufferClear() {
+  bufferedCommandCount = 0;
+  lastCommandTime = 0;
+  for (int i = 0; i < MAX_BATCH_COMMANDS; i++) {
+    commandBuffer[i].slaveId = "";
+    commandBuffer[i].params = "";
+    commandBuffer[i].cmd = CMD_NONE;
+  }
 }
 
 void PalletizerProtocol::formatSlaveCommand(const String& slaveId, Command cmd, const String& params) {
