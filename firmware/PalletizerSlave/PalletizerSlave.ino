@@ -55,35 +55,19 @@ void setup() {
 #endif
 
 #if TESTING_MODE
-  Serial.println("=== PACKET-ENABLED SLAVE " + String(SLAVE_ADDR) + " ===");
-  Serial.println("Command Examples:");
-  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";1;200");
-  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";2");
-  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";6;2000");
-  Serial.println("[PACKET]      : #" + String(SLAVE_ADDR) + ";1;5000,y;1;3000*CRC#");
-  Serial.println("[PACKET DEMO] : #x;1;1000,y;1;2000,z;1;3000*5A#");
-  Serial.println("Supports both legacy and packet formats automatically.");
-  Serial.println("=========================================");
+  Serial.print(F("SLAVE "));
+  Serial.print(SLAVE_ADDR);
+  Serial.println(F(" READY"));
 #endif
 }
 
 void loop() {
 #if TESTING_SENSOR_DEBUG
   static uint32_t sensorDebugTimer;
-  if (millis() - sensorDebugTimer >= 500) {
+  if (millis() - sensorDebugTimer >= 2000) {
     sensorDebugTimer = millis();
-    int sensorState = digitalRead(SENSOR_PIN);
-    Serial.print("| sensorState: ");
-    Serial.print(sensorState);
-    Serial.println();
-  }
-#endif
-
-#if TESTING_MODE
-  static uint32_t statusTimer;
-  if (millis() - statusTimer >= 5000) {
-    statusTimer = millis();
-    Serial.println("SLAVE " + String(SLAVE_ADDR) + " Status: Ready for packet/legacy commands");
+    Serial.print(F("S:"));
+    Serial.println(digitalRead(SENSOR_PIN));
   }
 #endif
 

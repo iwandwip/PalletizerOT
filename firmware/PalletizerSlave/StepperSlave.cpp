@@ -2,6 +2,15 @@
 
 StepperSlave* StepperSlave::instance = nullptr;
 
+const char MSG_INIT[] PROGMEM = "SLAVE INIT";
+const char MSG_ZERO_DONE[] PROGMEM = "ZERO DONE";
+const char MSG_SPEED_SET[] PROGMEM = "SPEED SET TO ";
+const char MSG_INVALID_SPEED[] PROGMEM = "INVALID SPEED VALUE";
+const char MSG_MOVING_TO[] PROGMEM = "MOVING TO ";
+const char MSG_POSITION_REACHED[] PROGMEM = "POSITION REACHED";
+const char MSG_SEQUENCE_COMPLETED[] PROGMEM = "SEQUENCE COMPLETED";
+const char MSG_DELAYING[] PROGMEM = "DELAYING";
+
 StepperSlave::StepperSlave(
   char id, int rxPin, int txPin, int clkPin, int cwPin, int enPin, int sensorPin,
   int brakePin, bool invertBrakeLogic, int indicatorPin, bool invertEnableLogic,
@@ -15,15 +24,13 @@ StepperSlave::StepperSlave(
     indicatorPin(indicatorPin),
     invertBrakeLogic(invertBrakeLogic),
     invertEnableLogic(invertEnableLogic),
-    dataBuffer(""),
-    packetInProgress(false) {
+    bufferIndex(0) {
 
   instance = this;
-
   brakeReleaseDelay = brakeReleaseDelayMs;
   brakeEngageDelay = brakeEngageDelayMs;
-
   acceleration = maxSpeed * SPEED_RATIO;
+  clearBuffer();
 }
 
 void StepperSlave::begin() {
@@ -34,7 +41,6 @@ void StepperSlave::begin() {
 #else
   masterSerial.begin(&masterCommSerial);
 #endif
-  debugSerial.begin(&Serial);
   masterSerial.setDataCallback(onMasterDataWrapper);
 
   if (enPin != NOT_CONNECTED) {
@@ -60,17 +66,15 @@ void StepperSlave::begin() {
   stepper.setMaxSpeed(maxSpeed);
   stepper.setCurrentPosition(0);
 
-  clearBuffer();
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi dengan packet support");
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Ready for communication on pins RX:" + String(8) + " TX:" + String(9));
+  DEBUG_PRINTLN(MSG_INIT);
 }
 
 void StepperSlave::update() {
   masterSerial.checkCallback();
 
-  static unsigned long lastDirectCheck = 0;
-  if (millis() - lastDirectCheck > 10) {
-    lastDirectCheck = millis();
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck > 20) {
+    lastCheck = millis();
     checkDirectSerial();
   }
 
@@ -80,146 +84,91 @@ void StepperSlave::update() {
 }
 
 void StepperSlave::checkDirectSerial() {
-  if (masterCommSerial.available() > 0) {
-    String rawData = "";
-    while (masterCommSerial.available() > 0) {
-      char c = masterCommSerial.read();
-      if (c == '\n' || c == '\r') {
-        if (rawData.length() > 0) {
-          DEBUG_PRINTLN("DIRECT_RX: " + rawData);
-          processIncomingData(rawData);
-          rawData = "";
-        }
-      } else if (c >= 32 && c <= 126) {
-        rawData += c;
+  while (masterCommSerial.available() > 0) {
+    char c = masterCommSerial.read();
+    if (c == '\n' || c == '\r') {
+      if (bufferIndex > 0) {
+        dataBuffer[bufferIndex] = '\0';
+        processIncomingData(dataBuffer);
+        clearBuffer();
       }
-    }
-
-    if (rawData.length() > 0) {
-      DEBUG_PRINTLN("PARTIAL_RX: " + rawData);
-      addToBuffer(rawData);
+    } else if (c >= 32 && c <= 126 && bufferIndex < MAX_BUFFER_SIZE - 1) {
+      addToBuffer(c);
     }
   }
 }
 
 void StepperSlave::onMasterDataWrapper(const String& data) {
-  if (instance) {
-    instance->onMasterData(data);
+  if (instance && data.length() < MAX_BUFFER_SIZE) {
+    data.toCharArray(instance->dataBuffer, MAX_BUFFER_SIZE);
+    instance->processIncomingData(instance->dataBuffer);
   }
 }
 
 void StepperSlave::onMasterData(const String& data) {
-  DEBUG_PRINTLN("CALLBACK_RX: " + data);
-  processIncomingData(data);
-}
-
-void StepperSlave::processIncomingData(const String& data) {
-  addToBuffer(data);
-
-  DataFormat format = detectDataFormat(dataBuffer);
-
-  if (format == FORMAT_PACKET) {
-    if (isPacketComplete()) {
-      String packet = getCompletePacket();
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing packet: " + packet);
-      if (processPacketData(packet)) {
-        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Packet processed successfully");
-      } else {
-        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Packet processing failed");
-      }
-      clearBuffer();
-    }
-  } else if (format == FORMAT_LEGACY) {
-    String command = dataBuffer;
-    command.trim();
-    if (command.length() > 0) {
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing legacy: " + command);
-      processCommand(command);
-    }
-    clearBuffer();
+  if (data.length() < MAX_BUFFER_SIZE) {
+    data.toCharArray(dataBuffer, MAX_BUFFER_SIZE);
+    processIncomingData(dataBuffer);
   }
 }
 
-StepperSlave::DataFormat StepperSlave::detectDataFormat(const String& data) {
-  if (data.indexOf('#') != -1) {
-    return FORMAT_PACKET;
+void StepperSlave::processIncomingData(const char* data) {
+  if (isPacketFormat(data)) {
+    if (processPacketData(data)) {
+      DEBUG_PRINTLN("PKT OK");
+    }
+  } else {
+    processCommand(data);
   }
-  return FORMAT_LEGACY;
 }
 
-bool StepperSlave::processPacketData(const String& packet) {
+bool StepperSlave::isPacketFormat(const char* data) {
+  return (data[0] == '#');
+}
+
+bool StepperSlave::processPacketData(const char* packet) {
   if (!validatePacketCRC(packet)) {
     return false;
   }
 
-  int startPos = packet.indexOf('#') + 1;
-  int endPos = packet.lastIndexOf('*');
-
-  if (startPos <= 0 || endPos <= startPos) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid packet format");
-    return false;
-  }
-
-  String packetContent = packet.substring(startPos, endPos);
-  String relevantCommands = extractRelevantCommands(packetContent);
-
-  if (relevantCommands.length() > 0) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Relevant commands: " + relevantCommands);
-    processExtractedCommands(relevantCommands);
+  char command[MAX_COMMAND_SIZE];
+  if (extractRelevantCommand(packet, command)) {
+    processCommand(command);
     return true;
   }
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": No relevant commands found in packet");
   return false;
 }
 
-bool StepperSlave::validatePacketCRC(const String& packet) {
-  int startPos = packet.indexOf('#') + 1;
-  int asteriskPos = packet.lastIndexOf('*');
-  int endPos = packet.lastIndexOf('#');
+bool StepperSlave::validatePacketCRC(const char* packet) {
+  char* asterisk = strrchr(packet, '*');
+  char* endHash = strrchr(packet, '#');
 
-  if (startPos <= 0 || asteriskPos <= startPos || endPos <= asteriskPos) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid packet structure");
+  if (!asterisk || !endHash || asterisk >= endHash) {
     return false;
   }
 
-  String content = packet.substring(startPos, asteriskPos);
-  String crcHex = packet.substring(asteriskPos + 1, endPos);
-  crcHex.toUpperCase();
+  int contentLen = asterisk - packet - 1;
+  if (contentLen <= 0) return false;
 
-  uint8_t expectedCRC = calculateCRC8(content);
-  uint8_t receivedCRC = 0;
+  uint8_t expectedCRC = calculateCRC8(packet + 1, contentLen);
 
-  if (crcHex.length() == 1) {
-    receivedCRC = strtol(crcHex.c_str(), NULL, 16);
-  } else if (crcHex.length() == 2) {
-    receivedCRC = strtol(crcHex.c_str(), NULL, 16);
-  } else {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid CRC format: " + crcHex);
-    return false;
-  }
+  char crcStr[3];
+  int crcLen = endHash - asterisk - 1;
+  if (crcLen > 2) return false;
 
-  char expectedHex[3];
-  sprintf(expectedHex, "%02X", expectedCRC);
+  strncpy(crcStr, asterisk + 1, crcLen);
+  crcStr[crcLen] = '\0';
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC Check - Content: '" + content + "'");
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Expected CRC: " + String(expectedCRC) + " (0x" + String(expectedHex) + ")");
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Received CRC: " + String(receivedCRC) + " (0x" + crcHex + ")");
+  uint8_t receivedCRC = strtol(crcStr, NULL, 16);
 
-  bool valid = (expectedCRC == receivedCRC);
-  if (!valid) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation failed");
-  } else {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation passed");
-  }
-
-  return valid;
+  return (expectedCRC == receivedCRC);
 }
 
-uint8_t StepperSlave::calculateCRC8(const String& data) {
+uint8_t StepperSlave::calculateCRC8(const char* data, int len) {
   uint8_t crc = 0;
-  for (int i = 0; i < data.length(); i++) {
-    crc ^= data.charAt(i);
+  for (int i = 0; i < len; i++) {
+    crc ^= data[i];
     for (int j = 0; j < 8; j++) {
       if (crc & 0x80) {
         crc = (crc << 1) ^ 0x07;
@@ -231,147 +180,82 @@ uint8_t StepperSlave::calculateCRC8(const String& data) {
   return crc;
 }
 
-String StepperSlave::extractRelevantCommands(const String& packetContent) {
-  String result = "";
-  String slaveIdStr = String(slaveId);
+bool StepperSlave::extractRelevantCommand(const char* packetContent, char* output) {
+  char* start = strchr(packetContent, '#');
+  char* end = strchr(packetContent, '*');
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Extracting from: " + packetContent);
+  if (!start || !end || start >= end) return false;
 
-  int pos = 0;
-  while (pos < packetContent.length()) {
-    int commaPos = packetContent.indexOf(',', pos);
-    String command = (commaPos == -1) ? packetContent.substring(pos) : packetContent.substring(pos, commaPos);
+  start++;
+  char slavePrefix[3];
+  slavePrefix[0] = slaveId;
+  slavePrefix[1] = ';';
+  slavePrefix[2] = '\0';
 
-    command.trim();
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Checking command: '" + command + "'");
+  char* pos = start;
+  while (pos < end) {
+    char* comma = strchr(pos, ',');
+    char* cmdEnd = (comma && comma < end) ? comma : end;
 
-    if (command.startsWith(slaveIdStr + ";") || command.startsWith("all;")) {
-      if (result.length() > 0) {
-        result += ",";
+    int cmdLen = cmdEnd - pos;
+    if (cmdLen < MAX_COMMAND_SIZE - 1) {
+      if (strncmp(pos, slavePrefix, 2) == 0 || strncmp(pos, "all;", 4) == 0) {
+        strncpy(output, pos, cmdLen);
+        output[cmdLen] = '\0';
+        return true;
       }
-      result += command;
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Command matches - added to result");
     }
 
-    pos = (commaPos == -1) ? packetContent.length() : commaPos + 1;
+    pos = comma ? comma + 1 : end;
   }
 
-  return result;
+  return false;
 }
 
-void StepperSlave::processExtractedCommands(const String& commands) {
-  int pos = 0;
-  while (pos < commands.length()) {
-    int commaPos = commands.indexOf(',', pos);
-    String singleCommand = (commaPos == -1) ? commands.substring(pos) : commands.substring(pos, commaPos);
+void StepperSlave::processCommand(const char* data) {
+  char* firstSep = strchr(data, ';');
+  if (!firstSep) return;
 
-    singleCommand.trim();
+  char slaveIdStr = data[0];
+  if (slaveIdStr != slaveId && strncmp(data, "all", 3) != 0) return;
 
-    if (singleCommand.length() > 0) {
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Executing: " + singleCommand);
-      processCommand(singleCommand);
-    }
-
-    pos = (commaPos == -1) ? commands.length() : commaPos + 1;
-  }
-}
-
-void StepperSlave::addToBuffer(const String& data) {
-  if (dataBuffer.length() + data.length() < MAX_BUFFER_SIZE) {
-    dataBuffer += data;
-  } else {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Buffer overflow, clearing");
-    clearBuffer();
-    dataBuffer = data;
-  }
-}
-
-void StepperSlave::clearBuffer() {
-  dataBuffer = "";
-  packetInProgress = false;
-}
-
-bool StepperSlave::isPacketComplete() {
-  if (dataBuffer.indexOf('#') == -1) return false;
-
-  int firstHash = dataBuffer.indexOf('#');
-  int lastHash = dataBuffer.lastIndexOf('#');
-
-  return (firstHash != lastHash && lastHash > firstHash);
-}
-
-String StepperSlave::getCompletePacket() {
-  int firstHash = dataBuffer.indexOf('#');
-  int lastHash = dataBuffer.lastIndexOf('#');
-
-  if (firstHash != -1 && lastHash > firstHash) {
-    return dataBuffer.substring(firstHash, lastHash + 1);
-  }
-
-  return "";
-}
-
-void StepperSlave::processCommand(const String& data) {
-  int firstSeparator = data.indexOf(';');
-  if (firstSeparator == -1) return;
-
-  String slaveIdStr = data.substring(0, firstSeparator);
-  slaveIdStr.toLowerCase();
-
-  if (slaveIdStr != String(slaveId) && slaveIdStr != "all") return;
-
-  int secondSeparator = data.indexOf(';', firstSeparator + 1);
-  int cmdCode = (secondSeparator == -1)
-                  ? data.substring(firstSeparator + 1).toInt()
-                  : data.substring(firstSeparator + 1, secondSeparator).toInt();
-
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing command " + String(cmdCode));
+  char* secondSep = strchr(firstSep + 1, ';');
+  int cmdCode = atoi(firstSep + 1);
 
   switch (cmdCode) {
     case CMD_ZERO:
       handleZeroCommand();
       break;
     case CMD_SETSPEED:
-      if (secondSeparator != -1) {
-        handleSetSpeedCommand(data.substring(secondSeparator + 1));
+      if (secondSep) {
+        handleSetSpeedCommand(secondSep + 1);
       }
       break;
     case CMD_RUN:
-      if (secondSeparator != -1) {
-        handleMoveCommand(data.substring(secondSeparator + 1));
+      if (secondSep) {
+        handleMoveCommand(secondSep + 1);
       }
-      break;
-    default:
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Unknown command " + String(cmdCode));
       break;
   }
 }
 
-void StepperSlave::sendFeedback(const String& message) {
-  String feedback = String(slaveId) + ";" + message;
-  masterSerial.println(feedback);
-  DEBUG_PRINTLN("SLAVE→MASTER: " + feedback);
-}
-
-void StepperSlave::reportPosition() {
-  String positionUpdate = "POS:" + String(stepper.currentPosition()) + " TARGET:" + String(stepper.targetPosition());
-  sendFeedback(positionUpdate);
+void StepperSlave::sendFeedback(const char* message) {
+  Serial.print(slaveId);
+  Serial.print(';');
+  Serial.println(message);
 }
 
 void StepperSlave::handleZeroCommand() {
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Executing ZERO (Homing)");
-
   motorState = MOTOR_IDLE;
   queuedMotionsCount = 0;
   currentMotionIndex = 0;
   setIndicator(false);
 
   performHoming();
-
-  sendFeedback("ZERO DONE");
+  sendFeedback(MSG_ZERO_DONE);
 }
 
-void StepperSlave::handleMoveCommand(const String& params) {
+void StepperSlave::handleMoveCommand(const char* params) {
   parsePositionSequence(params);
   hasReportedCompletion = false;
 
@@ -383,71 +267,47 @@ void StepperSlave::handleMoveCommand(const String& params) {
   }
 }
 
-void StepperSlave::handleSetSpeedCommand(const String& params) {
-  float newSpeed = params.toFloat();
+void StepperSlave::handleSetSpeedCommand(const char* params) {
+  float newSpeed = atof(params);
   if (newSpeed > 0) {
-    DEBUG_PRINT("SLAVE ");
-    DEBUG_PRINT(slaveId);
-    DEBUG_PRINT(": Setting speed to ");
-    DEBUG_PRINTLN(newSpeed);
-
     maxSpeed = newSpeed;
     stepper.setMaxSpeed(maxSpeed);
-
     acceleration = maxSpeed * SPEED_RATIO;
     stepper.setAcceleration(acceleration);
 
-    sendFeedback("SPEED SET TO " + String(maxSpeed));
+    char response[32];
+    strcpy(response, MSG_SPEED_SET);
+    char speedStr[16];
+    dtostrf(maxSpeed, 0, 0, speedStr);
+    strcat(response, speedStr);
+    sendFeedback(response);
   } else {
-    DEBUG_PRINT("SLAVE ");
-    DEBUG_PRINT(slaveId);
-    DEBUG_PRINTLN(": Invalid speed value");
-    sendFeedback("INVALID SPEED VALUE");
+    sendFeedback(MSG_INVALID_SPEED);
   }
 }
 
-void StepperSlave::parsePositionSequence(const String& params) {
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Parsing position sequence: " + params);
-
-  int semicolonPos = -1;
-  int startPos = 0;
+void StepperSlave::parsePositionSequence(const char* params) {
   queuedMotionsCount = 0;
   currentMotionIndex = 0;
 
-  do {
-    semicolonPos = params.indexOf(';', startPos);
-    String param = (semicolonPos == -1) ? params.substring(startPos) : params.substring(startPos, semicolonPos);
-    param.trim();
+  char* token = strtok((char*)params, ";");
+  while (token && queuedMotionsCount < MAX_MOTIONS) {
+    motionQueue[queuedMotionsCount].speed = maxSpeed;
+    motionQueue[queuedMotionsCount].completed = false;
 
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Parsing parameter: " + param);
-
-    if (queuedMotionsCount < MAX_MOTIONS) {
-      motionQueue[queuedMotionsCount].speed = maxSpeed;
-      motionQueue[queuedMotionsCount].completed = false;
-
-      if (param.startsWith("d")) {
-        unsigned long delayValue = param.substring(1).toInt();
-        motionQueue[queuedMotionsCount].delayMs = delayValue;
-        motionQueue[queuedMotionsCount].position = 0;
-        motionQueue[queuedMotionsCount].isDelayOnly = true;
-
-        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Queueing delay " + String(queuedMotionsCount) + " - Delay: " + String(delayValue) + "ms");
-      } else {
-        long position = param.toInt();
-        motionQueue[queuedMotionsCount].position = position;
-        motionQueue[queuedMotionsCount].delayMs = 0;
-        motionQueue[queuedMotionsCount].isDelayOnly = false;
-
-        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Queueing position " + String(queuedMotionsCount) + " - Pos: " + String(position));
-      }
-
-      queuedMotionsCount++;
+    if (token[0] == 'd') {
+      motionQueue[queuedMotionsCount].delayMs = atol(token + 1);
+      motionQueue[queuedMotionsCount].position = 0;
+      motionQueue[queuedMotionsCount].isDelayOnly = true;
+    } else {
+      motionQueue[queuedMotionsCount].position = atol(token);
+      motionQueue[queuedMotionsCount].delayMs = 0;
+      motionQueue[queuedMotionsCount].isDelayOnly = false;
     }
 
-    startPos = semicolonPos + 1;
-  } while (semicolonPos != -1 && startPos < params.length() && queuedMotionsCount < MAX_MOTIONS);
-
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Total queued motions: " + String(queuedMotionsCount));
+    queuedMotionsCount++;
+    token = strtok(NULL, ";");
+  }
 }
 
 void StepperSlave::handleMotion() {
@@ -455,7 +315,6 @@ void StepperSlave::handleMotion() {
 
   if (motorState == MOTOR_DELAYING) {
     if (millis() - delayStartTime >= motionQueue[currentMotionIndex].delayMs) {
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Delay completed");
       motorState = MOTOR_IDLE;
       motionQueue[currentMotionIndex].completed = true;
 
@@ -464,7 +323,7 @@ void StepperSlave::handleMotion() {
         executeCurrentMotion();
       } else {
         setIndicator(false);
-        sendFeedback("SEQUENCE COMPLETED");
+        sendFeedback(MSG_SEQUENCE_COMPLETED);
         hasReportedCompletion = true;
         motorState = MOTOR_IDLE;
       }
@@ -475,7 +334,7 @@ void StepperSlave::handleMotion() {
 void StepperSlave::executeCurrentMotion() {
   if (currentMotionIndex >= queuedMotionsCount) {
     setIndicator(false);
-    sendFeedback("SEQUENCE COMPLETED");
+    sendFeedback(MSG_SEQUENCE_COMPLETED);
     hasReportedCompletion = true;
     motorState = MOTOR_IDLE;
     return;
@@ -486,28 +345,27 @@ void StepperSlave::executeCurrentMotion() {
   if (motionQueue[currentMotionIndex].isDelayOnly) {
     motorState = MOTOR_DELAYING;
     delayStartTime = millis();
-    sendFeedback("DELAYING");
+    sendFeedback(MSG_DELAYING);
     return;
   }
 
   motorState = MOTOR_MOVING;
-
   activateMotor();
 
   long targetPosition = motionQueue[currentMotionIndex].position;
   stepper.setMaxSpeed(motionQueue[currentMotionIndex].speed);
 
-  sendFeedback("MOVING TO " + String(targetPosition));
-  reportPosition();
+  char moveMsg[32];
+  strcpy(moveMsg, MSG_MOVING_TO);
+  char posStr[16];
+  ltoa(targetPosition, posStr, 10);
+  strcat(moveMsg, posStr);
+  sendFeedback(moveMsg);
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Moving to position: " + String(targetPosition));
   stepper.moveTo(targetPosition);
   stepper.runToPosition();
 
-  reportPosition();
-  sendFeedback("POSITION REACHED");
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Position reached");
-
+  sendFeedback(MSG_POSITION_REACHED);
   deactivateMotor();
 
   motionQueue[currentMotionIndex].completed = true;
@@ -518,13 +376,12 @@ void StepperSlave::executeCurrentMotion() {
     executeCurrentMotion();
   } else {
     setIndicator(false);
-    sendFeedback("SEQUENCE COMPLETED");
+    sendFeedback(MSG_SEQUENCE_COMPLETED);
     hasReportedCompletion = true;
   }
 }
 
 void StepperSlave::performHoming() {
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Starting homing sequence");
   setIndicator(true);
 
   float originalSpeed = stepper.maxSpeed();
@@ -539,7 +396,6 @@ void StepperSlave::performHoming() {
   int count = 20000;
 
   if (digitalRead(sensorPin) == HIGH) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Already in sensor area, moving out first");
     stepper.move(count);
     while (digitalRead(sensorPin) == HIGH && stepper.distanceToGo() != 0) {
       stepper.run();
@@ -548,14 +404,12 @@ void StepperSlave::performHoming() {
     if (stepper.distanceToGo() != 0) {
       stepper.stop();
       stepper.setCurrentPosition(stepper.currentPosition());
-      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Moving back to sensor");
       stepper.move(-count);
       while (digitalRead(sensorPin) == LOW && stepper.distanceToGo() != 0) {
         stepper.run();
       }
     }
   } else {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Outside sensor area, moving to sensor");
     stepper.move(-count);
     while (digitalRead(sensorPin) == LOW && stepper.distanceToGo() != 0) {
       stepper.run();
@@ -563,26 +417,18 @@ void StepperSlave::performHoming() {
   }
 
   stepper.stop();
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sensor detected");
-
   distance = stepper.distanceToGo();
   stepper.runToPosition();
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Correcting overshot by " + String(distance) + " steps");
   stepper.move(-distance);
   stepper.runToPosition();
-
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Setting home position (0)");
   stepper.setCurrentPosition(0);
 
   stepper.setMaxSpeed(originalSpeed);
   stepper.setAcceleration(originalAccel);
 
   deactivateMotor();
-
   setIndicator(false);
-
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Homing completed");
 }
 
 void StepperSlave::setBrake(bool engaged) {
@@ -627,4 +473,15 @@ void StepperSlave::setIndicator(bool active) {
   if (indicatorPin != NOT_CONNECTED) {
     digitalWrite(indicatorPin, active ? LOW : HIGH);
   }
+}
+
+void StepperSlave::addToBuffer(char c) {
+  if (bufferIndex < MAX_BUFFER_SIZE - 1) {
+    dataBuffer[bufferIndex++] = c;
+  }
+}
+
+void StepperSlave::clearBuffer() {
+  bufferIndex = 0;
+  memset(dataBuffer, 0, MAX_BUFFER_SIZE);
 }

@@ -3,19 +3,19 @@
 
 #define ENABLE_MODULE_NODEF_SERIAL_ENHANCED
 
-#define TESTING_MODE 0
+#define TESTING_MODE 1
 #define TESTING_SENSOR_DEBUG 0
-#define SENSOR_TYPE 0
+#define MEMORY_OPTIMIZED 1
 
 #if TESTING_MODE
 #define DEBUG 1
 #else
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
-#if DEBUG
-#define DEBUG_PRINT(x) debugSerial.print(x)
-#define DEBUG_PRINTLN(x) debugSerial.println(x)
+#if DEBUG && !MEMORY_OPTIMIZED
+#define DEBUG_PRINT(x) Serial.print(x)
+#define DEBUG_PRINTLN(x) Serial.println(x)
 #else
 #define DEBUG_PRINT(x)
 #define DEBUG_PRINTLN(x)
@@ -54,11 +54,6 @@ public:
     MOTOR_PAUSED
   };
 
-  enum DataFormat {
-    FORMAT_LEGACY = 0,
-    FORMAT_PACKET = 1
-  };
-
   struct MotionStep {
     long position;
     float speed;
@@ -89,8 +84,9 @@ public:
 private:
   static StepperSlave* instance;
 
-  static const int MAX_MOTIONS = 5;
-  static const int MAX_BUFFER_SIZE = 512;
+  static const int MAX_MOTIONS = 3;
+  static const int MAX_BUFFER_SIZE = 128;
+  static const int MAX_COMMAND_SIZE = 32;
   const float SPEED_RATIO = 0.6;
   const float HOMING_SPEED = 200.0;
   const float HOMING_ACCEL = 100.0;
@@ -105,7 +101,6 @@ private:
 
   SoftwareSerial masterCommSerial;
   EnhancedSerial masterSerial;
-  EnhancedSerial debugSerial;
 
   AccelStepper stepper;
   float maxSpeed = 200.0;
@@ -125,21 +120,20 @@ private:
   int currentMotionIndex = 0;
   int queuedMotionsCount = 0;
 
-  String dataBuffer;
-  bool packetInProgress = false;
+  char dataBuffer[MAX_BUFFER_SIZE];
+  int bufferIndex = 0;
 
   void onMasterData(const String& data);
   void checkDirectSerial();
-  void processIncomingData(const String& data);
-  void processCommand(const String& data);
-  void sendFeedback(const String& message);
-  void reportPosition();
+  void processIncomingData(const char* data);
+  void processCommand(const char* data);
+  void sendFeedback(const char* message);
 
   void handleZeroCommand();
-  void handleMoveCommand(const String& params);
-  void handleSetSpeedCommand(const String& params);
+  void handleMoveCommand(const char* params);
+  void handleSetSpeedCommand(const char* params);
 
-  void parsePositionSequence(const String& params);
+  void parsePositionSequence(const char* params);
   void handleMotion();
   void executeCurrentMotion();
 
@@ -151,16 +145,15 @@ private:
   void deactivateMotor();
   void setIndicator(bool active);
 
-  DataFormat detectDataFormat(const String& data);
-  bool processPacketData(const String& packet);
-  bool validatePacketCRC(const String& packet);
-  uint8_t calculateCRC8(const String& data);
-  String extractRelevantCommands(const String& packetContent);
-  void processExtractedCommands(const String& commands);
-  void addToBuffer(const String& data);
+  bool isPacketFormat(const char* data);
+  bool processPacketData(const char* packet);
+  bool validatePacketCRC(const char* packet);
+  uint8_t calculateCRC8(const char* data, int len);
+  bool extractRelevantCommand(const char* packetContent, char* output);
+  void addToBuffer(char c);
   void clearBuffer();
   bool isPacketComplete();
-  String getCompletePacket();
+  int findPacketEnd();
 };
 
 #endif
