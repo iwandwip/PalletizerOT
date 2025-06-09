@@ -30,3 +30,5 @@ private:
   bool isCoordinateCommand(const String& command);
   String formatParameters(const String& params);
 };
+
+#endif

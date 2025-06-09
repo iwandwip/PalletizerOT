@@ -33,3 +33,5 @@ private:
   void allOff();
   void handleBlinking();
 };
+
+#endif

@@ -31,3 +31,5 @@ private:
   String createErrorJSON(const String& error);
   String createSuccessJSON(const String& message);
 };
+
+#endif
