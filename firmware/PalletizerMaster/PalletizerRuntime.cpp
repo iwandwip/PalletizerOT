@@ -270,14 +270,8 @@ void PalletizerRuntime::processNextCommand() {
       processSetCommand(trimmedCommand);
     } else if (upperData == "WAIT") {
       processWaitCommand();
-      processingCommand = false;
-      xSemaphoreGive(xCommandMutex);
-      return;
     } else if (upperData == "DETECT") {
       processDetectCommand();
-      processingCommand = false;
-      xSemaphoreGive(xCommandMutex);
-      return;
     } else if (isCoordinateCommand(trimmedCommand)) {
       setSingleCommandFlags();
       protocol->sendCoordinateData(trimmedCommand, PalletizerProtocol::CMD_RUN);
@@ -342,9 +336,24 @@ void PalletizerRuntime::processWaitCommand() {
 void PalletizerRuntime::processDetectCommand() {
   DEBUG_MGR.info("DETECT", "🎯 DETECT command received");
 
+  resetDetectionState();
+
   if (!setDetectFlag(true)) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: ERROR - Failed to set DETECT flag!");
-    return;
+    DEBUG_MGR.error("DETECT", "❌ Failed to set DETECT flag - attempting recovery");
+
+    resetDetectionState();
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if (!setDetectFlag(true)) {
+      DEBUG_MGR.error("DETECT", "❌ DETECT flag recovery failed - skipping command");
+
+      if (!isQueueEmpty() && systemRunning) {
+        processNextCommand();
+      }
+      return;
+    } else {
+      DEBUG_MGR.info("DETECT", "✅ DETECT flag recovery successful");
+    }
   }
 
   detectStartTime = millis();
@@ -361,10 +370,10 @@ void PalletizerRuntime::processDetectCommand() {
   delay(5);
 
   if (!validateStateFlags()) {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: ERROR - DETECT state validation failed!");
-  } else {
-    DEBUG_SERIAL_PRINTLN("RUNTIME: DETECT command setup complete - blocking next commands");
+    DEBUG_MGR.warning("DETECT", "⚠️ State validation warning - but continuing");
   }
+
+  DEBUG_MGR.info("DETECT", "✅ DETECT command setup complete");
 }
 
 void PalletizerRuntime::processSetCommand(const String& data) {
@@ -406,18 +415,30 @@ bool PalletizerRuntime::canProcessNextCommand() {
 }
 
 bool PalletizerRuntime::setDetectFlag(bool value) {
-  if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(10))) {
-    waitingForDetect = value;
-    xSemaphoreGive(xStateMutex);
-
-    delay(1);
-
-    if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(5))) {
-      bool verified = (waitingForDetect == value);
+  for (int attempt = 0; attempt < 5; attempt++) {
+    if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(50))) {
+      waitingForDetect = value;
       xSemaphoreGive(xStateMutex);
-      return verified;
+
+      vTaskDelay(pdMS_TO_TICKS(2));
+
+      if (xSemaphoreTake(xStateMutex, pdMS_TO_TICKS(20))) {
+        bool verified = (waitingForDetect == value);
+        xSemaphoreGive(xStateMutex);
+
+        if (verified) {
+          DEBUG_MGR.info("DETECT", "✅ DETECT flag set successfully on attempt " + String(attempt + 1));
+          return true;
+        } else {
+          DEBUG_MGR.warning("DETECT", "⚠️ Flag verification failed on attempt " + String(attempt + 1));
+        }
+      }
     }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
+
+  DEBUG_MGR.error("DETECT", "❌ Failed to set DETECT flag after 5 attempts");
   return false;
 }
 
@@ -849,6 +870,13 @@ void PalletizerRuntime::parseInlineCommands(const String& input, String* stateme
     if (c == ';') {
       buffer.trim();
       if (buffer.length() > 0) {
+
+        if (buffer == "DETECT" || buffer == "WAIT" || buffer == "ZERO" || buffer == "PLAY" || buffer == "PAUSE" || buffer == "STOP" || buffer == "IDLE") {
+          statements[count++] = buffer;
+          buffer = "";
+          continue;
+        }
+
         if (buffer.startsWith("SPEED;")) {
           int semicolons = 0;
           for (int j = 0; j < buffer.length(); j++) {
