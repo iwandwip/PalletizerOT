@@ -3,17 +3,22 @@
 
 PalletizerProtocol::PalletizerProtocol(int rxPin, int txPin)
   : rxPin(rxPin), txPin(txPin), rxIndicatorLed(2), slavePartialBuffer(""), lastReceivedData(""),
-    slaveDataCallback(nullptr), dataReceived(false) {
+    slaveDataCallback(nullptr), dataReceived(false), currentPacketMode(PACKET_MODE_BATCH),
+    bufferedCommandCount(0), lastCommandTime(0) {
 }
 
 void PalletizerProtocol::begin() {
   slaveCommSerial.begin(9600, SERIAL_8N1, rxPin, txPin);
   slaveSerial.begin(&slaveCommSerial);
+  clearBuffer();
   DEBUG_SERIAL_PRINTLN("PROTOCOL: UART communication initialized on pins RX:" + String(rxPin) + " TX:" + String(txPin));
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Packet mode enabled - batched transmission");
 }
 
 void PalletizerProtocol::update() {
-  // checkSlaveData();
+  if (shouldFlushBuffer()) {
+    flushCommandBuffer();
+  }
 }
 
 void PalletizerProtocol::sendToSlave(const String& data) {
@@ -24,25 +29,50 @@ void PalletizerProtocol::sendToSlave(const String& data) {
 
 void PalletizerProtocol::sendCommandToAllSlaves(Command cmd) {
   const char* slaveIds[] = { "x", "y", "z", "t", "g" };
-  for (int i = 0; i < 5; i++) {
-    formatSlaveCommand(String(slaveIds[i]), cmd);
+
+  if (currentPacketMode == PACKET_MODE_BATCH) {
+    for (int i = 0; i < 5; i++) {
+      addCommandToBuffer(String(slaveIds[i]), cmd);
+    }
+    flushCommandBuffer();
+  } else {
+    for (int i = 0; i < 5; i++) {
+      sendLegacyCommand(String(slaveIds[i]), cmd);
+    }
   }
+
   DEBUG_MGR.info("PROTOCOL", "Broadcasted command " + String(cmd) + " to all slaves");
 }
 
 void PalletizerProtocol::sendGroupCommands(const String& groupCommands) {
   DEBUG_MGR.info("PROTOCOL", "Processing GROUP commands: " + groupCommands);
-  parseAndSendGroupCommands(groupCommands);
+
+  if (currentPacketMode == PACKET_MODE_BATCH) {
+    parseAndSendGroupCommands(groupCommands);
+    flushCommandBuffer();
+  } else {
+    parseAndSendGroupCommands(groupCommands);
+  }
 }
 
 void PalletizerProtocol::sendCoordinateData(const String& data, Command currentCommand) {
   DEBUG_MGR.info("PROTOCOL", "Processing coordinate data: " + data);
-  parseCoordinateData(data, currentCommand);
+
+  if (currentPacketMode == PACKET_MODE_BATCH) {
+    parseCoordinateData(data, currentCommand);
+    flushCommandBuffer();
+  } else {
+    parseCoordinateData(data, currentCommand);
+  }
 }
 
 void PalletizerProtocol::sendSpeedCommand(const String& speedData) {
   DEBUG_MGR.info("PROTOCOL", "Processing speed command: " + speedData);
   parseSpeedParameters(speedData);
+
+  if (currentPacketMode == PACKET_MODE_BATCH) {
+    flushCommandBuffer();
+  }
 }
 
 void PalletizerProtocol::setDataCallback(DataCallback callback) {
@@ -56,6 +86,18 @@ bool PalletizerProtocol::isDataAvailable() {
 String PalletizerProtocol::getLastReceivedData() {
   dataReceived = false;
   return lastReceivedData;
+}
+
+void PalletizerProtocol::setPacketMode(PacketMode mode) {
+  if (bufferedCommandCount > 0) {
+    flushCommandBuffer();
+  }
+  currentPacketMode = mode;
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Packet mode set to " + String(mode == PACKET_MODE_BATCH ? "BATCH" : "LEGACY"));
+}
+
+PalletizerProtocol::PacketMode PalletizerProtocol::getPacketMode() {
+  return currentPacketMode;
 }
 
 void PalletizerProtocol::checkSlaveData() {
@@ -111,7 +153,11 @@ void PalletizerProtocol::parseCoordinateData(const String& data, Command current
     String paramsOrig = data.substring(endPos + 1, closePos);
     String params = formatParameters(paramsOrig);
 
-    formatSlaveCommand(slaveId, currentCommand, params);
+    if (currentPacketMode == PACKET_MODE_BATCH) {
+      addCommandToBuffer(slaveId, currentCommand, params);
+    } else {
+      sendLegacyCommand(slaveId, currentCommand, params);
+    }
 
     pos = data.indexOf(',', closePos);
     pos = (pos == -1) ? data.length() : pos + 1;
@@ -157,7 +203,11 @@ void PalletizerProtocol::parseAndSendGroupCommands(const String& groupCommands) 
     String paramsOrig = groupCommands.substring(openParen + 1, closeParen);
     String params = formatParameters(paramsOrig);
 
-    formatSlaveCommand(slaveId, CMD_RUN, params);
+    if (currentPacketMode == PACKET_MODE_BATCH) {
+      addCommandToBuffer(slaveId, CMD_RUN, params);
+    } else {
+      sendLegacyCommand(slaveId, CMD_RUN, params);
+    }
 
     pos = closeParen + 1;
     while (pos < groupCommands.length() && (groupCommands.charAt(pos) == ' ' || groupCommands.charAt(pos) == ',')) {
@@ -189,7 +239,11 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
     }
 
     if (isValidSlaveId(slaveId)) {
-      formatSlaveCommand(slaveId, CMD_SETSPEED, speedValue);
+      if (currentPacketMode == PACKET_MODE_BATCH) {
+        addCommandToBuffer(slaveId, CMD_SETSPEED, speedValue);
+      } else {
+        sendLegacyCommand(slaveId, CMD_SETSPEED, speedValue);
+      }
       String upperSlaveId = slaveId;
       upperSlaveId.toUpperCase();
       DEBUG_MGR.info("PROTOCOL", "Set " + upperSlaveId + " axis speed to " + speedValue);
@@ -201,18 +255,108 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
 
     const char* slaveIds[] = { "x", "y", "z", "t", "g" };
     for (int i = 0; i < 5; i++) {
-      formatSlaveCommand(String(slaveIds[i]), CMD_SETSPEED, params);
+      if (currentPacketMode == PACKET_MODE_BATCH) {
+        addCommandToBuffer(String(slaveIds[i]), CMD_SETSPEED, params);
+      } else {
+        sendLegacyCommand(String(slaveIds[i]), CMD_SETSPEED, params);
+      }
     }
     DEBUG_MGR.info("PROTOCOL", "Set all axes speed to " + params);
   }
 }
 
-void PalletizerProtocol::formatSlaveCommand(const String& slaveId, Command cmd, const String& params) {
+void PalletizerProtocol::addCommandToBuffer(const String& slaveId, Command cmd, const String& params) {
+  if (bufferedCommandCount >= MAX_BATCH_COMMANDS) {
+    flushCommandBuffer();
+  }
+
+  commandBuffer[bufferedCommandCount].slaveId = slaveId;
+  commandBuffer[bufferedCommandCount].cmd = cmd;
+  commandBuffer[bufferedCommandCount].params = params;
+  bufferedCommandCount++;
+  lastCommandTime = millis();
+}
+
+void PalletizerProtocol::flushCommandBuffer() {
+  if (bufferedCommandCount > 0) {
+    sendBatchedCommands();
+    clearBuffer();
+  }
+}
+
+void PalletizerProtocol::sendBatchedCommands() {
+  if (bufferedCommandCount == 1) {
+    CommandItem& cmd = commandBuffer[0];
+    sendLegacyCommand(cmd.slaveId, cmd.cmd, cmd.params);
+  } else if (bufferedCommandCount > 1) {
+    String packet = buildPacket(commandBuffer, bufferedCommandCount);
+    sendToSlave(packet);
+    DEBUG_MGR.info("PROTOCOL", "Sent batched packet with " + String(bufferedCommandCount) + " commands");
+  }
+}
+
+void PalletizerProtocol::sendLegacyCommand(const String& slaveId, Command cmd, const String& params) {
   String command = slaveId + ";" + String(cmd);
   if (params.length() > 0) {
     command += ";" + params;
   }
   sendToSlave(command);
+}
+
+String PalletizerProtocol::buildPacket(const CommandItem* commands, int count) {
+  String packet = "#";
+
+  for (int i = 0; i < count; i++) {
+    if (i > 0) {
+      packet += ",";
+    }
+
+    packet += commands[i].slaveId + ";" + String(commands[i].cmd);
+    if (commands[i].params.length() > 0) {
+      packet += ";" + commands[i].params;
+    }
+  }
+
+  uint8_t crc = calculateCRC8(packet.substring(1));
+  packet += "*" + String(crc, HEX);
+  packet += "#";
+
+  return packet;
+}
+
+uint8_t PalletizerProtocol::calculateCRC8(const String& data) {
+  uint8_t crc = 0;
+  for (int i = 0; i < data.length(); i++) {
+    crc ^= data.charAt(i);
+    for (int j = 0; j < 8; j++) {
+      if (crc & 0x80) {
+        crc = (crc << 1) ^ 0x07;
+      } else {
+        crc <<= 1;
+      }
+    }
+  }
+  return crc;
+}
+
+bool PalletizerProtocol::shouldFlushBuffer() {
+  if (bufferedCommandCount == 0) return false;
+  if (bufferedCommandCount >= MAX_BATCH_COMMANDS) return true;
+  if (millis() - lastCommandTime >= BATCH_TIMEOUT_MS) return true;
+  return false;
+}
+
+void PalletizerProtocol::clearBuffer() {
+  bufferedCommandCount = 0;
+  lastCommandTime = 0;
+}
+
+void PalletizerProtocol::formatSlaveCommand(const String& slaveId, Command cmd, const String& params) {
+  if (currentPacketMode == PACKET_MODE_BATCH) {
+    addCommandToBuffer(slaveId, cmd, params);
+  } else {
+    sendLegacyCommand(slaveId, cmd, params);
+  }
 }
 
 bool PalletizerProtocol::isValidSlaveId(const String& slaveId) {

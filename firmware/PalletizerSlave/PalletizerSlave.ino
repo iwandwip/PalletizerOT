@@ -4,18 +4,18 @@
 
 #define SLAVE_ADDR X_AXIS
 
-#define CLK_PIN 10  // 10
-#define CW_PIN 11   // 11
+#define CLK_PIN 10
+#define CW_PIN 11
 #define RX_PIN 8
 #define TX_PIN 9
 #define SENSOR_PIN 6
 #define INDICATOR_PIN 13
 
 #if (SLAVE_ADDR == X_AXIS) || (SLAVE_ADDR == Y_AXIS) || (SLAVE_ADDR == G_AXIS)
-#define EN_PIN NOT_CONNECTED  // FIX: 12
+#define EN_PIN NOT_CONNECTED
 #define BRAKE_PIN NOT_CONNECTED
 #define INVERT_BRAKE HIGH_LOGIC_BRAKE
-#define INVERT_ENABLE HIGH_LOGIC_BRAKE  // FIX: LOW_LOGIC_ENABLE
+#define INVERT_ENABLE HIGH_LOGIC_BRAKE
 #define BRAKE_RELEASE_DELAY NO_DELAY
 #define BRAKE_ENGAGE_DELAY NO_DELAY
 #elif (SLAVE_ADDR == T_AXIS)
@@ -55,10 +55,15 @@ void setup() {
 #endif
 
 #if TESTING_MODE
-  Serial.println("Command Example");
-  Serial.println("[CMD_RUN]     : " + String(SLAVE_ADDR) + ";1;200");
-  Serial.println("[CMD_ZERO]    : " + String(SLAVE_ADDR) + ";2");
-  Serial.println("[CMD_SETSPEED]: " + String(SLAVE_ADDR) + ";6;2000");
+  Serial.println("=== PACKET-ENABLED SLAVE " + String(SLAVE_ADDR) + " ===");
+  Serial.println("Command Examples:");
+  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";1;200");
+  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";2");
+  Serial.println("[LEGACY]      : " + String(SLAVE_ADDR) + ";6;2000");
+  Serial.println("[PACKET]      : #" + String(SLAVE_ADDR) + ";1;5000,y;1;3000*CRC#");
+  Serial.println("[PACKET DEMO] : #x;1;1000,y;1;2000,z;1;3000*5A#");
+  Serial.println("Supports both legacy and packet formats automatically.");
+  Serial.println("=========================================");
 #endif
 }
 
@@ -73,5 +78,14 @@ void loop() {
     Serial.println();
   }
 #endif
+
+#if TESTING_MODE
+  static uint32_t statusTimer;
+  if (millis() - statusTimer >= 5000) {
+    statusTimer = millis();
+    Serial.println("SLAVE " + String(SLAVE_ADDR) + " Status: Ready for packet/legacy commands");
+  }
+#endif
+
   slave.update();
 }

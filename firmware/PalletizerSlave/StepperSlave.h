@@ -54,6 +54,11 @@ public:
     MOTOR_PAUSED
   };
 
+  enum DataFormat {
+    FORMAT_LEGACY = 0,
+    FORMAT_PACKET = 1
+  };
+
   struct MotionStep {
     long position;
     float speed;
@@ -85,6 +90,7 @@ private:
   static StepperSlave* instance;
 
   static const int MAX_MOTIONS = 5;
+  static const int MAX_BUFFER_SIZE = 512;
   const float SPEED_RATIO = 0.6;
   const float HOMING_SPEED = 200.0;
   const float HOMING_ACCEL = 100.0;
@@ -119,7 +125,11 @@ private:
   int currentMotionIndex = 0;
   int queuedMotionsCount = 0;
 
+  String dataBuffer;
+  bool packetInProgress = false;
+
   void onMasterData(const String& data);
+  void processIncomingData(const String& data);
   void processCommand(const String& data);
   void sendFeedback(const String& message);
   void reportPosition();
@@ -139,6 +149,17 @@ private:
   void activateMotor();
   void deactivateMotor();
   void setIndicator(bool active);
+
+  DataFormat detectDataFormat(const String& data);
+  bool processPacketData(const String& packet);
+  bool validatePacketCRC(const String& packet);
+  uint8_t calculateCRC8(const String& data);
+  String extractRelevantCommands(const String& packetContent);
+  void processExtractedCommands(const String& commands);
+  void addToBuffer(const String& data);
+  void clearBuffer();
+  bool isPacketComplete();
+  String getCompletePacket();
 };
 
 #endif

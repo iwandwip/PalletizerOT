@@ -28,6 +28,7 @@ PalletizerMaster::~PalletizerMaster() {
 void PalletizerMaster::begin() {
   protocol->begin();
   protocol->setDataCallback(onSlaveDataWrapper);
+  protocol->setPacketMode(PalletizerProtocol::PACKET_MODE_BATCH);
 
   runtime->begin();
   runtime->setScriptParser(&scriptParser);
@@ -44,6 +45,7 @@ void PalletizerMaster::begin() {
   systemState = STATE_IDLE;
   sendStateUpdate();
   DEBUG_SERIAL_PRINTLN("MASTER: System orchestrator initialized with enhanced state management");
+  DEBUG_SERIAL_PRINTLN("MASTER: Packet-based communication enabled for reduced bus collision");
 }
 
 void PalletizerMaster::update() {
@@ -158,9 +160,9 @@ PalletizerRuntime* PalletizerMaster::getRuntime() {
 }
 
 void PalletizerMaster::processGroupCommand(const String& groupCommands) {
-  DEBUG_MGR.info("GROUP", "🔄 Executing GROUP command");
+  DEBUG_MGR.info("GROUP", "🔄 Executing GROUP command (Packet Mode)");
   DEBUG_MGR.info("GROUP", "└─ Commands: " + groupCommands);
-  DEBUG_MGR.info("GROUP", "└─ Setting wait flags and 100ms delay");
+  DEBUG_MGR.info("GROUP", "└─ Using single packet transmission");
 
   groupExecutionActive = true;
   handleGroupExecution(groupCommands);
@@ -198,6 +200,20 @@ void PalletizerMaster::onCommandReceived(const String& data) {
   trimmedData.trim();
   String upperData = trimmedData;
   upperData.toUpperCase();
+
+  if (upperData.startsWith("PACKET_MODE;")) {
+    String mode = trimmedData.substring(12);
+    mode.toUpperCase();
+
+    if (mode == "BATCH") {
+      protocol->setPacketMode(PalletizerProtocol::PACKET_MODE_BATCH);
+      DEBUG_SERIAL_PRINTLN("MASTER: Switched to BATCH packet mode");
+    } else if (mode == "LEGACY") {
+      protocol->setPacketMode(PalletizerProtocol::PACKET_MODE_LEGACY);
+      DEBUG_SERIAL_PRINTLN("MASTER: Switched to LEGACY packet mode");
+    }
+    return;
+  }
 
   if (upperData.startsWith("SPEED;")) {
     protocol->sendSpeedCommand(trimmedData);
@@ -478,6 +494,7 @@ void PalletizerMaster::handleIndicatorBasedCompletion() {
 
 void PalletizerMaster::handleGroupExecution(const String& groupCommands) {
   protocol->sendGroupCommands(groupCommands);
+  DEBUG_MGR.info("PROTOCOL", "GROUP command sent as single packet");
 }
 
 bool PalletizerMaster::shouldClearQueue(const String& data) {

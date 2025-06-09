@@ -14,7 +14,9 @@ StepperSlave::StepperSlave(
     brakePin(brakePin),
     indicatorPin(indicatorPin),
     invertBrakeLogic(invertBrakeLogic),
-    invertEnableLogic(invertEnableLogic) {
+    invertEnableLogic(invertEnableLogic),
+    dataBuffer(""),
+    packetInProgress(false) {
 
   instance = this;
 
@@ -57,9 +59,9 @@ void StepperSlave::begin() {
   stepper.setAcceleration(acceleration);
   stepper.setMaxSpeed(maxSpeed);
   stepper.setCurrentPosition(0);
-  // stepper.setMinPulseWidth(100);
 
-  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi");
+  clearBuffer();
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi dengan packet support");
 }
 
 void StepperSlave::update() {
@@ -78,7 +80,179 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 
 void StepperSlave::onMasterData(const String& data) {
   DEBUG_PRINTLN("MASTER→SLAVE: " + data);
-  processCommand(data);
+  processIncomingData(data);
+}
+
+void StepperSlave::processIncomingData(const String& data) {
+  addToBuffer(data);
+
+  DataFormat format = detectDataFormat(dataBuffer);
+
+  if (format == FORMAT_PACKET) {
+    if (isPacketComplete()) {
+      String packet = getCompletePacket();
+      if (processPacketData(packet)) {
+        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Packet processed successfully");
+      } else {
+        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Packet processing failed");
+      }
+      clearBuffer();
+    }
+  } else if (format == FORMAT_LEGACY) {
+    if (dataBuffer.indexOf('\n') != -1 || dataBuffer.indexOf('\r') != -1) {
+      String command = dataBuffer;
+      command.trim();
+      if (command.length() > 0) {
+        processCommand(command);
+      }
+      clearBuffer();
+    }
+  }
+}
+
+StepperSlave::DataFormat StepperSlave::detectDataFormat(const String& data) {
+  if (data.startsWith("#")) {
+    return FORMAT_PACKET;
+  }
+  return FORMAT_LEGACY;
+}
+
+bool StepperSlave::processPacketData(const String& packet) {
+  if (!validatePacketCRC(packet)) {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation failed");
+    return false;
+  }
+
+  int startPos = packet.indexOf('#') + 1;
+  int endPos = packet.lastIndexOf('*');
+
+  if (startPos <= 0 || endPos <= startPos) {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid packet format");
+    return false;
+  }
+
+  String packetContent = packet.substring(startPos, endPos);
+  String relevantCommands = extractRelevantCommands(packetContent);
+
+  if (relevantCommands.length() > 0) {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Relevant commands: " + relevantCommands);
+    processExtractedCommands(relevantCommands);
+    return true;
+  }
+
+  return false;
+}
+
+bool StepperSlave::validatePacketCRC(const String& packet) {
+  int startPos = packet.indexOf('#') + 1;
+  int asteriskPos = packet.lastIndexOf('*');
+  int endPos = packet.lastIndexOf('#');
+
+  if (startPos <= 0 || asteriskPos <= startPos || endPos <= asteriskPos) {
+    return false;
+  }
+
+  String content = packet.substring(startPos, asteriskPos);
+  String crcHex = packet.substring(asteriskPos + 1, endPos);
+
+  uint8_t expectedCRC = calculateCRC8(content);
+  uint8_t receivedCRC = strtol(crcHex.c_str(), NULL, 16);
+
+  return (expectedCRC == receivedCRC);
+}
+
+uint8_t StepperSlave::calculateCRC8(const String& data) {
+  uint8_t crc = 0;
+  for (int i = 0; i < data.length(); i++) {
+    crc ^= data.charAt(i);
+    for (int j = 0; j < 8; j++) {
+      if (crc & 0x80) {
+        crc = (crc << 1) ^ 0x07;
+      } else {
+        crc <<= 1;
+      }
+    }
+  }
+  return crc;
+}
+
+String StepperSlave::extractRelevantCommands(const String& packetContent) {
+  String result = "";
+  String slaveIdStr = String(slaveId);
+
+  int pos = 0;
+  while (pos < packetContent.length()) {
+    int commaPos = packetContent.indexOf(',', pos);
+    String command = (commaPos == -1) ? packetContent.substring(pos) : packetContent.substring(pos, commaPos);
+
+    command.trim();
+
+    if (command.startsWith(slaveIdStr + ";") || command.startsWith("all;")) {
+      if (result.length() > 0) {
+        result += ";";
+      }
+      result += command;
+    }
+
+    pos = (commaPos == -1) ? packetContent.length() : commaPos + 1;
+  }
+
+  return result;
+}
+
+void StepperSlave::processExtractedCommands(const String& commands) {
+  int pos = 0;
+  while (pos < commands.length()) {
+    int semicolonPos = commands.indexOf(';', pos);
+    if (semicolonPos == -1) semicolonPos = commands.length();
+
+    int nextCommandPos = commands.indexOf(slaveId, semicolonPos);
+    if (nextCommandPos == -1) nextCommandPos = commands.length();
+
+    String singleCommand = commands.substring(pos, nextCommandPos);
+    singleCommand.trim();
+
+    if (singleCommand.length() > 0) {
+      processCommand(singleCommand);
+    }
+
+    pos = nextCommandPos;
+  }
+}
+
+void StepperSlave::addToBuffer(const String& data) {
+  if (dataBuffer.length() + data.length() < MAX_BUFFER_SIZE) {
+    dataBuffer += data;
+  } else {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Buffer overflow, clearing");
+    clearBuffer();
+    dataBuffer = data;
+  }
+}
+
+void StepperSlave::clearBuffer() {
+  dataBuffer = "";
+  packetInProgress = false;
+}
+
+bool StepperSlave::isPacketComplete() {
+  if (!dataBuffer.startsWith("#")) return false;
+
+  int firstHash = dataBuffer.indexOf('#');
+  int lastHash = dataBuffer.lastIndexOf('#');
+
+  return (firstHash != lastHash && lastHash > firstHash);
+}
+
+String StepperSlave::getCompletePacket() {
+  int firstHash = dataBuffer.indexOf('#');
+  int lastHash = dataBuffer.lastIndexOf('#');
+
+  if (firstHash != -1 && lastHash > firstHash) {
+    return dataBuffer.substring(firstHash, lastHash + 1);
+  }
+
+  return "";
 }
 
 void StepperSlave::processCommand(const String& data) {
