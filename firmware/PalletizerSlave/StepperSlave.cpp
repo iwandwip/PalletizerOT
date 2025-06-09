@@ -62,13 +62,43 @@ void StepperSlave::begin() {
 
   clearBuffer();
   DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi dengan packet support");
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Ready for communication on pins RX:" + String(8) + " TX:" + String(9));
 }
 
 void StepperSlave::update() {
   masterSerial.checkCallback();
 
+  static unsigned long lastDirectCheck = 0;
+  if (millis() - lastDirectCheck > 10) {
+    lastDirectCheck = millis();
+    checkDirectSerial();
+  }
+
   if (motorState != MOTOR_PAUSED) {
     handleMotion();
+  }
+}
+
+void StepperSlave::checkDirectSerial() {
+  if (masterCommSerial.available() > 0) {
+    String rawData = "";
+    while (masterCommSerial.available() > 0) {
+      char c = masterCommSerial.read();
+      if (c == '\n' || c == '\r') {
+        if (rawData.length() > 0) {
+          DEBUG_PRINTLN("DIRECT_RX: " + rawData);
+          processIncomingData(rawData);
+          rawData = "";
+        }
+      } else if (c >= 32 && c <= 126) {
+        rawData += c;
+      }
+    }
+
+    if (rawData.length() > 0) {
+      DEBUG_PRINTLN("PARTIAL_RX: " + rawData);
+      addToBuffer(rawData);
+    }
   }
 }
 
@@ -79,7 +109,7 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 }
 
 void StepperSlave::onMasterData(const String& data) {
-  DEBUG_PRINTLN("MASTER→SLAVE: " + data);
+  DEBUG_PRINTLN("CALLBACK_RX: " + data);
   processIncomingData(data);
 }
 
@@ -100,20 +130,18 @@ void StepperSlave::processIncomingData(const String& data) {
       clearBuffer();
     }
   } else if (format == FORMAT_LEGACY) {
-    if (dataBuffer.indexOf('\n') != -1 || dataBuffer.indexOf('\r') != -1) {
-      String command = dataBuffer;
-      command.trim();
-      if (command.length() > 0) {
-        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing legacy: " + command);
-        processCommand(command);
-      }
-      clearBuffer();
+    String command = dataBuffer;
+    command.trim();
+    if (command.length() > 0) {
+      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing legacy: " + command);
+      processCommand(command);
     }
+    clearBuffer();
   }
 }
 
 StepperSlave::DataFormat StepperSlave::detectDataFormat(const String& data) {
-  if (data.startsWith("#")) {
+  if (data.indexOf('#') != -1) {
     return FORMAT_PACKET;
   }
   return FORMAT_LEGACY;
@@ -141,6 +169,7 @@ bool StepperSlave::processPacketData(const String& packet) {
     return true;
   }
 
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": No relevant commands found in packet");
   return false;
 }
 
@@ -180,6 +209,8 @@ bool StepperSlave::validatePacketCRC(const String& packet) {
   bool valid = (expectedCRC == receivedCRC);
   if (!valid) {
     DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation failed");
+  } else {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation passed");
   }
 
   return valid;
@@ -204,18 +235,22 @@ String StepperSlave::extractRelevantCommands(const String& packetContent) {
   String result = "";
   String slaveIdStr = String(slaveId);
 
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Extracting from: " + packetContent);
+
   int pos = 0;
   while (pos < packetContent.length()) {
     int commaPos = packetContent.indexOf(',', pos);
     String command = (commaPos == -1) ? packetContent.substring(pos) : packetContent.substring(pos, commaPos);
 
     command.trim();
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Checking command: '" + command + "'");
 
     if (command.startsWith(slaveIdStr + ";") || command.startsWith("all;")) {
       if (result.length() > 0) {
-        result += ";";
+        result += ",";
       }
       result += command;
+      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Command matches - added to result");
     }
 
     pos = (commaPos == -1) ? packetContent.length() : commaPos + 1;
@@ -227,20 +262,17 @@ String StepperSlave::extractRelevantCommands(const String& packetContent) {
 void StepperSlave::processExtractedCommands(const String& commands) {
   int pos = 0;
   while (pos < commands.length()) {
-    int semicolonPos = commands.indexOf(';', pos);
-    if (semicolonPos == -1) semicolonPos = commands.length();
+    int commaPos = commands.indexOf(',', pos);
+    String singleCommand = (commaPos == -1) ? commands.substring(pos) : commands.substring(pos, commaPos);
 
-    int nextCommandPos = commands.indexOf(slaveId, semicolonPos);
-    if (nextCommandPos == -1) nextCommandPos = commands.length();
-
-    String singleCommand = commands.substring(pos, nextCommandPos);
     singleCommand.trim();
 
     if (singleCommand.length() > 0) {
+      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Executing: " + singleCommand);
       processCommand(singleCommand);
     }
 
-    pos = nextCommandPos;
+    pos = (commaPos == -1) ? commands.length() : commaPos + 1;
   }
 }
 
@@ -260,7 +292,7 @@ void StepperSlave::clearBuffer() {
 }
 
 bool StepperSlave::isPacketComplete() {
-  if (!dataBuffer.startsWith("#")) return false;
+  if (dataBuffer.indexOf('#') == -1) return false;
 
   int firstHash = dataBuffer.indexOf('#');
   int lastHash = dataBuffer.lastIndexOf('#');

@@ -129,6 +129,7 @@ private:
   bool packetInProgress = false;
 
   void onMasterData(const String& data);
+  void checkDirectSerial();
   void processIncomingData(const String& data);
   void processCommand(const String& data);
   void sendFeedback(const String& message);

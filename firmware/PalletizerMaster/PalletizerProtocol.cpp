@@ -48,7 +48,7 @@ void PalletizerProtocol::sendGroupCommands(const String& groupCommands) {
   DEBUG_MGR.info("PROTOCOL", "Processing GROUP commands: " + groupCommands);
 
   parseAndSendGroupCommands(groupCommands);
-  if (currentPacketMode == PACKET_MODE_BATCH) {
+  if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
     flushCommandBuffer();
   }
 }
@@ -57,7 +57,7 @@ void PalletizerProtocol::sendCoordinateData(const String& data, Command currentC
   DEBUG_MGR.info("PROTOCOL", "Processing coordinate data: " + data);
 
   parseCoordinateData(data, currentCommand);
-  if (currentPacketMode == PACKET_MODE_BATCH) {
+  if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
     flushCommandBuffer();
   }
 }
@@ -65,10 +65,6 @@ void PalletizerProtocol::sendCoordinateData(const String& data, Command currentC
 void PalletizerProtocol::sendSpeedCommand(const String& speedData) {
   DEBUG_MGR.info("PROTOCOL", "Processing speed command: " + speedData);
   parseSpeedParameters(speedData);
-
-  if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
-    flushCommandBuffer();
-  }
 }
 
 void PalletizerProtocol::setDataCallback(DataCallback callback) {
@@ -237,6 +233,7 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
     if (isValidSlaveId(slaveId)) {
       if (currentPacketMode == PACKET_MODE_BATCH) {
         addCommandToBuffer(slaveId, CMD_SETSPEED, speedValue);
+        flushCommandBuffer();
       } else {
         sendLegacyCommand(slaveId, CMD_SETSPEED, speedValue);
       }
@@ -257,6 +254,11 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
         sendLegacyCommand(String(slaveIds[i]), CMD_SETSPEED, params);
       }
     }
+
+    if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
+      flushCommandBuffer();
+    }
+
     DEBUG_MGR.info("PROTOCOL", "Set all axes speed to " + params);
   }
 }
