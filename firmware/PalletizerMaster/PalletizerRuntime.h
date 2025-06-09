@@ -7,7 +7,7 @@
 #include "DebugConfig.h"
 #include "PalletizerProtocol.h"
 
-const int DETECT_PINS[] = { 39, 36 };
+const int DETECT_PINS[] = { 36 };
 const int DETECT_PIN_COUNT = sizeof(DETECT_PINS) / sizeof(DETECT_PINS[0]);
 #define DETECT_DEBOUNCE_MS 1000
 #define DETECT_TIMEOUT_MS 10000
