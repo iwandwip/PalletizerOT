@@ -19,6 +19,7 @@ void PalletizerProtocol::update() {
 void PalletizerProtocol::sendToSlave(const String& data) {
   slaveSerial.println(data);
   DEBUG_SERIAL_PRINTLN("PROTOCOL→SLAVE: " + data);
+  delay(100);
 }
 
 void PalletizerProtocol::sendCommandToAllSlaves(Command cmd) {

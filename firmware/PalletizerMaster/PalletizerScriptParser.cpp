@@ -350,71 +350,53 @@ void PalletizerScriptParser::tokenizeStatementsWithGroupSupport(const String& in
 
 void PalletizerScriptParser::tokenizeStatementsWithCommandSupport(const String& input, String* statements, int& count) {
   count = 0;
-  String buffer = "";
+  int pos = 0;
 
-  for (int i = 0; i <= input.length() && count < MAX_STATEMENTS; i++) {
-    char c = (i < input.length()) ? input.charAt(i) : ';';
+  while (pos < input.length() && count < MAX_STATEMENTS - 1) {
+    while (pos < input.length() && (input.charAt(pos) == ' ' || input.charAt(pos) == '\t' || input.charAt(pos) == '\n' || input.charAt(pos) == '\r')) {
+      pos++;
+    }
 
-    if (c == ';') {
-      buffer.trim();
-      if (buffer.length() > 0) {
+    if (pos >= input.length()) break;
 
-        if (buffer.startsWith("SPEED;")) {
-          int semicolons = 0;
-          for (int j = 0; j < buffer.length(); j++) {
-            if (buffer.charAt(j) == ';') semicolons++;
-          }
+    String command = "";
 
-          if (semicolons == 2) {
-            String param = buffer.substring(6);
-            param.trim();
-            if (isNumeric(param)) {
-              statements[count++] = buffer;
-              buffer = "";
-              continue;
-            }
-          } else if (semicolons == 3) {
-            String remaining = buffer.substring(6);
-            int nextSemi = remaining.indexOf(';');
-            if (nextSemi != -1) {
-              String axis = remaining.substring(0, nextSemi);
-              axis.trim();
-              if (axis.length() == 1 && !isNumeric(axis)) {
-                statements[count++] = buffer;
-                buffer = "";
-                continue;
-              }
-            }
-          }
+    if (input.substring(pos).startsWith("GROUP(")) {
+      pos += 6;
+      int parenCount = 1;
+      command = "GROUP(";
+
+      while (pos < input.length() && parenCount > 0) {
+        char c = input.charAt(pos);
+        command += c;
+
+        if (c == '(') {
+          parenCount++;
+        } else if (c == ')') {
+          parenCount--;
         }
+        pos++;
+      }
 
-        if (buffer.startsWith("GROUP(")) {
-          int parenCount = 0;
-          bool foundEnd = false;
-          for (int j = 5; j < buffer.length(); j++) {
-            if (buffer.charAt(j) == '(') parenCount++;
-            else if (buffer.charAt(j) == ')') {
-              parenCount--;
-              if (parenCount == 0) {
-                foundEnd = true;
-                break;
-              }
-            }
-          }
-          if (foundEnd) {
-            statements[count++] = buffer;
-            buffer = "";
-            continue;
-          }
-        }
-
-        if (!buffer.startsWith("SPEED;") || buffer.indexOf(' ') != -1) {
-          statements[count++] = buffer;
-          buffer = "";
-        }
+      if (parenCount == 0) {
+        statements[count] = command;
+        count++;
       }
     } else {
-      buffer += c;
+      while (pos < input.length() && input.charAt(pos) != ';') {
+        command += input.charAt(pos);
+        pos++;
+      }
+
+      command.trim();
+      if (command.length() > 0) {
+        statements[count] = command;
+        count++;
+      }
+    }
+
+    while (pos < input.length() && input.charAt(pos) == ';') {
+      pos++;
     }
   }
 }
