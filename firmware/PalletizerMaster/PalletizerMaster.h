@@ -46,6 +46,7 @@ public:
   bool loadTimeoutConfig();
   PalletizerRuntime::ExecutionInfo getExecutionInfo();
   PalletizerScriptParser* getScriptParser();
+  PalletizerRuntime* getRuntime();
   void processGroupCommand(const String& groupCommands);
   void addCommandToQueue(const String& command);
   bool canProcessNextCommand();

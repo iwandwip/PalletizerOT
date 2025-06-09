@@ -88,6 +88,26 @@ void runParsingTest() {
   }
 }
 
+void checkSerialCommands() {
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    command.toUpperCase();
+
+    if (command == "TEST") {
+      DEBUG_SERIAL_PRINTLN("\n=== Running Parsing Tests ===");
+      runParsingTest();
+    } else if (command == "HELP") {
+      DEBUG_SERIAL_PRINTLN("\nAvailable Commands:");
+      DEBUG_SERIAL_PRINTLN("TEST - Run parsing tests");
+      DEBUG_SERIAL_PRINTLN("HELP - Show this help");
+    } else if (command.length() > 0) {
+      DEBUG_SERIAL_PRINTLN("Unknown command: " + command);
+      DEBUG_SERIAL_PRINTLN("Type HELP for available commands");
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   DEBUG_SERIAL_PRINTLN("\nPalletizer System Starting...");
@@ -145,16 +165,15 @@ void setup() {
 
   DEBUG_SERIAL_PRINTLN("System initialization complete");
   DEBUG_SERIAL_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
-
-  delay(2000);
-  if (testing) {
-    testing->test();
-  }
+  DEBUG_SERIAL_PRINTLN("\nType 'TEST' in Serial Monitor to run parsing tests");
+  DEBUG_SERIAL_PRINTLN("Type 'HELP' for available commands\n");
 }
 
 void loop() {
   static unsigned long lastHealthCheck = 0;
   static unsigned long lastMemoryCheck = 0;
+
+  checkSerialCommands();
 
 #if MEMORY_DEBUG == 1
   if (millis() - lastHealthCheck > 5000) {

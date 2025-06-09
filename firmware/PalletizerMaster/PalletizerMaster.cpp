@@ -153,6 +153,10 @@ PalletizerScriptParser* PalletizerMaster::getScriptParser() {
   return &scriptParser;
 }
 
+PalletizerRuntime* PalletizerMaster::getRuntime() {
+  return runtime;
+}
+
 void PalletizerMaster::processGroupCommand(const String& groupCommands) {
   DEBUG_MGR.info("GROUP", "🔄 Executing GROUP command");
   DEBUG_MGR.info("GROUP", "└─ Commands: " + groupCommands);
