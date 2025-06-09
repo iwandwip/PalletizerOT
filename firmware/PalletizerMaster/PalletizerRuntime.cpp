@@ -1085,3 +1085,7 @@ bool PalletizerRuntime::shouldClearQueue(const String& data) {
   bool isCoordinateCmd = data.indexOf('(') != -1;
   return isCoordinateCmd && QUEUE_OPERATION_MODE == QUEUE_MODE_OVERWRITE;
 }
+
+void PalletizerRuntime::testParseInlineCommands(const String& input, String* statements, int& count) {
+  parseInlineCommands(input, statements, count);
+}

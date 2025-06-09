@@ -89,6 +89,7 @@ public:
   void setSingleCommandFlags();
   void notifySingleCommandComplete();
   bool isSingleCommandExecuting();
+  void testParseInlineCommands(const String& input, String* statements, int& count);
 
 private:
   PalletizerProtocol* protocol;

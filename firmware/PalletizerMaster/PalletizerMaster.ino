@@ -6,6 +6,7 @@
 #include "PalletizerProtocol.h"
 #include "PalletizerRuntime.h"
 #include "PalletizerServer.h"
+#include "PalletizerTesting.h"
 #include "DebugManager.h"
 #include "LittleFS.h"
 #include "ESPmDNS.h"
@@ -29,6 +30,7 @@
 
 PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
+PalletizerTesting* testing = nullptr;
 
 TaskHandle_t serverTaskHandle = NULL;
 TaskHandle_t masterTaskHandle = NULL;
@@ -78,6 +80,14 @@ void onSlaveData(const String& data) {
 #endif
 }
 
+void runParsingTest() {
+  if (testing) {
+    testing->test();
+  } else {
+    DEBUG_SERIAL_PRINTLN("Testing not initialized!");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   DEBUG_SERIAL_PRINTLN("\nPalletizer System Starting...");
@@ -95,6 +105,8 @@ void setup() {
 
   master.setSlaveDataCallback(onSlaveData);
   master.begin();
+
+  testing = new PalletizerTesting(master.getRuntime());
 
   BaseType_t xReturned;
 
@@ -133,6 +145,11 @@ void setup() {
 
   DEBUG_SERIAL_PRINTLN("System initialization complete");
   DEBUG_SERIAL_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
+
+  delay(2000);
+  if (testing) {
+    testing->test();
+  }
 }
 
 void loop() {
