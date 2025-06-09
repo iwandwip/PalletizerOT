@@ -1,0 +1,6 @@
+{"timestamp":1749442950803,"level":"info","source":"API","message":"Script saved: 4 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
+{"timestamp":1749442951458,"level":"info","source":"API","message":"Script saved: 4 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
+{"timestamp":1749443130304,"level":"info","source":"API","message":"Script saved: 7 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
+{"timestamp":1749443132813,"level":"info","source":"API","message":"PLAY command sent to ESP32"}
+{"timestamp":1749443147077,"level":"info","source":"API","message":"Script saved: 13 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
+{"timestamp":1749443149468,"level":"info","source":"API","message":"PLAY command sent to ESP32"}

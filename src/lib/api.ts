@@ -8,54 +8,64 @@ class PalletizerAPI {
   }
 
   async sendCommand(command: string): Promise<string> {
-    const response = await fetch('/command', {
+    const response = await fetch('/api/system/command', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: `cmd=${encodeURIComponent(command)}`,
+      body: JSON.stringify({ command }),
     })
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     
+    return response.text()
+  }
+
+  async playSystem(): Promise<string> {
+    const response = await fetch('/api/system/play', { method: 'POST' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.text()
+  }
+
+  async pauseSystem(): Promise<string> {
+    const response = await fetch('/api/system/pause', { method: 'POST' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.text()
+  }
+
+  async stopSystem(): Promise<string> {
+    const response = await fetch('/api/system/stop', { method: 'POST' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.text()
+  }
+
+  async zeroSystem(): Promise<string> {
+    const response = await fetch('/api/system/zero', { method: 'POST' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
   async getStatus(): Promise<StatusResponse> {
-    const response = await fetch('/status')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    const response = await fetch('/api/system/status')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.json()
   }
 
   async saveCommands(commands: string): Promise<string> {
-    const response = await fetch('/write', {
+    const response = await fetch('/api/scripts/save', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `text=${encodeURIComponent(commands)}`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commands }),
     })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
   async loadCommands(): Promise<string> {
-    const response = await fetch('/get_commands')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    const response = await fetch('/api/scripts/load')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
@@ -63,117 +73,90 @@ class PalletizerAPI {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await fetch('/upload', {
+    const response = await fetch('/api/scripts/upload', {
       method: 'POST',
       body: formData,
     })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.text()
+  }
+
+  async setGlobalSpeed(speed: number): Promise<string> {
+    const response = await fetch('/api/speed/global', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speed }),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return response.text()
+  }
+
+  async setAxisSpeed(axisId: string, speed: number): Promise<string> {
+    const response = await fetch('/api/speed/axis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ axisId, speed }),
+    })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
   async getTimeoutConfig(): Promise<TimeoutConfig> {
-    const response = await fetch('/timeout_config')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    const response = await fetch('/api/system/timeout-config')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.json()
   }
 
   async saveTimeoutConfig(config: TimeoutConfig): Promise<string> {
-    const formData = new URLSearchParams()
-    formData.append('maxWaitTime', config.maxWaitTime.toString())
-    formData.append('strategy', config.strategy.toString())
-    formData.append('maxTimeoutWarning', config.maxTimeoutWarning.toString())
-    formData.append('autoRetryCount', config.autoRetryCount.toString())
-    formData.append('saveToFile', config.saveToFile.toString())
-
-    const response = await fetch('/timeout_config', {
+    const response = await fetch('/api/system/timeout-config', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
     })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
   async getTimeoutStats(): Promise<TimeoutStats> {
-    const response = await fetch('/timeout_stats')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    const response = await fetch('/api/system/timeout-stats')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.json()
   }
 
   async clearTimeoutStats(): Promise<string> {
-    const response = await fetch('/clear_timeout_stats', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+    const response = await fetch('/api/system/timeout-stats', { method: 'DELETE' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
-  async getDebugBuffer(startIndex: number = 0): Promise<any> {
-    const response = await fetch(`/debug/buffer?start=${startIndex}`)
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+  async getDebugLogs(): Promise<any> {
+    const response = await fetch('/api/debug/logs')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.json()
   }
 
-  async clearDebugBuffer(): Promise<string> {
-    const response = await fetch('/debug/clear', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+  async clearDebugLogs(): Promise<string> {
+    const response = await fetch('/api/debug/clear', { method: 'POST' })
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.text()
   }
 
-  async toggleDebugCapture(): Promise<any> {
-    const response = await fetch('/debug/toggle', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
+  async getESP32Status(): Promise<any> {
+    const response = await fetch('/api/esp32/status')
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
     return response.json()
   }
 
   downloadCommands(): void {
-    window.location.href = '/download_commands'
+    window.location.href = '/api/scripts/download'
   }
 
   createEventSource(): EventSource {
-    return new EventSource('/events')
+    return new EventSource('/api/system/events')
   }
 
   createDebugEventSource(): EventSource {
-    return new EventSource('/debug')
+    return new EventSource('/api/debug/stream')
   }
 }
 
