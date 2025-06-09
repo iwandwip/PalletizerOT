@@ -13,7 +13,7 @@ void PalletizerProtocol::begin() {
 }
 
 void PalletizerProtocol::update() {
-  checkSlaveData();
+  // checkSlaveData();
 }
 
 void PalletizerProtocol::sendToSlave(const String& data) {
