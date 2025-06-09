@@ -91,6 +91,7 @@ void StepperSlave::processIncomingData(const String& data) {
   if (format == FORMAT_PACKET) {
     if (isPacketComplete()) {
       String packet = getCompletePacket();
+      DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing packet: " + packet);
       if (processPacketData(packet)) {
         DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Packet processed successfully");
       } else {
@@ -103,6 +104,7 @@ void StepperSlave::processIncomingData(const String& data) {
       String command = dataBuffer;
       command.trim();
       if (command.length() > 0) {
+        DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Processing legacy: " + command);
         processCommand(command);
       }
       clearBuffer();
@@ -119,7 +121,6 @@ StepperSlave::DataFormat StepperSlave::detectDataFormat(const String& data) {
 
 bool StepperSlave::processPacketData(const String& packet) {
   if (!validatePacketCRC(packet)) {
-    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation failed");
     return false;
   }
 
@@ -149,16 +150,39 @@ bool StepperSlave::validatePacketCRC(const String& packet) {
   int endPos = packet.lastIndexOf('#');
 
   if (startPos <= 0 || asteriskPos <= startPos || endPos <= asteriskPos) {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid packet structure");
     return false;
   }
 
   String content = packet.substring(startPos, asteriskPos);
   String crcHex = packet.substring(asteriskPos + 1, endPos);
+  crcHex.toUpperCase();
 
   uint8_t expectedCRC = calculateCRC8(content);
-  uint8_t receivedCRC = strtol(crcHex.c_str(), NULL, 16);
+  uint8_t receivedCRC = 0;
 
-  return (expectedCRC == receivedCRC);
+  if (crcHex.length() == 1) {
+    receivedCRC = strtol(crcHex.c_str(), NULL, 16);
+  } else if (crcHex.length() == 2) {
+    receivedCRC = strtol(crcHex.c_str(), NULL, 16);
+  } else {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Invalid CRC format: " + crcHex);
+    return false;
+  }
+
+  char expectedHex[3];
+  sprintf(expectedHex, "%02X", expectedCRC);
+
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC Check - Content: '" + content + "'");
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Expected CRC: " + String(expectedCRC) + " (0x" + String(expectedHex) + ")");
+  DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Received CRC: " + String(receivedCRC) + " (0x" + crcHex + ")");
+
+  bool valid = (expectedCRC == receivedCRC);
+  if (!valid) {
+    DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": CRC validation failed");
+  }
+
+  return valid;
 }
 
 uint8_t StepperSlave::calculateCRC8(const String& data) {

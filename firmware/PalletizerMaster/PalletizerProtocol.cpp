@@ -47,22 +47,18 @@ void PalletizerProtocol::sendCommandToAllSlaves(Command cmd) {
 void PalletizerProtocol::sendGroupCommands(const String& groupCommands) {
   DEBUG_MGR.info("PROTOCOL", "Processing GROUP commands: " + groupCommands);
 
+  parseAndSendGroupCommands(groupCommands);
   if (currentPacketMode == PACKET_MODE_BATCH) {
-    parseAndSendGroupCommands(groupCommands);
     flushCommandBuffer();
-  } else {
-    parseAndSendGroupCommands(groupCommands);
   }
 }
 
 void PalletizerProtocol::sendCoordinateData(const String& data, Command currentCommand) {
   DEBUG_MGR.info("PROTOCOL", "Processing coordinate data: " + data);
 
+  parseCoordinateData(data, currentCommand);
   if (currentPacketMode == PACKET_MODE_BATCH) {
-    parseCoordinateData(data, currentCommand);
     flushCommandBuffer();
-  } else {
-    parseCoordinateData(data, currentCommand);
   }
 }
 
@@ -70,7 +66,7 @@ void PalletizerProtocol::sendSpeedCommand(const String& speedData) {
   DEBUG_MGR.info("PROTOCOL", "Processing speed command: " + speedData);
   parseSpeedParameters(speedData);
 
-  if (currentPacketMode == PACKET_MODE_BATCH) {
+  if (currentPacketMode == PACKET_MODE_BATCH && bufferedCommandCount > 0) {
     flushCommandBuffer();
   }
 }
@@ -317,9 +313,15 @@ String PalletizerProtocol::buildPacket(const CommandItem* commands, int count) {
     }
   }
 
-  uint8_t crc = calculateCRC8(packet.substring(1));
-  packet += "*" + String(crc, HEX);
-  packet += "#";
+  String content = packet.substring(1);
+  uint8_t crc = calculateCRC8(content);
+
+  char crcHex[3];
+  sprintf(crcHex, "%02X", crc);
+
+  packet += "*" + String(crcHex) + "#";
+
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Built packet - Content: '" + content + "' CRC: " + String(crc) + " (0x" + String(crcHex) + ")");
 
   return packet;
 }
