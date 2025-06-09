@@ -49,43 +49,38 @@ export function useRealtime() {
       eventSourceRef.current.close()
     }
 
-    try {
-      const eventSource = new EventSource('/api/system/events')
-      eventSourceRef.current = eventSource
+    const eventSource = api.createEventSource()
+    eventSourceRef.current = eventSource
 
-      eventSource.onopen = () => {
-        setConnected(true)
-        isConnectingRef.current = false
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-          reconnectTimeoutRef.current = null
-        }
+    eventSource.onopen = () => {
+      setConnected(true)
+      isConnectingRef.current = false
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
+    }
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data: RealtimeEvent = JSON.parse(event.data)
-          setLastEvent(data)
-        } catch (err) {
-          console.error('Error parsing SSE data:', err)
-        }
+    eventSource.onmessage = (event) => {
+      try {
+        const data: RealtimeEvent = JSON.parse(event.data)
+        setLastEvent(data)
+      } catch (err) {
+        console.error('Error parsing SSE data:', err)
       }
+    }
 
-      eventSource.onerror = () => {
-        setConnected(false)
-        isConnectingRef.current = false
-        eventSource.close()
-        
-        if (!reconnectTimeoutRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectTimeoutRef.current = null
-            connect()
-          }, 5000)
-        }
-      }
-    } catch (error) {
+    eventSource.onerror = () => {
       setConnected(false)
       isConnectingRef.current = false
+      eventSource.close()
+      
+      if (!reconnectTimeoutRef.current) {
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null
+          connect()
+        }, 5000)
+      }
     }
   }, [])
 
@@ -207,6 +202,39 @@ export function useDebugMonitor() {
       return true
     }
     
+    if (msg.message.includes('▶️ EXECUTION STARTED')) {
+      if ((currentTime - executionTrackingRef.current.lastExecutionStarted) < 500) {
+        return true
+      }
+      executionTrackingRef.current.lastExecutionStarted = currentTime
+    }
+    
+    if (msg.message.includes('[████████████████████]')) {
+      if ((currentTime - executionTrackingRef.current.lastProgressUpdate) < 300) {
+        return true
+      }
+      executionTrackingRef.current.lastProgressUpdate = currentTime
+    }
+    
+    if (msg.message.includes('🔄 [') && msg.message.includes('] Executing:')) {
+      const sequenceMatch = msg.message.match(/🔄 \[(\d+)\/(\d+)\] Executing: (.+)/)
+      if (sequenceMatch) {
+        const sequenceId = `${sequenceMatch[1]}_${sequenceMatch[2]}_${sequenceMatch[3]}`
+        if (sequenceId === executionTrackingRef.current.lastSequenceId) {
+          return true
+        }
+        executionTrackingRef.current.lastSequenceId = sequenceId
+      }
+    }
+    
+    if (msg.message.includes('📊 Execution Summary:') || 
+        msg.message.includes('════════════════════════════════════════')) {
+      if ((currentTime - executionTrackingRef.current.lastPerformanceReport) < 1000) {
+        return true
+      }
+      executionTrackingRef.current.lastPerformanceReport = currentTime
+    }
+    
     dedup.lastMessageKey = messageKey
     dedup.lastMessageTime = currentTime
     dedup.duplicateCount = 0
@@ -228,6 +256,109 @@ export function useDebugMonitor() {
       }))
     }
     
+    else if (msg.message.includes('Total Commands in Queue:')) {
+      const match = msg.message.match(/Total Commands in Queue: (\d+)/)
+      if (match) {
+        const total = parseInt(match[1])
+        setExecutionState(prev => ({ ...prev, totalCommands: total }))
+      }
+    }
+    
+    else if (msg.message.includes('🔄') && msg.message.match(/\[(\d+)\/(\d+)\]/)) {
+      parsed.type = 'sequence'
+      const match = msg.message.match(/\[(\d+)\/(\d+)\]/)
+      if (match) {
+        const current = parseInt(match[1])
+        const total = parseInt(match[2])
+        parsed.data = { current, total, percentage: Math.round((current / total) * 100) }
+        setExecutionState(prev => ({
+          ...prev,
+          currentCommand: current,
+          totalCommands: total,
+          progress: (current / total) * 100
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('└─ Entering function')) {
+      parsed.type = 'function'
+      const match = msg.message.match(/Entering function (\w+)(?:\s*\((\d+) commands\))?/)
+      if (match) {
+        parsed.data = {
+          functionName: match[1],
+          entering: true,
+          commandCount: match[2] ? parseInt(match[2]) : 0
+        }
+        setExecutionState(prev => ({
+          ...prev,
+          currentFunction: match[1],
+          functionStack: [...prev.functionStack, match[1]]
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('✅ Function') && msg.message.includes('completed')) {
+      parsed.type = 'function'
+      const match = msg.message.match(/Function (\w+) completed/)
+      if (match) {
+        parsed.data = { functionName: match[1], entering: false }
+        setExecutionState(prev => ({
+          ...prev,
+          functionStack: prev.functionStack.filter(f => f !== match[1]),
+          currentFunction: prev.functionStack[prev.functionStack.length - 2] || ''
+        }))
+      }
+    }
+    
+    else if (msg.message.includes('🎯')) {
+      parsed.type = 'motion'
+      const singleAxisMatch = msg.message.match(/🎯\s*([XYZGT])\(([^)]+)\)/)
+      const multiAxisMatch = msg.message.match(/Multi-axis movement \((\d+) axes\)/)
+      
+      if (singleAxisMatch) {
+        const params = singleAxisMatch[2].split(',')
+        parsed.data = {
+          axis: singleAxisMatch[1],
+          position: parseInt(params[0]),
+          delay: params.find(p => p.startsWith('d')) ? parseInt(params.find(p => p.startsWith('d'))!.substring(1)) : undefined,
+          speed: params.length > 2 || (params.length === 2 && !params[1].startsWith('d')) ? parseFloat(params[params.length - 1]) : undefined
+        }
+      } else if (multiAxisMatch) {
+        parsed.data = { axis: 'MULTI', position: parseInt(multiAxisMatch[1]) }
+      }
+    }
+    
+    else if (msg.message.includes('SET(') || msg.message.includes('WAIT')) {
+      parsed.type = 'sync'
+      if (msg.message.includes('SET(')) {
+        const match = msg.message.match(/SET\((\d)\)/)
+        parsed.data = { syncType: match ? `SET(${match[1]})` : 'SET' }
+      } else {
+        parsed.data = { syncType: 'WAIT' }
+      }
+    }
+    
+    else if (msg.message.includes('📋 PARSING RESULTS:')) {
+      parsed.type = 'parser'
+    }
+    
+    else if (msg.message.includes('[') && msg.message.includes(']') && msg.message.includes('░')) {
+      parsed.type = 'progress'
+      const match = msg.message.match(/\[([█░]+)\]\s*(\d+)\/(\d+)\s*\((\d+)%\)/)
+      if (match) {
+        parsed.data = {
+          current: parseInt(match[2]),
+          total: parseInt(match[3]),
+          percentage: parseInt(match[4])
+        }
+      }
+    }
+    
+    else if (msg.message.includes('📊 Execution Summary:')) {
+      parsed.type = 'performance'
+      setExecutionState(prev => ({ ...prev, isExecuting: false }))
+    }
+    
     return parsed
   }, [])
 
@@ -242,41 +373,36 @@ export function useDebugMonitor() {
       eventSourceRef.current.close()
     }
 
-    try {
-      const eventSource = new EventSource('/api/debug/stream')
-      eventSourceRef.current = eventSource
+    const eventSource = new EventSource('/debug')
+    eventSourceRef.current = eventSource
 
-      eventSource.onopen = () => {
-        setConnected(true)
-        isConnectingRef.current = false
-      }
+    eventSource.onopen = () => {
+      setConnected(true)
+      isConnectingRef.current = false
+    }
 
-      eventSource.addEventListener('debug', (event) => {
-        if (!paused) {
-          try {
-            const data: DebugMessage = JSON.parse(event.data)
-            
-            if (isDuplicateMessage(data)) {
-              return
-            }
-            
-            const parsed = parseMessage(data)
-            messagesRef.current = [...messagesRef.current, parsed].slice(-maxMessages)
-            setMessages([...messagesRef.current])
-          } catch (err) {
-            console.error('Error parsing debug data:', err)
+    eventSource.addEventListener('debug', (event) => {
+      if (!paused) {
+        try {
+          const data: DebugMessage = JSON.parse(event.data)
+          
+          if (isDuplicateMessage(data)) {
+            return
           }
+          
+          const parsed = parseMessage(data)
+          messagesRef.current = [...messagesRef.current, parsed].slice(-maxMessages)
+          setMessages([...messagesRef.current])
+        } catch (err) {
+          console.error('Error parsing debug data:', err)
         }
-      })
-
-      eventSource.onerror = () => {
-        setConnected(false)
-        isConnectingRef.current = false
-        setTimeout(() => connect(), 5000)
       }
-    } catch (error) {
+    })
+
+    eventSource.onerror = () => {
       setConnected(false)
       isConnectingRef.current = false
+      setTimeout(() => connect(), 5000)
     }
   }, [paused, parseMessage, isDuplicateMessage])
 
@@ -289,15 +415,34 @@ export function useDebugMonitor() {
     setConnected(false)
   }, [])
 
-  const clearMessages = useCallback(async () => {
+  const clearMessages = useCallback(() => {
     messagesRef.current = []
     setMessages([])
     
-    try {
-      await api.clearDebugLogs()
-    } catch (error) {
-      console.error('Failed to clear debug logs:', error)
+    deduplicationRef.current = {
+      lastMessageKey: '',
+      lastMessageTime: 0,
+      duplicateCount: 0,
+      windowMs: 150
     }
+    
+    executionTrackingRef.current = {
+      lastExecutionStarted: 0,
+      lastProgressUpdate: 0,
+      lastSequenceId: '',
+      lastPerformanceReport: 0
+    }
+    
+    setExecutionState({
+      isExecuting: false,
+      totalCommands: 0,
+      currentCommand: 0,
+      currentFunction: '',
+      functionStack: [],
+      progress: 0,
+      startTime: 0
+    })
+    api.clearDebugBuffer()
   }, [])
 
   const togglePause = useCallback(() => {
@@ -378,14 +523,10 @@ export function useTimeoutConfig() {
   const { execute } = useApi()
 
   const loadConfig = useCallback(async () => {
-    try {
-      await execute(
-        () => api.getTimeoutConfig(),
-        (response) => setConfig(response)
-      )
-    } catch (error) {
-      console.error('Failed to load timeout config:', error)
-    }
+    await execute(
+      () => api.getTimeoutConfig(),
+      (response) => setConfig(response)
+    )
   }, [execute])
 
   const saveConfig = useCallback(async () => {
@@ -411,14 +552,10 @@ export function useTimeoutStats() {
   const { execute } = useApi()
 
   const loadStats = useCallback(async () => {
-    try {
-      await execute(
-        () => api.getTimeoutStats(),
-        (response) => setStats(response)
-      )
-    } catch (error) {
-      console.error('Failed to load timeout stats:', error)
-    }
+    await execute(
+      () => api.getTimeoutStats(),
+      (response) => setStats(response)
+    )
   }, [execute])
 
   const clearStats = useCallback(async () => {
