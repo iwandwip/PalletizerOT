@@ -888,25 +888,34 @@ void PalletizerRuntime::logExecutionProgress() {
 
 void PalletizerRuntime::parseInlineCommands(const String& input, String* statements, int& count) {
   count = 0;
+
+  String normalizedInput = input;
+  normalizedInput.replace('\r', '\n');
+  normalizedInput.replace('\n', ';');
+  while (normalizedInput.indexOf(";;") != -1) {
+    normalizedInput.replace(";;", ";");
+  }
+
+  DEBUG_SERIAL_PRINTLN("RUNTIME: Normalized input: " + normalizedInput);
+
   int pos = 0;
 
-  while (pos < input.length() && count < 49) {
-    while (pos < input.length() && (input.charAt(pos) == ' ' || input.charAt(pos) == '\t' || input.charAt(pos) == '\n' || input.charAt(pos) == '\r')) {
+  while (pos < normalizedInput.length() && count < 49) {
+    while (pos < normalizedInput.length() && (normalizedInput.charAt(pos) == ' ' || normalizedInput.charAt(pos) == '\t')) {
       pos++;
     }
 
-    if (pos >= input.length()) break;
+    if (pos >= normalizedInput.length()) break;
 
-    int startPos = pos;
     String command = "";
 
-    if (input.substring(pos).startsWith("GROUP(")) {
+    if (normalizedInput.substring(pos).startsWith("GROUP(")) {
       pos += 6;
       int parenCount = 1;
       command = "GROUP(";
 
-      while (pos < input.length() && parenCount > 0) {
-        char c = input.charAt(pos);
+      while (pos < normalizedInput.length() && parenCount > 0) {
+        char c = normalizedInput.charAt(pos);
         command += c;
 
         if (c == '(') {
@@ -922,8 +931,8 @@ void PalletizerRuntime::parseInlineCommands(const String& input, String* stateme
         count++;
       }
     } else {
-      while (pos < input.length() && input.charAt(pos) != ';') {
-        command += input.charAt(pos);
+      while (pos < normalizedInput.length() && normalizedInput.charAt(pos) != ';') {
+        command += normalizedInput.charAt(pos);
         pos++;
       }
 
@@ -934,7 +943,7 @@ void PalletizerRuntime::parseInlineCommands(const String& input, String* stateme
       }
     }
 
-    while (pos < input.length() && input.charAt(pos) == ';') {
+    while (pos < normalizedInput.length() && normalizedInput.charAt(pos) == ';') {
       pos++;
     }
   }
