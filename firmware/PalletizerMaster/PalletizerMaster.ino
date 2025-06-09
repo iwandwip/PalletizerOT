@@ -273,8 +273,7 @@ void setup() {
 
   Serial.println(createSeparator(50));
   Serial.println("✓ ESP32 Master initialization complete");
-  Serial.printf("✓ Free heap: %d bytes (%d largest block)\n",
-                ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+  Serial.printf("✓ Free heap: %d bytes (%d largest block)\n", ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
   Serial.println("✓ System ready for commands");
   Serial.println(createSeparator(50));
 }
