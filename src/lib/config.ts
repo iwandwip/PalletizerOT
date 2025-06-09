@@ -2,7 +2,7 @@ import path from 'path'
 
 export const config = {
   esp32: {
-    host: process.env.ESP32_HOST || '192.168.1.100',
+    host: process.env.ESP32_HOST || '192.168.59.68',
     port: process.env.ESP32_PORT || '80',
     timeout: 5000,
     retryAttempts: 3,

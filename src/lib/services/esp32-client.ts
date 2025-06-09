@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios'
-import { config, ESP32_ENDPOINTS } from '../config'
+import { config, ESP32_ENDPOINTS } from '@/lib/config'
 
 export interface ESP32Status {
   state: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPING'

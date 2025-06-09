@@ -9,9 +9,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: false,
   },
   
-  experimental: {
-    serverComponentsExternalPackages: ['fs-extra']
-  }
+  serverExternalPackages: ['fs-extra']
 }
 
 export default nextConfig

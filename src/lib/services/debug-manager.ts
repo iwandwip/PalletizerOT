@@ -1,4 +1,4 @@
-import { fileManager } from './file-manager'
+import { fileManager } from '@/lib/services/file-manager'
 
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error'
 
