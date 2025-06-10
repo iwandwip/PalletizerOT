@@ -78,14 +78,15 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 
 void StepperSlave::onMasterData(const String& data) {
   if (commandProcessed) {
+    flushSerialBuffer();
     return;
   }
 
   if (isValidCommand(data)) {
-    DEBUG_PRINTLN("MASTER→SLAVE (VALID): " + data);
-    processCommand(data);
-    commandProcessed = true;
     flushSerialBuffer();
+    DEBUG_PRINTLN("MASTER→SLAVE (VALID): " + data);
+    commandProcessed = true;
+    processCommand(data);
   }
 }
 
