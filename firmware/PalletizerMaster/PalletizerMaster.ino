@@ -1,22 +1,21 @@
 #define ENABLE_MODULE_SERIAL_ENHANCED
 #define ENABLE_MODULE_DIGITAL_OUTPUT
 
+#include "CommandRouter.h"
 #include "DebugConfig.h"
+#include "ESPmDNS.h"
+#include "FlashManager.h"
+#include "LittleFS.h"
 #include "PalletizerMaster.h"
 #include "PalletizerProtocol.h"
-#include "PalletizerRuntime.h"
 #include "PalletizerServer.h"
-#include "PalletizerTesting.h"
-#include "DebugManager.h"
-#include "LittleFS.h"
-#include "ESPmDNS.h"
+#include "SimpleExecutor.h"
 #include "esp_task_wdt.h"
 
 #define DEVELOPMENT_MODE 0
 
 #define RX_PIN 16
 #define TX_PIN 17
-#define INDICATOR_PIN 26
 
 #if DEVELOPMENT_MODE == 1
 #define WIFI_MODE PalletizerServer::MODE_STA
@@ -28,21 +27,15 @@
 #define WIFI_PASSWORD ""
 #endif
 
-PalletizerMaster master(RX_PIN, TX_PIN, INDICATOR_PIN);
+PalletizerMaster master(RX_PIN, TX_PIN);
 PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
-PalletizerTesting* testing = nullptr;
 
 TaskHandle_t serverTaskHandle = NULL;
 TaskHandle_t masterTaskHandle = NULL;
 
 void serverTask(void* pvParameters) {
   server.begin();
-
-#if WEB_DEBUG == 1 || SERIAL_DEBUG == 1
-  DEBUG_MGR.begin(&Serial, &server);
-  DEBUG_MGR.setEnabled(true);
-  DEBUG_MGR.info("SYSTEM", "Server task started on Core 0");
-#endif
+  DEBUG_SERIAL_PRINTLN("SERVER: Task started on Core 0");
 
   while (true) {
     esp_task_wdt_reset();
@@ -53,9 +46,7 @@ void serverTask(void* pvParameters) {
       lastMaintenance = millis();
 
       if (WIFI_MODE == PalletizerServer::MODE_STA && WiFi.status() != WL_CONNECTED) {
-#if WEB_DEBUG == 1 || SERIAL_DEBUG == 1
-        DEBUG_MGR.warning("WIFI", "Connection lost, attempting reconnect...");
-#endif
+        DEBUG_SERIAL_PRINTLN("WIFI: Connection lost, attempting reconnect...");
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
       }
     }
@@ -63,9 +54,7 @@ void serverTask(void* pvParameters) {
 }
 
 void masterTask(void* pvParameters) {
-#if WEB_DEBUG == 1 || SERIAL_DEBUG == 1
-  DEBUG_MGR.info("SYSTEM", "Master task started on Core 1");
-#endif
+  DEBUG_SERIAL_PRINTLN("MASTER: Task started on Core 1");
 
   while (true) {
     master.update();
@@ -75,45 +64,13 @@ void masterTask(void* pvParameters) {
 }
 
 void onSlaveData(const String& data) {
-#if WEB_DEBUG == 1 || SERIAL_DEBUG == 1
-  DEBUG_MGR.info("SLAVE_DATA", data);
-#endif
-}
-
-void runParsingTest() {
-  if (testing) {
-    testing->test();
-  } else {
-    DEBUG_SERIAL_PRINTLN("Testing not initialized!");
-  }
-}
-
-void checkSerialCommands() {
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    command.toUpperCase();
-
-    if (command == "TEST") {
-      DEBUG_SERIAL_PRINTLN("\n=== Running Parsing Tests ===");
-      runParsingTest();
-    } else if (command == "HELP") {
-      DEBUG_SERIAL_PRINTLN("\nAvailable Commands:");
-      DEBUG_SERIAL_PRINTLN("TEST - Run parsing tests");
-      DEBUG_SERIAL_PRINTLN("HELP - Show this help");
-    } else if (command.length() > 0) {
-      DEBUG_SERIAL_PRINTLN("Unknown command: " + command);
-      DEBUG_SERIAL_PRINTLN("Type HELP for available commands");
-    }
-  }
+  DEBUG_SERIAL_PRINTLN("SLAVE_DATA: " + data);
 }
 
 void setup() {
   Serial.begin(115200);
-  DEBUG_SERIAL_PRINTLN("\nPalletizer System Starting...");
-  DEBUG_SERIAL_PRINTF("Debug Configuration: WEB_DEBUG=%d, SERIAL_DEBUG=%d\n", WEB_DEBUG, SERIAL_DEBUG);
-  DEBUG_SERIAL_PRINTF("Memory Settings: DEBUG_BUFFER_SIZE=%d, MAX_FUNCTIONS=%d, MAX_STATEMENTS=%d\n",
-                      DEBUG_BUFFER_SIZE, MAX_FUNCTIONS, MAX_STATEMENTS);
+  DEBUG_SERIAL_PRINTLN("\nPalletizer Batch Processing System Starting...");
+  DEBUG_SERIAL_PRINTF("Debug Configuration: SERIAL_DEBUG=%d, WEB_DEBUG=%d\n", SERIAL_DEBUG, WEB_DEBUG);
 
   esp_task_wdt_init(10, true);
 
@@ -126,14 +83,12 @@ void setup() {
   master.setSlaveDataCallback(onSlaveData);
   master.begin();
 
-  testing = new PalletizerTesting(master.getRuntime());
-
   BaseType_t xReturned;
 
   xReturned = xTaskCreatePinnedToCore(
     serverTask,
     "Server_Task",
-    20480,
+    16384,
     NULL,
     3,
     &serverTaskHandle,
@@ -149,7 +104,7 @@ void setup() {
   xReturned = xTaskCreatePinnedToCore(
     masterTask,
     "Master_Task",
-    12288,
+    8192,
     NULL,
     2,
     &masterTaskHandle,
@@ -165,15 +120,11 @@ void setup() {
 
   DEBUG_SERIAL_PRINTLN("System initialization complete");
   DEBUG_SERIAL_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
-  DEBUG_SERIAL_PRINTLN("\nType 'TEST' in Serial Monitor to run parsing tests");
-  DEBUG_SERIAL_PRINTLN("Type 'HELP' for available commands\n");
+  DEBUG_SERIAL_PRINTLN("Ready for batch processing commands upload");
 }
 
 void loop() {
   static unsigned long lastHealthCheck = 0;
-  static unsigned long lastMemoryCheck = 0;
-
-  checkSerialCommands();
 
 #if MEMORY_DEBUG == 1
   if (millis() - lastHealthCheck > 5000) {
@@ -189,50 +140,12 @@ void loop() {
       ESP.restart();
     }
 
-    UBaseType_t serverStackWatermark = uxTaskGetStackHighWaterMark(serverTaskHandle);
-    UBaseType_t masterStackWatermark = uxTaskGetStackHighWaterMark(masterTaskHandle);
+    size_t freeHeap = ESP.getFreeHeap();
+    DEBUG_SERIAL_PRINTF("Memory: Free=%d bytes\n", freeHeap);
 
-    if (serverStackWatermark < 2000) {
-      DEBUG_SERIAL_PRINTF("WARNING: Server stack low: %d bytes\n", serverStackWatermark);
-    }
-
-    if (masterStackWatermark < 1500) {
-      DEBUG_SERIAL_PRINTF("WARNING: Master stack low: %d bytes\n", masterStackWatermark);
-    }
-
-    if (millis() - lastMemoryCheck > 10000) {
-      lastMemoryCheck = millis();
-
-      size_t freeHeap = ESP.getFreeHeap();
-      size_t largestBlock = ESP.getMaxAllocHeap();
-      float fragmentation = 100.0 * (1.0 - (float)largestBlock / freeHeap);
-
-      DEBUG_SERIAL_PRINTF("Memory: Free=%d, Largest=%d, Frag=%.1f%%\n",
-                          freeHeap, largestBlock, fragmentation);
-
-      if (freeHeap < 20000) {
-        DEBUG_SERIAL_PRINTLN("CRITICAL: Memory below 20KB - EMERGENCY RESTART!");
-        delay(1000);
-        ESP.restart();
-      }
-
-      if (freeHeap < 30000) {
-        DEBUG_SERIAL_PRINTLN("WARNING: Memory below 30KB - System unstable!");
-      }
-
-      if (fragmentation > 60.0) {
-        DEBUG_SERIAL_PRINTLN("CRITICAL: High fragmentation - EMERGENCY RESTART!");
-        delay(1000);
-        ESP.restart();
-      }
-
-      if (fragmentation > 40.0) {
-        DEBUG_SERIAL_PRINTLN("WARNING: High fragmentation detected!");
-      }
-    }
-
-    if (ESP.getFreeHeap() < 20000) {
-      DEBUG_SERIAL_PRINTLN("CRITICAL: Low memory! Restarting...");
+    if (freeHeap < 50000) {
+      DEBUG_SERIAL_PRINTLN("CRITICAL: Memory below 50KB - EMERGENCY RESTART!");
+      delay(1000);
       ESP.restart();
     }
   }

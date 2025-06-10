@@ -1,5 +1,4 @@
 #include "PalletizerProtocol.h"
-#include "DebugManager.h"
 
 PalletizerProtocol::PalletizerProtocol(int rxPin, int txPin)
   : rxPin(rxPin), txPin(txPin), rxIndicatorLed(2), slavePartialBuffer(""), lastReceivedData(""),
@@ -31,21 +30,21 @@ void PalletizerProtocol::sendCommandToAllSlaves(Command cmd) {
   for (int i = 0; i < 5; i++) {
     formatSlaveCommand(String(slaveIds[i]), cmd);
   }
-  DEBUG_MGR.info("PROTOCOL", "Broadcasted command " + String(cmd) + " to all slaves");
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Broadcasted command " + String(cmd) + " to all slaves");
 }
 
 void PalletizerProtocol::sendGroupCommands(const String& groupCommands) {
-  DEBUG_MGR.info("PROTOCOL", "Processing GROUP commands: " + groupCommands);
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Processing GROUP commands: " + groupCommands);
   parseAndSendGroupCommands(groupCommands);
 }
 
 void PalletizerProtocol::sendCoordinateData(const String& data, Command currentCommand) {
-  DEBUG_MGR.info("PROTOCOL", "Processing coordinate data: " + data);
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Processing coordinate data: " + data);
   parseCoordinateData(data, currentCommand);
 }
 
 void PalletizerProtocol::sendSpeedCommand(const String& speedData) {
-  DEBUG_MGR.info("PROTOCOL", "Processing speed command: " + speedData);
+  DEBUG_SERIAL_PRINTLN("PROTOCOL: Processing speed command: " + speedData);
   parseSpeedParameters(speedData);
 }
 
@@ -90,7 +89,7 @@ void PalletizerProtocol::onSlaveData(const String& data) {
     slaveDataCallback(data);
   }
 
-  DEBUG_MGR.info("SLAVE→PROTOCOL", data);
+  DEBUG_SERIAL_PRINTLN("SLAVE→PROTOCOL: " + data);
 }
 
 void PalletizerProtocol::parseCoordinateData(const String& data, Command currentCommand) {
@@ -196,7 +195,7 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
       formatSlaveCommand(slaveId, CMD_SETSPEED, speedValue);
       String upperSlaveId = slaveId;
       upperSlaveId.toUpperCase();
-      DEBUG_MGR.info("PROTOCOL", "Set " + upperSlaveId + " axis speed to " + speedValue);
+      DEBUG_SERIAL_PRINTLN("PROTOCOL: Set " + upperSlaveId + " axis speed to " + speedValue);
     }
   } else {
     while (params.endsWith(";")) {
@@ -207,7 +206,7 @@ void PalletizerProtocol::parseSpeedParameters(const String& speedData) {
     for (int i = 0; i < 5; i++) {
       formatSlaveCommand(String(slaveIds[i]), CMD_SETSPEED, params);
     }
-    DEBUG_MGR.info("PROTOCOL", "Set all axes speed to " + params);
+    DEBUG_SERIAL_PRINTLN("PROTOCOL: Set all axes speed to " + params);
   }
 }
 

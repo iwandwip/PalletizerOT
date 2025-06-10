@@ -3,11 +3,12 @@
 
 #define ENABLE_MODULE_NODEF_DIGITAL_OUTPUT
 
+#include "CommandRouter.h"
 #include "DebugConfig.h"
-#include "PalletizerProtocol.h"
-#include "PalletizerRuntime.h"
-#include "PalletizerScriptParser.h"
+#include "FlashManager.h"
 #include "Kinematrix.h"
+#include "PalletizerProtocol.h"
+#include "SimpleExecutor.h"
 
 class PalletizerMaster {
 public:
@@ -27,71 +28,48 @@ public:
 
   typedef void (*DataCallback)(const String& data);
 
-  PalletizerMaster(int rxPin, int txPin, int indicatorPin = -1);
+  PalletizerMaster(int rxPin, int txPin);
   ~PalletizerMaster();
+
   void begin();
   void update();
   void setSlaveDataCallback(DataCallback callback);
+
   static void processCommand(const String& data);
   SystemState getSystemState();
-  void setTimeoutConfig(const PalletizerRuntime::TimeoutConfig& config);
-  PalletizerRuntime::TimeoutConfig getTimeoutConfig();
-  void setWaitTimeout(unsigned long timeoutMs);
-  void setTimeoutStrategy(PalletizerRuntime::WaitTimeoutStrategy strategy);
-  void setMaxTimeoutWarning(int maxWarning);
-  PalletizerRuntime::TimeoutStats getTimeoutStats();
-  void clearTimeoutStats();
-  float getTimeoutSuccessRate();
-  bool saveTimeoutConfig();
-  bool loadTimeoutConfig();
-  PalletizerRuntime::ExecutionInfo getExecutionInfo();
-  PalletizerScriptParser* getScriptParser();
-  PalletizerRuntime* getRuntime();
-  void processGroupCommand(const String& groupCommands);
-  void addCommandToQueue(const String& command);
-  bool canProcessNextCommand();
+
+  bool uploadCommands(const String& commands);
+  bool startExecution();
+  void pauseExecution();
+  void stopExecution();
+
+  String getExecutionStatus();
+  FlashManager* getFlashManager();
 
 private:
   static PalletizerMaster* instance;
 
   PalletizerProtocol* protocol;
-  PalletizerRuntime* runtime;
-  PalletizerScriptParser scriptParser;
+  FlashManager* flashManager;
+  CommandRouter* commandRouter;
+  SimpleExecutor* executor;
 
   SystemState systemState;
   DataCallback slaveDataCallback;
-
-  int indicatorPin;
-  bool indicatorEnabled;
-  bool sequenceRunning;
-  bool waitingForCompletion;
-  bool groupExecutionActive;
-  unsigned long lastCheckTime;
-  unsigned long groupCommandTimer;
-  bool waitingForGroupDelay;
 
   static const int MAX_LED_INDICATOR_SIZE = 3;
   DigitalOut ledIndicator[MAX_LED_INDICATOR_SIZE];
 
   void onCommandReceived(const String& data);
   void onSlaveData(const String& data);
-  void onSystemStateChange(const String& newState);
-  void onGroupCommand(const String& groupCommands);
-  void processSystemStateCommand(const String& command);
+  void onExecutionStateChange(SimpleExecutor::ExecutionState state);
+
   void setSystemState(SystemState newState);
   void sendStateUpdate();
   void setOnLedIndicator(LedIndicator index);
-  bool checkAllSlavesCompleted();
-  void handleIndicatorBasedCompletion();
-  void handleSequenceCompletion();
-  void resetExecutionFlags();
-  void handleGroupExecution(const String& groupCommands);
-  bool shouldClearQueue(const String& data);
-  bool isRealScriptCommand(const String& command);
-  void parseInlineCommands(const String& commands);
+
   static void onSlaveDataWrapper(const String& data);
-  static void onSystemStateChangeWrapper(const String& newState);
-  static void onGroupCommandWrapper(const String& groupCommands);
+  static void onExecutionStateWrapper(SimpleExecutor::ExecutionState state);
 };
 
 #endif
