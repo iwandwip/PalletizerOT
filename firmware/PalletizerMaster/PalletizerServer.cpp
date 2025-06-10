@@ -1,5 +1,6 @@
 #include "PalletizerServer.h"
 #include "PalletizerMaster.h"
+#include "FlashManager.h"
 
 PalletizerServer::PalletizerServer(PalletizerMaster *master, WiFiMode mode, const char *ap_ssid, const char *ap_password)
   : palletizerMaster(master), server(80), wifiMode(mode), ssid(ap_ssid), password(ap_password) {
@@ -96,7 +97,7 @@ void PalletizerServer::setupRoutes() {
   });
 
   server.on("/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String statusStr = getStatusString(palletizerMaster->getSystemState());
+    String statusStr = getStatusString((int)palletizerMaster->getSystemState());
     String response = "{\"status\":\"" + statusStr + "\"}";
     request->send(200, "application/json", response);
   });
@@ -211,15 +212,15 @@ void PalletizerServer::safeFileWrite(const String &path, const String &content) 
   }
 }
 
-String PalletizerServer::getStatusString(PalletizerMaster::SystemState state) {
+String PalletizerServer::getStatusString(int state) {
   switch (state) {
-    case PalletizerMaster::STATE_IDLE:
+    case 0:  // PalletizerMaster::STATE_IDLE
       return "IDLE";
-    case PalletizerMaster::STATE_RUNNING:
+    case 1:  // PalletizerMaster::STATE_RUNNING
       return "RUNNING";
-    case PalletizerMaster::STATE_PAUSED:
+    case 2:  // PalletizerMaster::STATE_PAUSED
       return "PAUSED";
-    case PalletizerMaster::STATE_STOPPING:
+    case 3:  // PalletizerMaster::STATE_STOPPING
       return "STOPPING";
     default:
       return "UNKNOWN";

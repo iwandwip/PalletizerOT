@@ -185,18 +185,18 @@ void PalletizerMaster::onSlaveData(const String& data) {
   }
 }
 
-void PalletizerMaster::onExecutionStateChange(SimpleExecutor::ExecutionState state) {
+void PalletizerMaster::onExecutionStateChange(int state) {
   switch (state) {
-    case SimpleExecutor::IDLE:
+    case 0:  // SimpleExecutor::IDLE
       setSystemState(STATE_IDLE);
       break;
-    case SimpleExecutor::RUNNING:
+    case 1:  // SimpleExecutor::RUNNING
       setSystemState(STATE_RUNNING);
       break;
-    case SimpleExecutor::PAUSED:
+    case 2:  // SimpleExecutor::PAUSED
       setSystemState(STATE_PAUSED);
       break;
-    case SimpleExecutor::STOPPING:
+    case 3:  // SimpleExecutor::STOPPING
       setSystemState(STATE_STOPPING);
       break;
   }
@@ -253,7 +253,7 @@ void PalletizerMaster::onSlaveDataWrapper(const String& data) {
   }
 }
 
-void PalletizerMaster::onExecutionStateWrapper(SimpleExecutor::ExecutionState state) {
+void PalletizerMaster::onExecutionStateWrapper(int state) {
   if (instance) {
     instance->onExecutionStateChange(state);
   }

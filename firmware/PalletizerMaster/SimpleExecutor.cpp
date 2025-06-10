@@ -88,7 +88,7 @@ String SimpleExecutor::getCurrentCommand() {
   return currentCommand;
 }
 
-void SimpleExecutor::setStateChangeCallback(void (*callback)(ExecutionState)) {
+void SimpleExecutor::setStateChangeCallback(void (*callback)(int)) {
   stateChangeCallback = callback;
 }
 
@@ -124,7 +124,7 @@ void SimpleExecutor::setState(ExecutionState newState) {
     currentState = newState;
 
     if (stateChangeCallback) {
-      stateChangeCallback(newState);
+      stateChangeCallback((int)newState);
     }
   }
 }

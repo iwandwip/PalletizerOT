@@ -31,7 +31,7 @@ public:
   float getProgress();
   String getCurrentCommand();
 
-  void setStateChangeCallback(void (*callback)(ExecutionState));
+  void setStateChangeCallback(void (*callback)(int));
 
 private:
   FlashManager* flashManager;
@@ -45,7 +45,7 @@ private:
   unsigned long lastExecutionTime;
   bool waitingForCompletion;
 
-  void (*stateChangeCallback)(ExecutionState);
+  void (*stateChangeCallback)(int);
 
   void executeNextCommand();
   void onCommandComplete();

@@ -1,7 +1,7 @@
 #define ENABLE_MODULE_SERIAL_ENHANCED
 #define ENABLE_MODULE_DIGITAL_OUTPUT
 
-#include "Arduino.h"
+#include "Kinematrix.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "DebugConfig.h"

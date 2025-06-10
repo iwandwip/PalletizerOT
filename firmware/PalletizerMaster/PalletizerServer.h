@@ -39,7 +39,7 @@ private:
   void handleClearCommands(AsyncWebServerRequest* request);
   void handlePing(AsyncWebServerRequest* request);
   void safeFileWrite(const String& path, const String& content);
-  String getStatusString(PalletizerMaster::SystemState state);
+  String getStatusString(int state);
 };
 
 #endif

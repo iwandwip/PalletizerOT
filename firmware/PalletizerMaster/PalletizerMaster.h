@@ -63,14 +63,14 @@ private:
 
   void onCommandReceived(const String& data);
   void onSlaveData(const String& data);
-  void onExecutionStateChange(SimpleExecutor::ExecutionState state);
+  void onExecutionStateChange(int state);
 
   void setSystemState(SystemState newState);
   void sendStateUpdate();
   void setOnLedIndicator(LedIndicator index);
 
   static void onSlaveDataWrapper(const String& data);
-  static void onExecutionStateWrapper(SimpleExecutor::ExecutionState state);
+  static void onExecutionStateWrapper(int state);
 };
 
 #endif
