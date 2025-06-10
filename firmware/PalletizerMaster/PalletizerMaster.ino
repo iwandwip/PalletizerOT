@@ -12,7 +12,7 @@
 #include "ESPmDNS.h"
 #include "esp_task_wdt.h"
 
-#define DEVELOPMENT_MODE 1
+#define DEVELOPMENT_MODE 0
 
 #define RX_PIN 16
 #define TX_PIN 17

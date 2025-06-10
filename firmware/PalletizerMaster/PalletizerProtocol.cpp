@@ -16,12 +16,14 @@ void PalletizerProtocol::update() {
 }
 
 void PalletizerProtocol::sendToSlave(const String& data) {
-  for (int i = 0; i < 5; i++) {
-    slaveSerial.println(data);
-    if (i < 4) {
-      delay(50);
-    }
-  }
+  // slaveSerial.println(data);
+  // for (int i = 0; i < 5; i++) {
+  //   slaveSerial.println(data);
+  //   if (i < 4) {
+  //     delay(50);
+  //   }
+  // }
+  slaveSerial.println(data);
   DEBUG_SERIAL_PRINTLN("PROTOCOL→SLAVE (5x): " + data);
   delay(100);
 }
