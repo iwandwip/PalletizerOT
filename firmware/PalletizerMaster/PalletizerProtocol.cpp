@@ -19,7 +19,7 @@ void PalletizerProtocol::sendToSlave(const String& data) {
   for (int i = 0; i < 5; i++) {
     slaveSerial.println(data);
     if (i < 4) {
-      delay(10);
+      delay(50);
     }
   }
   DEBUG_SERIAL_PRINTLN("PROTOCOL→SLAVE (5x): " + data);

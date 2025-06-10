@@ -77,7 +77,6 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 }
 
 void StepperSlave::onMasterData(const String& data) {
-  DEBUG_PRINTLN("MASTER→SLAVE (RAW): " + data);
   if (commandProcessed) {
     flushSerialBuffer();
     return;
@@ -115,7 +114,13 @@ bool StepperSlave::isValidCommand(const String& data) {
 bool StepperSlave::isNumeric(const String& str) {
   if (str.length() == 0) return false;
 
-  for (int i = 0; i < str.length(); i++) {
+  int startIndex = 0;
+  if (str.charAt(0) == '-') {
+    if (str.length() == 1) return false;
+    startIndex = 1;
+  }
+
+  for (int i = startIndex; i < str.length(); i++) {
     char c = str.charAt(i);
     if (!(c >= '0' && c <= '9')) {
       return false;
