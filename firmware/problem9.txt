@@ -1,0 +1,3 @@
+semua mengecek dengan checkAllSlavesCompleted
+jadi kemungkinan error nya di logic atau yang lain tolong cari tahu
+dan beritahu aku mana yang menyebabkan error

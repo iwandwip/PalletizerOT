@@ -1,8 +1,0 @@
-{"timestamp":1749442950803,"level":"info","source":"API","message":"Script saved: 4 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
-{"timestamp":1749442951458,"level":"info","source":"API","message":"Script saved: 4 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
-{"timestamp":1749443130304,"level":"info","source":"API","message":"Script saved: 7 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
-{"timestamp":1749443132813,"level":"info","source":"API","message":"PLAY command sent to ESP32"}
-{"timestamp":1749443147077,"level":"info","source":"API","message":"Script saved: 13 bytes","data":{"filename":"current_script.txt","commands":1,"functions":0,"errors":0}}
-{"timestamp":1749443149468,"level":"info","source":"API","message":"PLAY command sent to ESP32"}
-{"timestamp":1749457095558,"level":"info","source":"API","message":"Script saved: 49 bytes","data":{"filename":"current_script.txt","commands":3,"functions":0,"errors":0},"sessionId":"session_1749457095538_he4vychu4","executionId":null,"category":"general"}
-{"timestamp":1749457118172,"level":"info","source":"API","message":"Script saved: 16 bytes","data":{"filename":"current_script.txt","commands":2,"functions":0,"errors":0},"sessionId":"session_1749457097908_dqyop8mta","executionId":null,"category":"general"}
