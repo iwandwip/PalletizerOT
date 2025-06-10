@@ -1,9 +1,15 @@
 #include "SimpleExecutor.h"
+#include "FlashManager.h"
+#include "CommandRouter.h"
 
 SimpleExecutor* SimpleExecutor::instance = nullptr;
 
 SimpleExecutor::SimpleExecutor(FlashManager* flashManager, CommandRouter* commandRouter)
-  : flashManager(flashManager), commandRouter(commandRouter), currentState(IDLE), currentLine(0), totalLines(0), lastExecutionTime(0), waitingForCompletion(false), stateChangeCallback(nullptr) {
+  : flashManager(flashManager), commandRouter(commandRouter),
+    currentState(IDLE), currentLine(0), totalLines(0),
+    lastExecutionTime(0), waitingForCompletion(false),
+    stateChangeCallback(nullptr) {
+
   instance = this;
 }
 

@@ -2,8 +2,9 @@
 #define SIMPLE_EXECUTOR_H
 
 #include "Arduino.h"
-#include "CommandRouter.h"
-#include "FlashManager.h"
+
+class FlashManager;
+class CommandRouter;
 
 class SimpleExecutor {
 public:

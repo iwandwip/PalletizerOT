@@ -1,4 +1,5 @@
 #include "PalletizerServer.h"
+#include "PalletizerMaster.h"
 
 PalletizerServer::PalletizerServer(PalletizerMaster *master, WiFiMode mode, const char *ap_ssid, const char *ap_password)
   : palletizerMaster(master), server(80), wifiMode(mode), ssid(ap_ssid), password(ap_password) {
@@ -70,7 +71,8 @@ void PalletizerServer::setupRoutes() {
   });
 
   server.on(
-    "/upload_commands", HTTP_POST, [](AsyncWebServerRequest *request) {
+    "/upload_commands", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
       request->send(200, "application/json", "{\"status\":\"uploaded\",\"message\":\"Commands uploaded successfully\"}");
     },
     [this](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {

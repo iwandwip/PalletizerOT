@@ -3,12 +3,13 @@
 
 #define ENABLE_MODULE_NODEF_DIGITAL_OUTPUT
 
-#include "CommandRouter.h"
 #include "DebugConfig.h"
-#include "FlashManager.h"
 #include "Kinematrix.h"
-#include "PalletizerProtocol.h"
-#include "SimpleExecutor.h"
+
+class PalletizerProtocol;
+class FlashManager;
+class CommandRouter;
+class SimpleExecutor;
 
 class PalletizerMaster {
 public:

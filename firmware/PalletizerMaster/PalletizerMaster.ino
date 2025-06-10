@@ -1,16 +1,15 @@
 #define ENABLE_MODULE_SERIAL_ENHANCED
 #define ENABLE_MODULE_DIGITAL_OUTPUT
 
-#include "CommandRouter.h"
+#include "Arduino.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "DebugConfig.h"
-#include "ESPmDNS.h"
-#include "FlashManager.h"
 #include "LittleFS.h"
-#include "PalletizerMaster.h"
-#include "PalletizerProtocol.h"
-#include "PalletizerServer.h"
-#include "SimpleExecutor.h"
+#include "ESPmDNS.h"
 #include "esp_task_wdt.h"
+#include "PalletizerMaster.h"
+#include "PalletizerServer.h"
 
 #define DEVELOPMENT_MODE 0
 

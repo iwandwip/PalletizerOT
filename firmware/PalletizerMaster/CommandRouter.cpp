@@ -1,4 +1,5 @@
 #include "CommandRouter.h"
+#include "PalletizerProtocol.h"
 
 CommandRouter::CommandRouter(PalletizerProtocol* protocol)
   : protocol(protocol), completionCallback(nullptr) {

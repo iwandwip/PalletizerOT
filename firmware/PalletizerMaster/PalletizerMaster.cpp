@@ -1,13 +1,20 @@
 #include "PalletizerMaster.h"
+#include "PalletizerProtocol.h"
+#include "FlashManager.h"
+#include "CommandRouter.h"
+#include "SimpleExecutor.h"
 
 PalletizerMaster* PalletizerMaster::instance = nullptr;
 
 PalletizerMaster::PalletizerMaster(int rxPin, int txPin)
-  : protocol(nullptr), flashManager(nullptr), commandRouter(nullptr), executor(nullptr), systemState(STATE_IDLE), slaveDataCallback(nullptr), ledIndicator{
+  : protocol(nullptr), flashManager(nullptr), commandRouter(nullptr), executor(nullptr),
+    systemState(STATE_IDLE), slaveDataCallback(nullptr),
+    ledIndicator{
       DigitalOut(27, true),
       DigitalOut(14, true),
       DigitalOut(13, true),
     } {
+
   instance = this;
   protocol = new PalletizerProtocol(rxPin, txPin);
   flashManager = new FlashManager();
@@ -119,18 +126,10 @@ String PalletizerMaster::getExecutionStatus() {
 
   String status = "IDLE";
   switch (executor->getState()) {
-    case SimpleExecutor::RUNNING:
-      status = "RUNNING";
-      break;
-    case SimpleExecutor::PAUSED:
-      status = "PAUSED";
-      break;
-    case SimpleExecutor::STOPPING:
-      status = "STOPPING";
-      break;
-    default:
-      status = "IDLE";
-      break;
+    case SimpleExecutor::RUNNING: status = "RUNNING"; break;
+    case SimpleExecutor::PAUSED: status = "PAUSED"; break;
+    case SimpleExecutor::STOPPING: status = "STOPPING"; break;
+    default: status = "IDLE"; break;
   }
 
   String json = "{";

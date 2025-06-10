@@ -1,13 +1,17 @@
 #ifndef PALLETIZER_SERVER_H
 #define PALLETIZER_SERVER_H
 
-#include "AsyncTCP.h"
-#include "DebugConfig.h"
-#include "ESPAsyncWebServer.h"
-#include "ESPmDNS.h"
-#include "LittleFS.h"
-#include "PalletizerMaster.h"
+#include "Arduino.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "WiFi.h"
+#include "AsyncTCP.h"
+#include "ESPAsyncWebServer.h"
+#include "LittleFS.h"
+#include "ESPmDNS.h"
+#include "DebugConfig.h"
+
+class PalletizerMaster;
 
 class PalletizerServer {
 public:
