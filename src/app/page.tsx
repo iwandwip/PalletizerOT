@@ -10,7 +10,15 @@ import SpeedPanel from '@/components/speed-panel'
 import CommandEditor from '@/components/command-editor'
 import StatusDisplay from '@/components/status-display'
 import DebugTerminal from '@/components/debug-terminal'
-import { useSystemStatus, useTimeoutConfig, useTimeoutStats, useRealtime } from '@/lib/hooks'
+import { 
+  useSystemStatus, 
+  useTimeoutConfig, 
+  useTimeoutStats, 
+  useRealtime,
+  useScriptCompiler,
+  useCommandUploader,
+  useBatchProcessing
+} from '@/lib/hooks'
 import { api } from '@/lib/api'
 import { Axis } from '@/lib/types'
 
@@ -39,6 +47,16 @@ export default function PalletizerControl() {
   const { config: timeoutConfig, setConfig: setTimeoutConfig, saveConfig } = useTimeoutConfig()
   const { stats: timeoutStats, loadStats, clearStats } = useTimeoutStats()
   const { connected, lastEvent } = useRealtime()
+  
+  const { compilationResult, isCompiling, compile } = useScriptCompiler()
+  const { uploadResult, isUploading, uploadProgress, uploadCompiled } = useCommandUploader()
+  const { 
+    executionStatus, 
+    isPolling, 
+    executeCommands, 
+    pauseExecution, 
+    stopExecution 
+  } = useBatchProcessing()
 
   const addError = (message: string, type: 'error' | 'warning' | 'info' = 'error') => {
     const id = Date.now().toString()
@@ -165,6 +183,35 @@ export default function PalletizerControl() {
     }
   }
 
+  const handleCompileAndUpload = async () => {
+    try {
+      const result = await compile(commandText)
+      if (result && result.success) {
+        await uploadCompiled(result)
+        addError('Script compiled and uploaded successfully', 'info')
+      } else {
+        addError('Compilation failed - check script syntax', 'error')
+      }
+    } catch (error) {
+      addError('Failed to compile and upload script', 'error')
+    }
+  }
+
+  const handleExecute = async () => {
+    try {
+      if (!uploadResult?.success) {
+        await handleCompileAndUpload()
+        setTimeout(async () => {
+          await executeCommands()
+        }, 1000)
+      } else {
+        await executeCommands()
+      }
+    } catch (error) {
+      addError('Failed to execute commands', 'error')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground pb-80">
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
@@ -208,7 +255,7 @@ export default function PalletizerControl() {
               )}
             </div>
           </div>
-          <p className="text-muted-foreground">Modern robotics control interface</p>
+          <p className="text-muted-foreground">Modern robotics control interface with batch processing</p>
         </header>
 
         {!connected && (
@@ -240,6 +287,7 @@ export default function PalletizerControl() {
             <SystemControls
               onCommand={handleCommandSend}
               disabled={!connected}
+              onExecute={handleExecute}
             />
           </CardContent>
         </Card>
@@ -268,7 +316,7 @@ export default function PalletizerControl() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <span className="text-2xl">📝</span>
-                Command Management
+                Script Editor & Batch Processing
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -281,13 +329,14 @@ export default function PalletizerControl() {
                 timeoutConfig={timeoutConfig}
                 onTimeoutConfigChange={setTimeoutConfig}
                 onSaveTimeoutConfig={handleSaveTimeoutConfig}
+                onExecute={handleExecute}
               />
             </CardContent>
           </Card>
         </div>
 
         <footer className="text-center text-sm text-muted-foreground py-4">
-          Palletizer - Orang Tua Group
+          Palletizer - Orang Tua Group | Batch Processing Architecture
         </footer>
       </div>
 

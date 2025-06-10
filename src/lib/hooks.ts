@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from './api'
-import { SystemStatus, TimeoutConfig, TimeoutStats, RealtimeEvent } from './types'
+import { SystemStatus, TimeoutConfig, TimeoutStats, RealtimeEvent, CompilationResult, UploadResult, ExecutionStatus } from './types'
+import ScriptCompiler from './compiler/ScriptCompiler'
+import CommandUploader from './uploader/CommandUploader'
 
 export function useApi() {
   const [loading, setLoading] = useState(false)
@@ -29,6 +31,170 @@ export function useApi() {
   }, [])
 
   return { loading, error, execute }
+}
+
+export function useScriptCompiler() {
+  const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
+  const [isCompiling, setIsCompiling] = useState(false)
+  const compilerRef = useRef(new ScriptCompiler())
+
+  const compile = useCallback(async (script: string) => {
+    if (!script.trim()) {
+      setCompilationResult(null)
+      return null
+    }
+
+    setIsCompiling(true)
+    try {
+      const result = compilerRef.current.compile(script)
+      setCompilationResult(result)
+      return result
+    } catch (error) {
+      const errorResult: CompilationResult = {
+        success: false,
+        commands: [],
+        errors: [`Compilation failed: ${error instanceof Error ? error.message : 'Unknown error'}`],
+        functions: [],
+        totalCommands: 0
+      }
+      setCompilationResult(errorResult)
+      return errorResult
+    } finally {
+      setIsCompiling(false)
+    }
+  }, [])
+
+  const reset = useCallback(() => {
+    setCompilationResult(null)
+  }, [])
+
+  return {
+    compilationResult,
+    isCompiling,
+    compile,
+    reset
+  }
+}
+
+export function useCommandUploader() {
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ stage: string; progress: number } | null>(null)
+  const uploaderRef = useRef(new CommandUploader())
+
+  const upload = useCallback(async (commands: string[] | string) => {
+    setIsUploading(true)
+    setUploadProgress({ stage: 'uploading', progress: 0 })
+
+    try {
+      const result = await uploaderRef.current.uploadCommands(
+        commands,
+        (progress) => setUploadProgress(progress)
+      )
+      setUploadResult(result)
+      setUploadProgress({ stage: 'completed', progress: 100 })
+      return result
+    } catch (error) {
+      setUploadProgress({ 
+        stage: 'error', 
+        progress: 0 
+      })
+      throw error
+    } finally {
+      setIsUploading(false)
+    }
+  }, [])
+
+  const uploadCompiled = useCallback(async (compilationResult: CompilationResult) => {
+    if (!compilationResult.success) {
+      throw new Error('Cannot upload failed compilation')
+    }
+    return upload(compilationResult.commands)
+  }, [upload])
+
+  const reset = useCallback(() => {
+    setUploadResult(null)
+    setUploadProgress(null)
+  }, [])
+
+  return {
+    uploadResult,
+    isUploading,
+    uploadProgress,
+    upload,
+    uploadCompiled,
+    reset
+  }
+}
+
+export function useBatchProcessing() {
+  const [executionStatus, setExecutionStatus] = useState<ExecutionStatus | null>(null)
+  const [isPolling, setIsPolling] = useState(false)
+  const { execute } = useApi()
+
+  const startPolling = useCallback(() => {
+    setIsPolling(true)
+  }, [])
+
+  const stopPolling = useCallback(() => {
+    setIsPolling(false)
+    setExecutionStatus(null)
+  }, [])
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null
+
+    if (isPolling) {
+      intervalId = setInterval(async () => {
+        try {
+          const status = await api.getExecutionStatus()
+          setExecutionStatus(status)
+          
+          if (status.status === 'IDLE' || status.status === 'ERROR') {
+            setIsPolling(false)
+          }
+        } catch (error) {
+          console.error('Failed to get execution status:', error)
+          setIsPolling(false)
+        }
+      }, 1000)
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [isPolling])
+
+  const executeCommands = useCallback(async () => {
+    await execute(() => api.sendCommand('PLAY'))
+    startPolling()
+  }, [execute, startPolling])
+
+  const pauseExecution = useCallback(async () => {
+    await execute(() => api.sendCommand('PAUSE'))
+  }, [execute])
+
+  const stopExecution = useCallback(async () => {
+    await execute(() => api.sendCommand('STOP'))
+    stopPolling()
+  }, [execute, stopPolling])
+
+  const clearCommands = useCallback(async () => {
+    await execute(() => api.clearCommands())
+  }, [execute])
+
+  return {
+    executionStatus,
+    isPolling,
+    executeCommands,
+    pauseExecution,
+    stopExecution,
+    clearCommands,
+    startPolling,
+    stopPolling
+  }
 }
 
 export function useRealtime() {
@@ -277,80 +443,6 @@ export function useDebugMonitor() {
           totalCommands: total,
           progress: (current / total) * 100
         }))
-      }
-    }
-    
-    else if (msg.message.includes('└─ Entering function')) {
-      parsed.type = 'function'
-      const match = msg.message.match(/Entering function (\w+)(?:\s*\((\d+) commands\))?/)
-      if (match) {
-        parsed.data = {
-          functionName: match[1],
-          entering: true,
-          commandCount: match[2] ? parseInt(match[2]) : 0
-        }
-        setExecutionState(prev => ({
-          ...prev,
-          currentFunction: match[1],
-          functionStack: [...prev.functionStack, match[1]]
-        }))
-      }
-    }
-    
-    else if (msg.message.includes('✅ Function') && msg.message.includes('completed')) {
-      parsed.type = 'function'
-      const match = msg.message.match(/Function (\w+) completed/)
-      if (match) {
-        parsed.data = { functionName: match[1], entering: false }
-        setExecutionState(prev => ({
-          ...prev,
-          functionStack: prev.functionStack.filter(f => f !== match[1]),
-          currentFunction: prev.functionStack[prev.functionStack.length - 2] || ''
-        }))
-      }
-    }
-    
-    else if (msg.message.includes('🎯')) {
-      parsed.type = 'motion'
-      const singleAxisMatch = msg.message.match(/🎯\s*([XYZGT])\(([^)]+)\)/)
-      const multiAxisMatch = msg.message.match(/Multi-axis movement \((\d+) axes\)/)
-      
-      if (singleAxisMatch) {
-        const params = singleAxisMatch[2].split(',')
-        parsed.data = {
-          axis: singleAxisMatch[1],
-          position: parseInt(params[0]),
-          delay: params.find(p => p.startsWith('d')) ? parseInt(params.find(p => p.startsWith('d'))!.substring(1)) : undefined,
-          speed: params.length > 2 || (params.length === 2 && !params[1].startsWith('d')) ? parseFloat(params[params.length - 1]) : undefined
-        }
-      } else if (multiAxisMatch) {
-        parsed.data = { axis: 'MULTI', position: parseInt(multiAxisMatch[1]) }
-      }
-    }
-    
-    else if (msg.message.includes('SET(') || msg.message.includes('WAIT')) {
-      parsed.type = 'sync'
-      if (msg.message.includes('SET(')) {
-        const match = msg.message.match(/SET\((\d)\)/)
-        parsed.data = { syncType: match ? `SET(${match[1]})` : 'SET' }
-      } else {
-        parsed.data = { syncType: 'WAIT' }
-      }
-    }
-    
-    else if (msg.message.includes('📋 PARSING RESULTS:')) {
-      parsed.type = 'parser'
-    }
-    
-    else if (msg.message.includes('[') && msg.message.includes(']') && msg.message.includes('░')) {
-      parsed.type = 'progress'
-      const match = msg.message.match(/\[([█░]+)\]\s*(\d+)\/(\d+)\s*\((\d+)%\)/)
-      if (match) {
-        parsed.data = {
-          current: parseInt(match[2]),
-          total: parseInt(match[3]),
-          percentage: parseInt(match[4])
-        }
       }
     }
     

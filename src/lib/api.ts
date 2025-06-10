@@ -1,4 +1,4 @@
-import { TimeoutConfig, TimeoutStats, StatusResponse } from './types'
+import { TimeoutConfig, TimeoutStats, StatusResponse, ExecutionStatus } from './types'
 
 class PalletizerAPI {
   private baseUrl: string
@@ -31,6 +31,66 @@ class PalletizerAPI {
     }
     
     return response.json()
+  }
+
+  async uploadCommands(commands: string): Promise<any> {
+    const response = await fetch('/upload_commands', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+      body: commands,
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+    }
+    
+    return response.json()
+  }
+
+  async getExecutionStatus(): Promise<ExecutionStatus> {
+    const response = await fetch('/execution_status')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
+  async clearCommands(): Promise<any> {
+    const response = await fetch('/clear_commands', {
+      method: 'POST',
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
+  async getUploadStatus(): Promise<any> {
+    const response = await fetch('/upload_status')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    return response.json()
+  }
+
+  async ping(): Promise<boolean> {
+    try {
+      const response = await fetch('/ping', {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
+      return response.ok
+    } catch (error) {
+      return false
+    }
   }
 
   async saveCommands(commands: string): Promise<string> {
