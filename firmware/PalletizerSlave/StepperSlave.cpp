@@ -77,6 +77,7 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 }
 
 void StepperSlave::onMasterData(const String& data) {
+  DEBUG_PRINTLN("MASTER→SLAVE (RAW): " + data);
   if (commandProcessed) {
     flushSerialBuffer();
     return;
