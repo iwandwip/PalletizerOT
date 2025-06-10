@@ -107,6 +107,7 @@ private:
 
   MotorState motorState = MOTOR_IDLE;
   bool hasReportedCompletion = true;
+  bool commandProcessed = false;
 
   unsigned long delayStartTime = 0;
 
@@ -139,6 +140,10 @@ private:
   void activateMotor();
   void deactivateMotor();
   void setIndicator(bool active);
+
+  bool isValidCommand(const String& data);
+  bool isNumeric(const String& str);
+  void flushSerialBuffer();
 };
 
 #endif

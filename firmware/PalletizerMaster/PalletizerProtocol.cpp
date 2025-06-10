@@ -13,12 +13,16 @@ void PalletizerProtocol::begin() {
 }
 
 void PalletizerProtocol::update() {
-  // checkSlaveData();
 }
 
 void PalletizerProtocol::sendToSlave(const String& data) {
-  slaveSerial.println(data);
-  DEBUG_SERIAL_PRINTLN("PROTOCOL→SLAVE: " + data);
+  for (int i = 0; i < 5; i++) {
+    slaveSerial.println(data);
+    if (i < 4) {
+      delay(50);
+    }
+  }
+  DEBUG_SERIAL_PRINTLN("PROTOCOL→SLAVE (5x): " + data);
   delay(100);
 }
 

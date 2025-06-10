@@ -14,7 +14,8 @@ StepperSlave::StepperSlave(
     brakePin(brakePin),
     indicatorPin(indicatorPin),
     invertBrakeLogic(invertBrakeLogic),
-    invertEnableLogic(invertEnableLogic) {
+    invertEnableLogic(invertEnableLogic),
+    commandProcessed(false) {
 
   instance = this;
 
@@ -57,7 +58,6 @@ void StepperSlave::begin() {
   stepper.setAcceleration(acceleration);
   stepper.setMaxSpeed(maxSpeed);
   stepper.setCurrentPosition(0);
-  // stepper.setMinPulseWidth(100);
 
   DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Sistem diinisialisasi");
 }
@@ -77,8 +77,55 @@ void StepperSlave::onMasterDataWrapper(const String& data) {
 }
 
 void StepperSlave::onMasterData(const String& data) {
-  DEBUG_PRINTLN("MASTER→SLAVE: " + data);
-  processCommand(data);
+  if (commandProcessed) {
+    return;
+  }
+
+  if (isValidCommand(data)) {
+    DEBUG_PRINTLN("MASTER→SLAVE (VALID): " + data);
+    processCommand(data);
+    commandProcessed = true;
+    flushSerialBuffer();
+  }
+}
+
+bool StepperSlave::isValidCommand(const String& data) {
+  if (data.length() < 3) return false;
+
+  if (data.charAt(0) != slaveId) return false;
+  if (data.charAt(1) != ';') return false;
+
+  int secondSemicolon = data.indexOf(';', 2);
+  String cmdStr = (secondSemicolon == -1) ? data.substring(2) : data.substring(2, secondSemicolon);
+
+  if (!isNumeric(cmdStr)) return false;
+  int cmd = cmdStr.toInt();
+  if (cmd != CMD_RUN && cmd != CMD_ZERO && cmd != CMD_SETSPEED) return false;
+
+  if (secondSemicolon != -1) {
+    String params = data.substring(secondSemicolon + 1);
+    if (!isNumeric(params)) return false;
+  }
+
+  return true;
+}
+
+bool StepperSlave::isNumeric(const String& str) {
+  if (str.length() == 0) return false;
+
+  for (int i = 0; i < str.length(); i++) {
+    char c = str.charAt(i);
+    if (!(c >= '0' && c <= '9')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void StepperSlave::flushSerialBuffer() {
+  while (masterSerial.available()) {
+    masterSerial.read();
+  }
 }
 
 void StepperSlave::processCommand(const String& data) {
@@ -115,6 +162,8 @@ void StepperSlave::processCommand(const String& data) {
       DEBUG_PRINTLN("SLAVE " + String(slaveId) + ": Unknown command " + String(cmdCode));
       break;
   }
+
+  commandProcessed = false;
 }
 
 void StepperSlave::sendFeedback(const String& message) {
