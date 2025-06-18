@@ -1,14 +1,9 @@
 #include "PalletizerBridge.h"
 
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-const char* SERVER_IP = "192.168.1.100";
-const int SERVER_PORT = 3001;
-
 PalletizerBridge* PalletizerBridge::instance = nullptr;
 
 PalletizerBridge::PalletizerBridge()
-  : connected(false), lastHeartbeat(0) {
+  : currentState(DISCONNECTED), lastHeartbeat(0), stateChangeCallback(nullptr), errorCallback(nullptr) {
   initializeComponents();
 }
 
@@ -37,8 +32,13 @@ void PalletizerBridge::loop() {
   sendHeartbeat();
 }
 
-bool PalletizerBridge::isConnected() const {
-  return webSocket->isConnected();
+
+void PalletizerBridge::setStateChangeCallback(void (*callback)(SystemState state)) {
+  stateChangeCallback = callback;
+}
+
+void PalletizerBridge::setErrorCallback(void (*callback)(const String& error)) {
+  errorCallback = callback;
 }
 
 void PalletizerBridge::initializeComponents() {

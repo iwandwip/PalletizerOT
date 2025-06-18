@@ -1,16 +1,23 @@
 #include "MotorController.h"
+#include <limits.h>
 
 #define DEFAULT_SPEED 2000
 #define DEFAULT_ACCEL 1000
 #define STATUS_INTERVAL 100
 
 MotorController::MotorController()
-  : isMoving(false), lastStatusTime(0) {
+  : isMovingFlag(false), lastStatusTime(0), motionState(MOTION_IDLE) {
   motorNames[0] = 'X';
   motorNames[1] = 'Y';
   motorNames[2] = 'Z';
   motorNames[3] = 'T';
   motorNames[4] = 'G';
+
+  currentPosition.X = 0;
+  currentPosition.Y = 0;
+  currentPosition.Z = 0;
+  currentPosition.T = 0;
+  currentPosition.G = 0;
 }
 
 void MotorController::begin() {
@@ -32,15 +39,17 @@ void MotorController::loop() {
     }
   }
 
+  run();
+
   bool moving = anyMotorMoving();
-  if (isMoving != moving) {
-    isMoving = moving;
-    if (!isMoving) {
+  if (isMovingFlag != moving) {
+    isMovingFlag = moving;
+    if (!isMovingFlag) {
       Serial.println("D");
     }
   }
 
-  if (isMoving && millis() - lastStatusTime > STATUS_INTERVAL) {
+  if (isMovingFlag && millis() - lastStatusTime > STATUS_INTERVAL) {
     sendStatus();
     lastStatusTime = millis();
   }
@@ -66,6 +75,33 @@ void MotorController::processCommand(const String& command) {
   }
 }
 
+void MotorController::run() {
+  bool moving = anyMotorMoving();
+  updatePosition();
+  updateMotionState();
+}
+
+// Public methods implementation
+void MotorController::moveTo(MotorAxis axis, long position) {
+  if (axis >= 0 && axis < AXIS_COUNT) {
+    motors[axis]->moveTo(position);
+  }
+}
+
+void MotorController::setMaxSpeed(MotorAxis axis, float speed) {
+  if (axis >= 0 && axis < AXIS_COUNT) {
+    motors[axis]->setMaxSpeed(speed);
+  }
+}
+
+MotorController::Position MotorController::getCurrentPosition() const {
+  return currentPosition;
+}
+
+bool MotorController::isMoving() const {
+  return isMovingFlag;
+}
+
 void MotorController::initializeMotors() {
   motors[0] = new AccelStepper(AccelStepper::DRIVER, 2, 3);
   motors[1] = new AccelStepper(AccelStepper::DRIVER, 4, 5);
@@ -73,7 +109,7 @@ void MotorController::initializeMotors() {
   motors[3] = new AccelStepper(AccelStepper::DRIVER, 8, 9);
   motors[4] = new AccelStepper(AccelStepper::DRIVER, 10, 11);
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     motors[i]->setMaxSpeed(DEFAULT_SPEED);
     motors[i]->setAcceleration(DEFAULT_ACCEL);
     motors[i]->setCurrentPosition(0);
@@ -86,7 +122,7 @@ void MotorController::parseMove(const String& cmd) {
   if (speed == 0) speed = DEFAULT_SPEED;
   if (accel == 0) accel = DEFAULT_ACCEL;
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     long pos = parseAxisValue(cmd, motorNames[i]);
     if (pos != LONG_MIN) {
       motors[i]->setMaxSpeed(speed);
@@ -102,7 +138,7 @@ void MotorController::parseGroupMove(const String& cmd) {
 }
 
 void MotorController::parseVelocity(const String& cmd) {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     long speed = parseAxisValue(cmd, motorNames[i]);
     if (speed != LONG_MIN) {
       motors[i]->setMaxSpeed(speed);
@@ -112,7 +148,7 @@ void MotorController::parseVelocity(const String& cmd) {
 }
 
 void MotorController::parseAcceleration(const String& cmd) {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     long accel = parseAxisValue(cmd, motorNames[i]);
     if (accel != LONG_MIN) {
       motors[i]->setAcceleration(accel);
@@ -123,7 +159,7 @@ void MotorController::parseAcceleration(const String& cmd) {
 
 void MotorController::sendStatus() {
   Serial.print("P");
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     Serial.print(" ");
     Serial.print(motorNames[i]);
     Serial.print(motors[i]->currentPosition());
@@ -132,14 +168,14 @@ void MotorController::sendStatus() {
 }
 
 void MotorController::homeAll() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     motors[i]->moveTo(0);
   }
   Serial.println("B");
 }
 
 void MotorController::emergencyStop() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     motors[i]->stop();
     motors[i]->setCurrentPosition(motors[i]->currentPosition());
   }
@@ -147,14 +183,14 @@ void MotorController::emergencyStop() {
 }
 
 void MotorController::zeroAll() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     motors[i]->setCurrentPosition(0);
   }
   Serial.println("OK");
 }
 
 bool MotorController::anyMotorMoving() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < AXIS_COUNT; i++) {
     if (motors[i]->run()) return true;
   }
   return false;
@@ -178,4 +214,22 @@ int MotorController::parseParameter(const String& cmd, char param) {
   if (nextSpace == -1) nextSpace = cmd.length();
 
   return cmd.substring(pos + 1, nextSpace).toInt();
+}
+
+void MotorController::updatePosition() {
+  currentPosition.X = motors[AXIS_X]->currentPosition();
+  currentPosition.Y = motors[AXIS_Y]->currentPosition();
+  currentPosition.Z = motors[AXIS_Z]->currentPosition();
+  currentPosition.T = motors[AXIS_T]->currentPosition();
+  currentPosition.G = motors[AXIS_G]->currentPosition();
+}
+
+void MotorController::updateMotionState() {
+  bool moving = anyMotorMoving();
+  if (moving) {
+    motionState = MOTION_MOVING;
+  } else {
+    motionState = MOTION_IDLE;
+  }
+  isMovingFlag = moving;
 }

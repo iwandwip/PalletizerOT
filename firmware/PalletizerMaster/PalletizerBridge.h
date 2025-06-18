@@ -8,6 +8,11 @@
 #include "CommandQueue.h"
 #include "StatusManager.h"
 
+extern const char* WIFI_SSID;
+extern const char* WIFI_PASSWORD;
+extern const char* SERVER_IP;
+extern const int SERVER_PORT;
+
 class PalletizerBridge {
 public:
   enum SystemState {

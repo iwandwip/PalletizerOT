@@ -1,4 +1,5 @@
 #include "CommandParser.h"
+#include <limits.h>
 
 CommandParser::CommandParser(MotorController* motorController)
   : motorController(motorController), responseCallback(nullptr), errorCallback(nullptr) {

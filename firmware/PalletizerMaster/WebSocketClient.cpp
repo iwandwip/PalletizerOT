@@ -21,7 +21,8 @@ void WebSocketClient::loop() {
 
 bool WebSocketClient::sendMessage(const String& message) {
   if (!connected) return false;
-  webSocket.sendTXT(message);
+  String nonConstMessage = message;
+  webSocket.sendTXT(nonConstMessage);
   return true;
 }
 
