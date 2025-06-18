@@ -39,7 +39,7 @@ export default function SystemControls({
           const status = await api.getExecutionStatus()
           setExecutionStatus(status)
           
-          if (status.status === 'IDLE' || status.status === 'ERROR') {
+          if (status.state === 'IDLE' || status.state === 'ERROR') {
             setIsPolling(false)
           }
         } catch (error) {
@@ -58,8 +58,8 @@ export default function SystemControls({
 
   const checkUploadStatus = async () => {
     try {
-      const status = await api.getUploadStatus()
-      setUploadReady(status.hasCommands || false)
+      const status = await api.getStatus()
+      setUploadReady(status.queueLength > 0)
     } catch (error) {
       setUploadReady(false)
     }
@@ -135,26 +135,24 @@ export default function SystemControls({
         </div>
       )}
 
-      {executionStatus && executionStatus.status !== 'IDLE' && (
+      {executionStatus && executionStatus.state !== 'IDLE' && (
         <Alert>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${getStatusColor(executionStatus.status)}`} />
-            <span className="font-medium capitalize">{executionStatus.status.toLowerCase()}</span>
+            <div className={`w-2 h-2 rounded-full ${getStatusColor(executionStatus.state)}`} />
+            <span className="font-medium capitalize">{executionStatus.state.toLowerCase()}</span>
           </div>
           <AlertDescription className="mt-2 space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Progress: {executionStatus.current_line}/{executionStatus.total_lines}</span>
-              <span>{executionStatus.progress}%</span>
+              <span>Commands in buffer: {executionStatus.commandsInBuffer}</span>
             </div>
-            <Progress value={executionStatus.progress} className="h-2" />
-            {executionStatus.current_command && (
+            {executionStatus.currentCommand && (
               <div className="text-xs font-mono bg-muted p-2 rounded">
-                Current: {executionStatus.current_command}
+                Current: {executionStatus.currentCommand}
               </div>
             )}
-            {executionStatus.estimated_remaining && (
+            {executionStatus.position && (
               <div className="text-xs text-muted-foreground">
-                Estimated remaining: {formatTime(executionStatus.estimated_remaining)}
+                Position: X{executionStatus.position.X} Y{executionStatus.position.Y} Z{executionStatus.position.Z} T{executionStatus.position.T} G{executionStatus.position.G}
               </div>
             )}
           </AlertDescription>
@@ -169,14 +167,14 @@ export default function SystemControls({
           className="h-12 md:h-10 text-white bg-green-600 hover:bg-green-700"
         >
           <Play className="w-4 h-4 mr-2" />
-          {executionStatus?.status === 'PAUSED' ? 'RESUME' : 'PLAY'}
+          {executionStatus?.state === 'PAUSED' ? 'RESUME' : 'PLAY'}
         </Button>
         
         <Button
           size="lg"
           variant="outline"
           onClick={() => handleCommand('PAUSE')}
-          disabled={disabled || !executionStatus || executionStatus.status !== 'RUNNING'}
+          disabled={disabled || !executionStatus || executionStatus.state !== 'RUNNING'}
           className="h-12 md:h-10 border-yellow-500 text-yellow-600 hover:bg-yellow-50"
         >
           <Pause className="w-4 h-4 mr-2" />

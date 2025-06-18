@@ -1,240 +1,326 @@
-import { TimeoutConfig, TimeoutStats, StatusResponse, ExecutionStatus } from './types'
+import { StatusResponse, ExecutionStatus } from './types'
+
+interface MoveCommand {
+  X?: number;
+  Y?: number;
+  Z?: number;
+  T?: number;
+  G?: number;
+  speed?: number;
+  accel?: number;
+}
+
+interface ServerResponse {
+  success: boolean;
+  error?: string;
+  data?: any;
+}
 
 class PalletizerAPI {
-  private baseUrl: string
+  private baseUrl: string;
+  private ws: WebSocket | null = null;
+  private eventHandlers: Map<string, Function[]> = new Map();
 
-  constructor(baseUrl: string = '') {
-    this.baseUrl = baseUrl
+  constructor(baseUrl: string = 'http://localhost:3001') {
+    this.baseUrl = baseUrl;
+    this.setupEventHandlers();
   }
 
+  private setupEventHandlers() {
+    this.eventHandlers.set('status', []);
+    this.eventHandlers.set('position', []);
+    this.eventHandlers.set('error', []);
+    this.eventHandlers.set('esp32_connected', []);
+    this.eventHandlers.set('esp32_disconnected', []);
+  }
+
+  // WebSocket connection
+  connectWebSocket(): void {
+    const wsUrl = this.baseUrl.replace('http', 'ws') + '/ws';
+    
+    this.ws = new WebSocket(wsUrl);
+    
+    this.ws.onopen = () => {
+      console.log('Connected to server WebSocket');
+      this.ws?.send(JSON.stringify({ type: 'subscribe' }));
+    };
+    
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        this.handleWebSocketMessage(data);
+      } catch (error) {
+        console.error('WebSocket message parse error:', error);
+      }
+    };
+    
+    this.ws.onclose = () => {
+      console.log('WebSocket connection closed, attempting to reconnect...');
+      setTimeout(() => this.connectWebSocket(), 5000);
+    };
+    
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  }
+
+  private handleWebSocketMessage(data: any) {
+    const handlers = this.eventHandlers.get(data.type);
+    if (handlers) {
+      handlers.forEach(handler => handler(data.data || data));
+    }
+  }
+
+  // Event subscription
+  on(event: string, handler: Function): void {
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, []);
+    }
+    this.eventHandlers.get(event)!.push(handler);
+  }
+
+  off(event: string, handler: Function): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      const index = handlers.indexOf(handler);
+      if (index > -1) {
+        handlers.splice(index, 1);
+      }
+    }
+  }
+
+  // Script execution
+  async parseScript(script: string): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/script/parse`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ script }),
+    });
+    
+    return response.json();
+  }
+
+  async executeScript(script: string): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/script/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ script }),
+    });
+    
+    return response.json();
+  }
+
+  // Control commands
+  async play(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/play`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  async pause(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/pause`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  async stop(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/stop`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  async home(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/home`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  async zero(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/zero`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  // Movement commands
+  async move(axes: MoveCommand): Promise<ServerResponse> {
+    const { speed, accel, ...axesOnly } = axes;
+    
+    const response = await fetch(`${this.baseUrl}/api/move`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        axes: axesOnly,
+        speed,
+        accel
+      }),
+    });
+    
+    return response.json();
+  }
+
+  async groupMove(axes: MoveCommand): Promise<ServerResponse> {
+    const { speed, accel, ...axesOnly } = axes;
+    
+    const response = await fetch(`${this.baseUrl}/api/group-move`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        axes: axesOnly,
+        speed,
+        accel
+      }),
+    });
+    
+    return response.json();
+  }
+
+  // Speed control
+  async setSpeed(axes: Partial<{ X: number; Y: number; Z: number; T: number; G: number }>): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/speed`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ axes }),
+    });
+    
+    return response.json();
+  }
+
+  // Status
+  async getStatus(): Promise<{
+    esp32Connected: boolean;
+    queueLength: number;
+    currentPosition: { X: number; Y: number; Z: number; T: number; G: number };
+    systemStatus: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/status`);
+    return response.json();
+  }
+
+  // Utility methods for backward compatibility with old API
   async sendCommand(command: string): Promise<string> {
-    const response = await fetch('/command', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `cmd=${encodeURIComponent(command)}`,
-    })
+    // Parse old-style commands and convert to new API calls
+    const trimmed = command.trim();
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (trimmed === 'PLAY') {
+      await this.play();
+      return 'OK';
+    } else if (trimmed === 'PAUSE') {
+      await this.pause();
+      return 'OK';
+    } else if (trimmed === 'STOP') {
+      await this.stop();
+      return 'OK';
+    } else if (trimmed === 'HOME') {
+      await this.home();
+      return 'OK';
+    } else if (trimmed === 'ZERO') {
+      await this.zero();
+      return 'OK';
     }
     
-    return response.text()
-  }
-
-  async getStatus(): Promise<StatusResponse> {
-    const response = await fetch('/status')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    // Try to parse as movement command
+    const moveMatch = trimmed.match(/^([XYZTG])(-?\d+)(?:\s+F(\d+))?(?:\s+A(\d+))?$/);
+    if (moveMatch) {
+      const [, axis, pos, speed, accel] = moveMatch;
+      const moveCmd: MoveCommand = {
+        [axis]: parseInt(pos)
+      };
+      if (speed) moveCmd.speed = parseInt(speed);
+      if (accel) moveCmd.accel = parseInt(accel);
+      
+      await this.move(moveCmd);
+      return 'OK';
     }
     
-    return response.json()
-  }
-
-  async uploadCommands(commands: string): Promise<any> {
-    const response = await fetch('/upload_commands', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain',
-      },
-      body: commands,
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
-    }
-    
-    return response.json()
-  }
-
-  async getExecutionStatus(): Promise<ExecutionStatus> {
-    const response = await fetch('/execution_status')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  async clearCommands(): Promise<any> {
-    const response = await fetch('/clear_commands', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  async getUploadStatus(): Promise<any> {
-    const response = await fetch('/upload_status')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
+    throw new Error(`Unsupported command: ${command}`);
   }
 
   async ping(): Promise<boolean> {
     try {
-      const response = await fetch('/ping', {
-        method: 'GET',
+      const response = await fetch(`${this.baseUrl}/api/status`, {
         signal: AbortSignal.timeout(5000)
-      })
-      return response.ok
+      });
+      return response.ok;
     } catch (error) {
-      return false
+      return false;
+    }
+  }
+
+  // Event source for real-time updates (deprecated - use WebSocket)
+  createEventSource(): EventSource {
+    console.warn('createEventSource is deprecated, use WebSocket connection instead');
+    return new EventSource(`${this.baseUrl}/events`);
+  }
+
+  // Debug methods
+  async getExecutionStatus(): Promise<ExecutionStatus> {
+    const status = await this.getStatus();
+    return {
+      state: status.systemStatus as any,
+      currentCommand: null,
+      commandsInBuffer: status.queueLength,
+      position: status.currentPosition
+    };
+  }
+
+  // File operations (these might be moved to server-side storage)
+  async uploadFile(file: File): Promise<string> {
+    const text = await file.text();
+    const result = await this.executeScript(text);
+    
+    if (result.success) {
+      return 'Script uploaded and parsed successfully';
+    } else {
+      throw new Error(result.error || 'Upload failed');
     }
   }
 
   async saveCommands(commands: string): Promise<string> {
-    const response = await fetch('/write', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `text=${encodeURIComponent(commands)}`,
-    })
+    // For now, just parse the script to validate it
+    const result = await this.parseScript(commands);
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (result.success) {
+      // In a real implementation, you might save to local storage or server
+      localStorage.setItem('palletizer_script', commands);
+      return 'Commands saved locally';
+    } else {
+      throw new Error(result.error || 'Save failed');
     }
-    
-    return response.text()
   }
 
   async loadCommands(): Promise<string> {
-    const response = await fetch('/get_commands')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    return localStorage.getItem('palletizer_script') || '';
+  }
+
+  disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
-    
-    return response.text()
-  }
-
-  async uploadFile(file: File): Promise<string> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const response = await fetch('/upload', {
-      method: 'POST',
-      body: formData,
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.text()
-  }
-
-  async getTimeoutConfig(): Promise<TimeoutConfig> {
-    const response = await fetch('/timeout_config')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  async saveTimeoutConfig(config: TimeoutConfig): Promise<string> {
-    const formData = new URLSearchParams()
-    formData.append('maxWaitTime', config.maxWaitTime.toString())
-    formData.append('strategy', config.strategy.toString())
-    formData.append('maxTimeoutWarning', config.maxTimeoutWarning.toString())
-    formData.append('autoRetryCount', config.autoRetryCount.toString())
-    formData.append('saveToFile', config.saveToFile.toString())
-
-    const response = await fetch('/timeout_config', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.text()
-  }
-
-  async getTimeoutStats(): Promise<TimeoutStats> {
-    const response = await fetch('/timeout_stats')
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  async clearTimeoutStats(): Promise<string> {
-    const response = await fetch('/clear_timeout_stats', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.text()
-  }
-
-  async getDebugBuffer(startIndex: number = 0): Promise<any> {
-    const response = await fetch(`/debug/buffer?start=${startIndex}`)
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  async clearDebugBuffer(): Promise<string> {
-    const response = await fetch('/debug/clear', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.text()
-  }
-
-  async toggleDebugCapture(): Promise<any> {
-    const response = await fetch('/debug/toggle', {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    
-    return response.json()
-  }
-
-  downloadCommands(): void {
-    window.location.href = '/download_commands'
-  }
-
-  createEventSource(): EventSource {
-    return new EventSource('/events')
-  }
-
-  createDebugEventSource(): EventSource {
-    return new EventSource('/debug')
   }
 }
 
-export const api = new PalletizerAPI()
+export const api = new PalletizerAPI();
+
+// Auto-connect WebSocket
+api.connectWebSocket();

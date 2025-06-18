@@ -1,155 +1,106 @@
-#define ENABLE_MODULE_SERIAL_ENHANCED
-#define ENABLE_MODULE_DIGITAL_OUTPUT
+/*
+ * PalletizerMaster - ESP32 WebSocket to Serial Bridge
+ * NEW ARCHITECTURE: Laptop Server → ESP32 Master → Arduino Mega Slave
+ * 
+ * Object-Oriented Implementation following old firmware patterns:
+ * - Singleton Pattern for system coordination
+ * - Observer Pattern for component communication
+ * - Command Pattern for message handling
+ */
 
-#include "Kinematrix.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "DebugConfig.h"
-#include "LittleFS.h"
-#include "ESPmDNS.h"
-#include "esp_task_wdt.h"
-#include "PalletizerMaster.h"
-#include "PalletizerServer.h"
+#include "PalletizerBridge.h"
 
-#define DEVELOPMENT_MODE 0
+// Network Configuration - UPDATE THESE VALUES
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* SERVER_IP = "192.168.1.100"; // Your laptop IP
+const int SERVER_PORT = 3001;
 
-#define RX_PIN 16
-#define TX_PIN 17
+// Serial Configuration for Arduino Mega communication
+const int RX2_PIN = 16;
+const int TX2_PIN = 17;
+const unsigned long SERIAL_BAUD = 115200;
 
-#if DEVELOPMENT_MODE == 1
-#define WIFI_MODE PalletizerServer::MODE_STA
-#define WIFI_SSID "silenceAndSleep"
-#define WIFI_PASSWORD "11111111"
-#else
-#define WIFI_MODE PalletizerServer::MODE_AP
-#define WIFI_SSID "Palletizer"
-#define WIFI_PASSWORD ""
-#endif
+// Global system instance
+PalletizerBridge* palletizerBridge = nullptr;
 
-PalletizerMaster master(RX_PIN, TX_PIN);
-PalletizerServer server(&master, WIFI_MODE, WIFI_SSID, WIFI_PASSWORD);
-
-TaskHandle_t serverTaskHandle = NULL;
-TaskHandle_t masterTaskHandle = NULL;
-
-void serverTask(void* pvParameters) {
-  server.begin();
-  DEBUG_SERIAL_PRINTLN("SERVER: Task started on Core 0");
-
-  while (true) {
-    esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-    static unsigned long lastMaintenance = 0;
-    if (millis() - lastMaintenance > 3000) {
-      lastMaintenance = millis();
-
-      if (WIFI_MODE == PalletizerServer::MODE_STA && WiFi.status() != WL_CONNECTED) {
-        DEBUG_SERIAL_PRINTLN("WIFI: Connection lost, attempting reconnect...");
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-      }
+// Callback functions
+void onStateChange(PalletizerBridge::SystemState state) {
+    Serial.print("System state changed to: ");
+    switch (state) {
+        case PalletizerBridge::DISCONNECTED:
+            Serial.println("DISCONNECTED");
+            break;
+        case PalletizerBridge::CONNECTING:
+            Serial.println("CONNECTING");
+            break;
+        case PalletizerBridge::CONNECTED:
+            Serial.println("CONNECTED");
+            break;
+        case PalletizerBridge::READY:
+            Serial.println("READY");
+            break;
+        case PalletizerBridge::ERROR:
+            Serial.println("ERROR");
+            break;
     }
-  }
 }
 
-void masterTask(void* pvParameters) {
-  DEBUG_SERIAL_PRINTLN("MASTER: Task started on Core 1");
-
-  while (true) {
-    master.update();
-    esp_task_wdt_reset();
-    vTaskDelay(pdMS_TO_TICKS(5));
-  }
-}
-
-void onSlaveData(const String& data) {
-  DEBUG_SERIAL_PRINTLN("SLAVE_DATA: " + data);
+void onError(const String& error) {
+    Serial.println("System error: " + error);
 }
 
 void setup() {
-  Serial.begin(115200);
-  DEBUG_SERIAL_PRINTLN("\nPalletizer Batch Processing System Starting...");
-  DEBUG_SERIAL_PRINTF("Debug Configuration: SERIAL_DEBUG=%d, WEB_DEBUG=%d\n", SERIAL_DEBUG, WEB_DEBUG);
-
-  esp_task_wdt_init(10, true);
-
-  if (!LittleFS.begin(true)) {
-    DEBUG_SERIAL_PRINTLN("Error mounting LittleFS! System will continue without file storage.");
-  } else {
-    DEBUG_SERIAL_PRINTLN("LittleFS mounted successfully");
-  }
-
-  master.setSlaveDataCallback(onSlaveData);
-  master.begin();
-
-  BaseType_t xReturned;
-
-  xReturned = xTaskCreatePinnedToCore(
-    serverTask,
-    "Server_Task",
-    16384,
-    NULL,
-    3,
-    &serverTaskHandle,
-    0);
-
-  if (xReturned != pdPASS) {
-    DEBUG_SERIAL_PRINTLN("FATAL: Failed to create server task!");
-    ESP.restart();
-  }
-
-  vTaskDelay(pdMS_TO_TICKS(1000));
-
-  xReturned = xTaskCreatePinnedToCore(
-    masterTask,
-    "Master_Task",
-    8192,
-    NULL,
-    2,
-    &masterTaskHandle,
-    1);
-
-  if (xReturned != pdPASS) {
-    DEBUG_SERIAL_PRINTLN("FATAL: Failed to create master task!");
-    ESP.restart();
-  }
-
-  esp_task_wdt_add(serverTaskHandle);
-  esp_task_wdt_add(masterTaskHandle);
-
-  DEBUG_SERIAL_PRINTLN("System initialization complete");
-  DEBUG_SERIAL_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
-  DEBUG_SERIAL_PRINTLN("Ready for batch processing commands upload");
+    // Initialize serial for debugging
+    Serial.begin(115200);
+    delay(1000);
+    
+    Serial.println();
+    Serial.println("=================================");
+    Serial.println("PalletizerMaster Starting...");
+    Serial.println("NEW OOP Architecture");
+    Serial.println("=================================");
+    
+    // Get singleton instance
+    palletizerBridge = PalletizerBridge::getInstance();
+    
+    if (palletizerBridge) {
+        // Register callbacks
+        palletizerBridge->setStateChangeCallback(onStateChange);
+        palletizerBridge->setErrorCallback(onError);
+        
+        // Initialize system
+        palletizerBridge->begin();
+        
+        Serial.println("PalletizerMaster initialized successfully");
+        Serial.println("Waiting for connections...");
+    } else {
+        Serial.println("FATAL: Failed to initialize PalletizerBridge");
+        while (1) {
+            delay(1000);
+        }
+    }
 }
 
 void loop() {
-  static unsigned long lastHealthCheck = 0;
-
-#if MEMORY_DEBUG == 1
-  if (millis() - lastHealthCheck > 5000) {
-    lastHealthCheck = millis();
-
-    if (serverTaskHandle != NULL && eTaskGetState(serverTaskHandle) == eSuspended) {
-      DEBUG_SERIAL_PRINTLN("WARNING: Server task suspended!");
-      ESP.restart();
+    if (palletizerBridge) {
+        palletizerBridge->loop();
     }
+    
+    // Small delay to prevent watchdog issues
+    delay(1);
+}
 
-    if (masterTaskHandle != NULL && eTaskGetState(masterTaskHandle) == eSuspended) {
-      DEBUG_SERIAL_PRINTLN("WARNING: Master task suspended!");
-      ESP.restart();
+// Optional: Handle system events
+void onSystemEvent(arduino_event_id_t event) {
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            Serial.println("WiFi connected, IP: " + WiFi.localIP().toString());
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+            Serial.println("WiFi disconnected");
+            break;
+        default:
+            break;
     }
-
-    size_t freeHeap = ESP.getFreeHeap();
-    DEBUG_SERIAL_PRINTF("Memory: Free=%d bytes\n", freeHeap);
-
-    if (freeHeap < 50000) {
-      DEBUG_SERIAL_PRINTLN("CRITICAL: Memory below 50KB - EMERGENCY RESTART!");
-      delay(1000);
-      ESP.restart();
-    }
-  }
-#endif
-
-  esp_task_wdt_reset();
-  vTaskDelay(pdMS_TO_TICKS(100));
 }
