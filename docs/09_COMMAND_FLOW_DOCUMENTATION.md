@@ -2,27 +2,28 @@
 
 ## Overview
 
-Dokumentasi lengkap alur perintah dari web interface ke ESP32 Master dan kemudian ke Arduino Mega slaves dalam sistem Palletizer Control.
+Dokumentasi lengkap alur perintah dari web interface melalui Node.js server ke ESP32 Master dan kemudian ke Arduino slaves dalam sistem Palletizer Control.
 
 ## Arsitektur Sistem
 
 ```
-Web Interface (React) → ESP32 Master → Arduino Mega Slaves (X,Y,Z,T,G)
-                            ↓
-                        LittleFS
-                    (Script Storage)
+Web Interface (React) → Node.js Server → ESP32 Master → Arduino Slaves (X,Y,Z,T,G)
+                             ↓              ↓
+                        Script Compiler   Command Queue
+                        Motion Planner    WebSocket
 ```
 
 ## 1. Tiga Jenis Command dari Web Interface
 
 ### 1.1 Script Commands
-**Endpoint**: `POST /api/script`
-**Deskripsi**: Script kompleks dalam Modern Script Language
+**Endpoint**: `POST /api/script/execute`
+**Deskripsi**: Script kompleks dalam Modern Script Language yang dikompilasi di server
 
 ```javascript
 // Contoh pengiriman dari web
-fetch('/api/script', {
+fetch('/api/script/execute', {
   method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     script: `
       GROUP X1000 Y2000 Z500 F1500
@@ -44,245 +45,352 @@ fetch('/api/script', {
 
 ```javascript
 // Kontrol sistem
-api.sendControl('PLAY');   // Mulai eksekusi
-api.sendControl('PAUSE');  // Jeda
-api.sendControl('STOP');   // Stop
-api.sendControl('HOME');   // Homing semua axis
-api.sendControl('ZERO');   // Set posisi current = 0
+fetch('/api/control/play', { method: 'POST' });   // Resume eksekusi
+fetch('/api/control/pause', { method: 'POST' });  // Pause
+fetch('/api/control/stop', { method: 'POST' });   // Stop dan clear queue
+fetch('/api/control/home', { method: 'POST' });   // Homing semua axis
+fetch('/api/control/zero', { method: 'POST' });   // Set posisi current = 0
 ```
 
 ### 1.3 Movement Commands
-**Endpoint**: `POST /api/move`, `POST /api/group-move`
+**Endpoint**: `POST /api/move`, `POST /api/group-move`, `POST /api/speed`
 **Deskripsi**: Perintah gerakan langsung
 
 ```javascript
 // Gerakan single axis
-api.move({ X: 1000, speed: 1500 });
+fetch('/api/move', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    axes: { X: 1000 }, 
+    speed: 1500,
+    accel: 500 
+  })
+});
 
 // Gerakan simultan multi-axis
-api.groupMove({ 
-  X: 1000, 
-  Y: 2000, 
-  Z: 500, 
-  speed: 1000 
+fetch('/api/group-move', {
+  method: 'POST', 
+  body: JSON.stringify({
+    axes: { X: 1000, Y: 2000, Z: 500 },
+    speed: 1000,
+    accel: 500
+  })
 });
 
 // Set kecepatan per axis
-api.setSpeed({ X: 1500, Y: 2000, Z: 1000 });
-```
-
-## 2. Pemrosesan di ESP32 Master
-
-### 2.1 Arsitektur Lama (firmware/OldFirmware/)
-
-**PalletizerServer.cpp**: Menerima HTTP requests
-```cpp
-// Handler untuk command endpoint
-server.on("/command", HTTP_POST, [](AsyncWebServerRequest *request) {
-  String command = request->getParam("command")->value();
-  commandRouter.routeCommand(command);
+fetch('/api/speed', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    axes: { X: 1500, Y: 2000, Z: 1000 } 
+  })
 });
 ```
 
-**CommandRouter.cpp**: Routing berdasarkan tipe command
+## 2. Pemrosesan di Node.js Server
+
+### 2.1 Script Processing (src/server/index.ts)
+
+**Script Compilation**:
+```typescript
+// ScriptCompiler mengkonversi Modern Script Language ke command array
+const commands = await scriptCompiler.parse(script);
+
+// MotionPlanner mengoptimalkan gerakan
+const optimizedCommands = await motionPlanner.plan(commands);
+
+// CommandQueue mengelola urutan eksekusi
+commandQueue.enqueue(optimizedCommands);
+
+// ESP32Manager mengirim via WebSocket
+esp32Manager.executeCommands(optimizedCommands);
+```
+
+**Control Commands**:
+```typescript
+app.post('/api/control/:action', (req, res) => {
+  const { action } = req.params;
+  
+  switch (action) {
+    case 'play':
+      esp32Manager.sendCommand({ cmd: 'RESUME' });
+      break;
+    case 'pause':
+      esp32Manager.sendCommand({ cmd: 'PAUSE' });
+      break;
+    case 'stop':
+      esp32Manager.sendCommand({ cmd: 'STOP' });
+      commandQueue.clear();
+      break;
+    case 'home':
+      esp32Manager.sendCommand({ cmd: 'HOME' });
+      break;
+    case 'zero':
+      esp32Manager.sendCommand({ cmd: 'ZERO' });
+      break;
+  }
+});
+```
+
+**Movement Commands**:
+```typescript
+app.post('/api/move', (req, res) => {
+  const { axes, speed, accel } = req.body;
+  
+  esp32Manager.sendCommand({
+    cmd: 'MOVE',
+    data: {
+      ...axes,
+      speed: speed || 1000,
+      accel: accel || 500
+    }
+  });
+});
+```
+
+## 3. Pemrosesan di ESP32 Master (firmware/PalletizerMaster/)
+
+### 3.1 WebSocket Communication (WebSocketClient.cpp)
+
+**Koneksi ke Node.js Server**:
 ```cpp
-void CommandRouter::routeCommand(String command) {
-  if (command.startsWith("ZERO")) {
-    handleSystemCommand(CMD_ZERO);
-  }
-  else if (command.startsWith("X;")) {
-    handleAxisCommand(AXIS_X, command);
-  }
-  else if (command.startsWith("BROADCAST;")) {
-    handleBroadcastCommand(command);
-  }
-  else if (command.startsWith("SPEED;")) {
-    handleSpeedCommand(command);
+// ESP32 terhubung ke Node.js server via WebSocket
+const char* SERVER_IP = "192.168.1.100";
+const int SERVER_PORT = 3001;
+
+PalletizerBridge* palletizerBridge = PalletizerBridge::getInstance();
+palletizerBridge->begin();
+```
+
+**Message Handling**:
+```cpp
+void PalletizerBridge::handleServerCommand(const String& message) {
+  StaticJsonDocument<512> doc;
+  deserializeJson(doc, message);
+
+  String cmdType = doc["cmd"];
+  JsonObject data = doc["data"];
+
+  if (cmdType == "STOP") {
+    queue->clear();
+    serial->sendCommand("E");
+  } else {
+    convertAndQueueCommand(cmdType, data);
   }
 }
 ```
 
-**FlashManager.cpp**: Penyimpanan script di LittleFS
+### 3.2 Command Conversion (PalletizerBridge.cpp)
+
+**JSON to Serial Command Conversion**:
 ```cpp
-bool FlashManager::saveScript(String script) {
-  File file = LittleFS.open("/script.txt", "w");
-  file.print(script);
-  file.close();
+void PalletizerBridge::convertAndQueueCommand(const String& cmdType, JsonObject data) {
+  String arduinoCmd = "";
+
+  if (cmdType == "MOVE") {
+    arduinoCmd = "M";
+  } else if (cmdType == "GROUP") {
+    arduinoCmd = "G";
+  } else if (cmdType == "HOME") {
+    arduinoCmd = "H";
+    queue->enqueue(arduinoCmd);
+    return;
+  } else if (cmdType == "ZERO") {
+    arduinoCmd = "Z";
+    queue->enqueue(arduinoCmd);
+    return;
+  }
+
+  // Tambahkan parameter axis
+  if (data.containsKey("X")) arduinoCmd += " X" + String((int)data["X"]);
+  if (data.containsKey("Y")) arduinoCmd += " Y" + String((int)data["Y"]);
+  if (data.containsKey("Z")) arduinoCmd += " Z" + String((int)data["Z"]);
+  if (data.containsKey("T")) arduinoCmd += " T" + String((int)data["T"]);
+  if (data.containsKey("G")) arduinoCmd += " G" + String((int)data["G"]);
+  if (data.containsKey("speed")) arduinoCmd += " S" + String((int)data["speed"]);
+
+  queue->enqueue(arduinoCmd);
+}
+```
+
+### 3.3 Serial Communication (SerialBridge.cpp)
+
+**ESP32 ke Arduino Communication**:
+```cpp
+// Pin configuration untuk Serial2
+const int RX2_PIN = 16;
+const int TX2_PIN = 17;
+
+bool SerialBridge::sendCommand(const String& command) {
+  serialPort->println(command);
+  Serial.println("Sent to Arduino: " + command);
   return true;
 }
 ```
 
-### 2.2 Arsitektur Baru (firmware/PalletizerMaster/)
+## 4. Protocol Komunikasi ESP32 ke Arduino
 
-**WebSocketClient.cpp**: Komunikasi real-time dengan server Node.js
-```cpp
-void WebSocketClient::onMessage(String message) {
-  StaticJsonDocument<512> doc;
-  deserializeJson(doc, message);
-  
-  String type = doc["type"];
-  if (type == "MOVE") {
-    commandQueue.addCommand(message);
-  }
-}
-```
-
-**CommandQueue.cpp**: Buffer perintah untuk eksekusi berurutan
-```cpp
-struct Command {
-  CommandType type;
-  JsonObject data;
-  unsigned long timestamp;
-};
-
-void CommandQueue::addCommand(String jsonCommand) {
-  commands.push(parseCommand(jsonCommand));
-}
-```
-
-## 3. Protocol Komunikasi ESP32 ke Arduino Mega
-
-### 3.1 Format Command Serial
+### 4.1 Format Command Serial
 
 **Pin Configuration**:
-- ESP32 Serial2 (GPIO 16, 17) → Arduino Mega Serial1
+- ESP32 Serial2 (GPIO 16, 17) → Arduino Serial
 
 **Format Perintah**:
 ```
 M X1000 Y2000 S1500\n    // Move command
-G X1000 Y2000 Z500\n     // Group move
+G X1000 Y2000 Z500\n     // Group move (simultan)
 H\n                      // Home
 Z\n                      // Zero
 V X1500 Y2000\n         // Set velocity
 A X500 Y500\n           // Set acceleration
 E\n                     // Emergency stop
+S\n                     // Status request
 ```
 
-### 3.2 Response Protocol dari Arduino
+### 4.2 Response Protocol dari Arduino
 
 ```
-B\n                     // Busy
-D\n                     // Done/Idle  
-E error_code\n          // Error
-P X1000 Y2000 Z500\n    // Position report
+B\n                     // Busy (sedang bergerak)
+D\n                     // Done/Idle (gerakan selesai)
+E error_message\n       // Error dengan pesan
+P X1000 Y2000 Z500 T0 G1\n  // Position report semua axis
 SLAVE_READY\n           // Initialization complete
+OK\n                    // Command acknowledged
 ```
 
-### 3.3 Implementation di ESP32
+### 4.3 Response Handling di ESP32
 
 **PalletizerBridge.cpp**:
 ```cpp
-void PalletizerBridge::sendToSlave(String command) {
-  Serial2.println(command);
-  
-  // Wait for response
-  while (!Serial2.available()) {
-    delay(10);
+void PalletizerBridge::handleArduinoResponse(const String& response) {
+  String trimmed = response;
+  trimmed.trim();
+
+  if (trimmed == "B") {
+    sendStatusToServer("BUSY", queue->size());
+  } else if (trimmed == "D") {
+    sendStatusToServer("IDLE", queue->size());
+  } else if (trimmed.startsWith("P")) {
+    sendPositionToServer(trimmed);
+  } else if (trimmed.startsWith("E")) {
+    sendErrorToServer(trimmed.substring(2));
+  } else if (trimmed == "SLAVE_READY") {
+    sendStatusToServer("SLAVE_READY");
   }
-  
-  String response = Serial2.readStringUntil('\n');
-  handleSlaveResponse(response);
 }
 ```
 
-## 4. Gerakan Motor: Single vs Simultan
+## 5. Gerakan Motor: Single vs Simultan
 
-### 4.1 Gerakan Single Motor
+### 5.1 Gerakan Single Motor
 
 **Web Request**:
 ```javascript
-api.move({ X: 1000, speed: 1500 });
+fetch('/api/move', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    axes: { X: 1000 }, 
+    speed: 1500 
+  })
+});
 ```
 
-**ESP32 Processing**:
-```cpp
-// Di CommandRouter.cpp
-void handleSingleMove(JsonObject data) {
-  String command = "M ";
-  if (data.containsKey("X")) {
-    command += "X" + String(data["X"].as<int>()) + " ";
+**Node.js Processing**:
+```typescript
+esp32Manager.sendCommand({
+  cmd: 'MOVE',
+  data: {
+    X: 1000,
+    speed: 1500
   }
-  command += "S" + String(data["speed"].as<int>());
-  
-  bridgeManager.sendToSlave(command);
+});
+```
+
+**ESP32 Conversion**:
+```cpp
+// convertAndQueueCommand() di PalletizerBridge.cpp
+String arduinoCmd = "M";
+if (data.containsKey("X")) arduinoCmd += " X" + String((int)data["X"]);
+if (data.containsKey("speed")) arduinoCmd += " S" + String((int)data["speed"]);
+// Result: "M X1000 S1500"
+```
+
+**Arduino Processing**:
+```cpp
+// MotorController.cpp
+void MotorController::parseMove(const String& cmd) {
+  int speed = parseParameter(cmd, 'S');
+  if (speed == 0) speed = DEFAULT_SPEED;
+
+  for (int i = 0; i < AXIS_COUNT; i++) {
+    long pos = parseAxisValue(cmd, motorNames[i]);
+    if (pos != LONG_MIN) {
+      motors[i]->setMaxSpeed(speed);
+      motors[i]->moveTo(pos);
+    }
+  }
+  Serial.println("B");  // Report busy
 }
 ```
 
-**Arduino Mega Parsing**:
-```cpp
-// Di CommandParser.cpp
-void CommandParser::parseMove(String cmd) {
-  int xPos = cmd.indexOf("X");
-  int sPos = cmd.indexOf("S");
-  
-  if (xPos >= 0) {
-    int value = cmd.substring(xPos+1, sPos).toInt();
-    motorController.moveTo(AXIS_X, value);
-  }
-  
-  if (sPos >= 0) {
-    int speed = cmd.substring(sPos+1).toInt();
-    motorController.setMaxSpeed(AXIS_X, speed);
-  }
-}
-```
-
-### 4.2 Gerakan Simultan (Group Movement)
+### 5.2 Gerakan Simultan (Group Movement)
 
 **Web Request**:
 ```javascript
-api.groupMove({ X: 1000, Y: 2000, Z: 500, speed: 1000 });
+fetch('/api/group-move', {
+  method: 'POST',
+  body: JSON.stringify({ 
+    axes: { X: 1000, Y: 2000, Z: 500 }, 
+    speed: 1000 
+  })
+});
 ```
 
-**ESP32 Processing**:
-```cpp
-void handleGroupMove(JsonObject data) {
-  String command = "G ";
-  if (data.containsKey("X")) command += "X" + String(data["X"].as<int>()) + " ";
-  if (data.containsKey("Y")) command += "Y" + String(data["Y"].as<int>()) + " ";
-  if (data.containsKey("Z")) command += "Z" + String(data["Z"].as<int>()) + " ";
-  command += "S" + String(data["speed"].as<int>());
-  
-  bridgeManager.sendToSlave(command);
-}
-```
-
-**Arduino Mega Execution**:
-```cpp
-void CommandParser::parseGroupMove(String cmd) {
-  // Parse semua axis dari command
-  MotorTarget targets[MAX_AXES];
-  int targetCount = 0;
-  
-  // Extract X, Y, Z positions
-  extractAxisTargets(cmd, targets, targetCount);
-  
-  // Hitung timing untuk gerakan sinkron
-  motorController.executeCoordinatedMove(targets, targetCount);
-}
-
-void MotorController::executeCoordinatedMove(MotorTarget* targets, int count) {
-  // Hitung durasi terpanjang untuk sinkronisasi
-  unsigned long maxDuration = calculateMaxDuration(targets, count);
-  
-  // Adjust speed semua motor untuk finish bersamaan
-  for (int i = 0; i < count; i++) {
-    float adjustedSpeed = calculateSyncSpeed(targets[i], maxDuration);
-    steppers[targets[i].axis].setMaxSpeed(adjustedSpeed);
-    steppers[targets[i].axis].moveTo(targets[i].position);
+**Node.js Processing**:
+```typescript
+esp32Manager.sendCommand({
+  cmd: 'GROUP',
+  data: {
+    X: 1000,
+    Y: 2000, 
+    Z: 500,
+    speed: 1000
   }
-  
-  // Jalankan semua motor bersamaan
-  runToPosition();
+});
+```
+
+**ESP32 Conversion**:
+```cpp
+String arduinoCmd = "G";
+if (data.containsKey("X")) arduinoCmd += " X" + String((int)data["X"]);
+if (data.containsKey("Y")) arduinoCmd += " Y" + String((int)data["Y"]);
+if (data.containsKey("Z")) arduinoCmd += " Z" + String((int)data["Z"]);
+if (data.containsKey("speed")) arduinoCmd += " S" + String((int)data["speed"]);
+// Result: "G X1000 Y2000 Z500 S1000"
+```
+
+**Arduino Execution**:
+```cpp
+// MotorController.cpp  
+void MotorController::parseGroupMove(const String& cmd) {
+  parseMove(cmd);  // Sama dengan single move, tapi semua axis bergerak bersamaan
+}
+
+// Semua motor yang memiliki target akan bergerak simultan
+// AccelStepper library menangani koordinasi timing secara otomatis
+bool MotorController::anyMotorMoving() {
+  for (int i = 0; i < AXIS_COUNT; i++) {
+    if (motors[i]->run()) return true;  // run() menjalankan satu step
+  }
+  return false;
 }
 ```
 
-## 5. Modern Script Language Compilation
+## 6. Modern Script Language Compilation
 
-### 5.1 Client-Side Compilation (ScriptCompiler.js)
+### 6.1 Server-Side Compilation (ScriptCompiler.ts)
 
+**Input Script**:
 ```javascript
-// Input script
 const script = `
 GROUP X1000 Y2000 Z500 F1500
 SYNC
@@ -293,204 +401,371 @@ FUNC pickup
 ENDFUNC
 CALL pickup
 `;
+```
 
-// Compiled output
-const compiled = scriptCompiler.compile(script);
-/*
+**Server Processing**:
+```typescript
+// src/server/index.ts
+app.post('/api/script/execute', async (req, res) => {
+  const { script } = req.body;
+  
+  // Parse script menjadi commands
+  const commands = await scriptCompiler.parse(script);
+  
+  // Optimize dengan motion planner  
+  const optimizedCommands = await motionPlanner.plan(commands);
+  
+  // Queue untuk eksekusi
+  commandQueue.enqueue(optimizedCommands);
+  
+  // Kirim ke ESP32 via WebSocket
+  esp32Manager.executeCommands(optimizedCommands);
+});
+```
+
+**Compiled Commands**:
+```json
 [
-  { type: 'GROUP', data: { X: 1000, Y: 2000, Z: 500, speed: 1500 }},
-  { type: 'SYNC' },
-  { type: 'MOVE', data: { Z: -100 }},
-  { type: 'MOVE', data: { G: 1 }},
-  { type: 'MOVE', data: { Z: 100 }}
+  { "cmd": "GROUP", "data": { "X": 1000, "Y": 2000, "Z": 500, "speed": 1500 }},
+  { "cmd": "SYNC" },
+  { "cmd": "MOVE", "data": { "Z": -100 }},
+  { "cmd": "MOVE", "data": { "G": 1 }},
+  { "cmd": "MOVE", "data": { "Z": 100 }}
 ]
-*/
 ```
 
-### 5.2 Batch Upload ke ESP32
+### 6.2 Command Execution Flow
 
-```javascript
-// CommandUploader.js
-class CommandUploader {
-  async uploadBatch(commands) {
-    for (const cmd of commands) {
-      await fetch('/api/command', {
-        method: 'POST',
-        body: JSON.stringify(cmd)
-      });
-      
-      // Wait for completion
-      await this.waitForCompletion();
-    }
-  }
-}
-```
-
-## 6. Real-time Communication
-
-### 6.1 Server-Sent Events (SSE)
-
-**Client**:
-```javascript
-const eventSource = new EventSource('/api/events');
-eventSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  updateDebugTerminal(data);
-};
-```
-
-**ESP32 Server**:
-```cpp
-void PalletizerServer::handleSSE(AsyncWebServerRequest *request) {
-  AsyncEventSource *events = new AsyncEventSource("/events");
-  
-  events->onConnect([](AsyncEventSourceClient *client) {
-    client->send("connected", NULL, millis(), 1000);
+```typescript
+// ESP32Manager.ts
+executeCommands(commands) {
+  commands.forEach(cmd => {
+    this.sendCommand(cmd);
   });
-  
-  server.addHandler(events);
+}
+
+sendCommand(command) {
+  // Kirim via WebSocket ke ESP32
+  this.ws.send(JSON.stringify(command));
 }
 ```
 
-### 6.2 Status Monitoring
+## 7. Real-time Communication & Status Updates
 
+### 7.1 WebSocket Communication
+
+**Web Client to Node.js**:
 ```javascript
-// Status polling
+// Frontend WebSocket connection
+const ws = new WebSocket('ws://localhost:3001/ws');
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  updateStatusDisplay(data);
+};
+
+// Subscribe untuk real-time updates
+ws.send(JSON.stringify({ type: 'subscribe' }));
+```
+
+**Node.js to ESP32**:
+```typescript
+// src/server/index.ts - WebSocket server untuk web clients
+wss.on('connection', (ws) => {
+  // Send initial status
+  ws.send(JSON.stringify({
+    type: 'status',
+    data: {
+      esp32Connected: esp32Manager.isConnected(),
+      queueLength: commandQueue.length(),
+      currentPosition: esp32Manager.getCurrentPosition()
+    }
+  }));
+});
+```
+
+### 7.2 Status Updates dari ESP32 ke Server
+
+**ESP32 Status Updates**:
+```cpp
+// PalletizerBridge.cpp
+void PalletizerBridge::sendStatusToServer(const String& status, int queueSize) {
+  StaticJsonDocument<256> doc;
+  doc["type"] = "status";
+  doc["status"] = status;
+  doc["queue"] = queueSize;
+
+  String output;
+  serializeJson(doc, output);
+  webSocket->sendMessage(output);
+}
+
+void PalletizerBridge::sendPositionToServer(const String& position) {
+  StaticJsonDocument<256> doc;
+  doc["type"] = "position";
+  JsonObject pos = doc.createNestedObject("position");
+  
+  // Parse "P X1000 Y2000 Z500 T0 G1" format
+  // dan kirim ke server sebagai JSON
+}
+```
+
+### 7.3 Status Monitoring & Polling
+
+**API Status Endpoint**:
+```typescript
+app.get('/api/status', (req, res) => {
+  res.json({
+    esp32Connected: esp32Manager.isConnected(),
+    queueLength: commandQueue.length(),
+    currentPosition: esp32Manager.getCurrentPosition(),
+    systemStatus: esp32Manager.getStatus()
+  });
+});
+```
+
+**Frontend Polling**:
+```javascript
+// Status polling setiap detik
 setInterval(async () => {
-  const status = await api.getStatus();
+  const response = await fetch('/api/status');
+  const status = await response.json();
   updateStatusDisplay(status);
 }, 1000);
 ```
 
-## 7. Error Handling dan Recovery
+## 8. Error Handling dan Recovery
 
-### 7.1 Command Validation
+### 8.1 Arduino Command Validation
 
 ```cpp
-bool CommandValidator::isValid(String command) {
-  // Check format
-  if (!command.endsWith("\n")) return false;
-  
-  // Check axis bounds
-  if (hasAxisMovement(command)) {
-    return validateAxisLimits(command);
-  }
-  
-  return true;
+// CommandParser.cpp
+bool CommandParser::validateCommand(const ParsedCommand& cmd) {
+  return validateAxisValues(cmd);
 }
-```
 
-### 7.2 Communication Timeout
-
-```cpp
-bool PalletizerBridge::sendWithTimeout(String command, int timeout = 5000) {
-  Serial2.println(command);
-  
-  unsigned long start = millis();
-  while (!Serial2.available()) {
-    if (millis() - start > timeout) {
-      handleTimeout();
-      return false;
+bool CommandParser::validateAxisValues(const ParsedCommand& cmd) {
+  for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
+    if (cmd.hasAxis[i]) {
+      if (cmd.axisValues[i] < MIN_POSITION || cmd.axisValues[i] > MAX_POSITION) {
+        return false;
+      }
     }
-    delay(10);
   }
-  
   return true;
 }
 ```
 
-## 8. Konfigurasi dan Setup
+### 8.2 ESP32 Error Handling
 
-### 8.1 Network Configuration
+```cpp
+// PalletizerBridge.cpp
+void PalletizerBridge::handleArduinoResponse(const String& response) {
+  if (response.startsWith("E")) {
+    sendErrorToServer(response.substring(2));
+    // Handle error recovery
+  }
+}
+
+void PalletizerBridge::sendErrorToServer(const String& error) {
+  StaticJsonDocument<256> doc;
+  doc["type"] = "error";
+  doc["error"] = error;
+  
+  String output;
+  serializeJson(doc, output);
+  webSocket->sendMessage(output);
+}
+```
+
+### 8.3 Server Error Handling
+
+```typescript
+// src/server/index.ts
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Server error:', error);
+  res.status(500).json({ error: 'Internal server error', success: false });
+});
+```
+
+## 9. Konfigurasi dan Setup
+
+### 9.1 Network Configuration
 
 ```cpp
 // PalletizerMaster.ino
-#define DEV_MODE true  // Set false untuk production
+const char* WIFI_SSID = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";  
+const char* SERVER_IP = "192.168.1.100";
+const int SERVER_PORT = 3001;
 
-void setup() {
-  if (DEV_MODE) {
-    // Station mode - connect to existing WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  } else {
-    // AP mode - create hotspot
-    WiFi.softAP("Palletizer_" + String(ESP.getEfuseMac()));
-  }
-}
+// ESP32 connect ke Node.js server, bukan standalone
 ```
 
-### 8.2 Hardware Pin Mapping
+### 9.2 Hardware Pin Mapping
 
 ```cpp
-// Pin definitions untuk ESP32 Master
-#define SERIAL2_RX_PIN 16
-#define SERIAL2_TX_PIN 17
-#define STATUS_LED_PIN 2
-#define EMERGENCY_STOP_PIN 4
+// ESP32 Master pins
+const int RX2_PIN = 16;  // Serial2 RX untuk komunikasi ke Arduino
+const int TX2_PIN = 17;  // Serial2 TX untuk komunikasi ke Arduino
 
-// Pin definitions untuk Arduino Mega Slave
-#define STEP_PIN_X 2
-#define DIR_PIN_X 3
-#define STEP_PIN_Y 4
-#define DIR_PIN_Y 5
-// ... dan seterusnya untuk Z, T, G axes
+// Arduino pins (MotorController.cpp)
+motors[0] = new AccelStepper(AccelStepper::DRIVER, 2, 3);   // X axis
+motors[1] = new AccelStepper(AccelStepper::DRIVER, 4, 5);   // Y axis  
+motors[2] = new AccelStepper(AccelStepper::DRIVER, 6, 7);   // Z axis
+motors[3] = new AccelStepper(AccelStepper::DRIVER, 8, 9);   // T axis
+motors[4] = new AccelStepper(AccelStepper::DRIVER, 10, 11); // G axis
 ```
 
-## 9. Performance dan Optimasi
+### 9.3 Software Architecture
 
-### 9.1 Memory Usage
+```
+Browser ←→ Node.js Server ←→ ESP32 Master ←→ Arduino
+  │              │               │             │
+React UI    Express API    WebSocket     AccelStepper
+             ScriptCompiler   CommandQueue   MotorController
+             MotionPlanner    SerialBridge   CommandParser
+```
 
-- **Arsitektur Lama**: ~250KB/320KB (parsing script di ESP32)
-- **Arsitektur Baru**: ~50KB/320KB (hanya eksekusi command)
+## 10. Performance dan Optimasi
 
-### 9.2 Command Queue Optimization
+### 10.1 Memory Usage Comparison
+
+- **Old Architecture**: ESP32 parsing scripts (~250KB/320KB RAM)
+- **Current Architecture**: Server parsing, ESP32 execution (~50KB/320KB RAM)
+
+### 10.2 Command Queue Implementation  
 
 ```cpp
-// Circular buffer untuk efisiensi memory
+// CommandQueue.cpp (ESP32)
 class CommandQueue {
 private:
-  Command buffer[MAX_COMMANDS];
+  String commands[MAX_COMMANDS];
   int head = 0;
   int tail = 0;
-  int size = 0;
+  int count = 0;
   
 public:
-  bool enqueue(Command cmd) {
-    if (size >= MAX_COMMANDS) return false;
-    
-    buffer[tail] = cmd;
+  bool enqueue(const String& cmd) {
+    if (count >= MAX_COMMANDS) return false;
+    commands[tail] = cmd;
     tail = (tail + 1) % MAX_COMMANDS;
-    size++;
+    count++;
     return true;
+  }
+  
+  String dequeue() {
+    if (count == 0) return "";
+    String cmd = commands[head];
+    head = (head + 1) % MAX_COMMANDS;
+    count--;
+    return cmd;
   }
 };
 ```
 
-## 10. Testing dan Debugging
+## 11. Testing dan Debugging
 
-### 10.1 Debug Commands
+### 11.1 API Testing Commands
 
 ```bash
 # Test single axis movement
-curl -X POST http://192.168.1.100/api/move \
-  -d '{"X": 1000, "speed": 1500}'
+curl -X POST http://localhost:3001/api/move \
+  -H "Content-Type: application/json" \
+  -d '{"axes": {"X": 1000}, "speed": 1500}'
 
 # Test group movement  
-curl -X POST http://192.168.1.100/api/group-move \
-  -d '{"X": 1000, "Y": 2000, "Z": 500, "speed": 1000}'
+curl -X POST http://localhost:3001/api/group-move \
+  -H "Content-Type: application/json" \
+  -d '{"axes": {"X": 1000, "Y": 2000, "Z": 500}, "speed": 1000}'
+
+# Test control commands
+curl -X POST http://localhost:3001/api/control/home
+curl -X POST http://localhost:3001/api/control/stop
 
 # Get system status
-curl http://192.168.1.100/api/status
+curl http://localhost:3001/api/status
+
+# Test script execution
+curl -X POST http://localhost:3001/api/script/execute \
+  -H "Content-Type: application/json" \
+  -d '{"script": "X1000 Y2000\nSYNC\nZ-100"}'
 ```
 
-### 10.2 Serial Monitor Output
+### 11.2 Debug Output Examples
 
+**Node.js Server Debug**:
 ```
-[DEBUG] Command received: M X1000 S1500
-[DEBUG] Sending to slave: M X1000 S1500
-[DEBUG] Slave response: B
-[DEBUG] Movement started
-[DEBUG] Slave response: D
-[DEBUG] Movement completed
+🚀 Palletizer Server running on port 3001
+📡 WebSocket endpoint: ws://localhost:3001/ws
+ESP32 connected: true
+Command sent: {"cmd":"MOVE","data":{"X":1000,"speed":1500}}
 ```
 
-Dokumentasi ini memberikan gambaran lengkap tentang alur perintah dari web interface hingga eksekusi di motor melalui ESP32 Master dan Arduino Mega slaves.
+**ESP32 Serial Monitor**:
+```
+PalletizerMaster Starting...
+NEW OOP Architecture
+System state changed to: CONNECTED
+WebSocket message received: {"cmd":"MOVE","data":{"X":1000,"speed":1500}}
+Sent to Arduino: M X1000 S1500
+Arduino response: B
+Arduino response: D
+```
+
+**Arduino Serial Monitor**:
+```
+SLAVE_READY
+Command received: M X1000 S1500
+Setting X motor speed: 1500
+Moving X motor to: 1000
+B
+Movement completed
+D
+```
+
+### 11.3 Frontend Development
+
+```bash
+# Start development server  
+npm run dev          # Frontend development di http://localhost:3000
+
+# Start Node.js backend
+npm run server       # Backend server di http://localhost:3001
+
+# Build untuk ESP32
+npm run build        # Generate static files di /out folder
+```
+
+### 11.4 Troubleshooting Common Issues
+
+**ESP32 tidak connect ke server**:
+- Check WiFi credentials di PalletizerMaster.ino
+- Verify SERVER_IP dan SERVER_PORT
+- Check network connectivity
+
+**Arduino tidak merespon**:
+- Verify serial connection (pins 16,17)
+- Check baud rate (115200)
+- Monitor serial output untuk error messages
+
+**Command tidak dieksekusi**:
+- Check command format dan validation
+- Verify axis limits dan bounds
+- Monitor error responses dari Arduino
+
+## Rangkuman
+
+Dokumentasi ini menjelaskan arsitektur lengkap sistem Palletizer Control dengan **3 jenis command**:
+
+1. **Script Commands**: Modern Script Language yang dikompilasi di Node.js server
+2. **Control Commands**: PLAY/PAUSE/STOP/HOME/ZERO untuk kontrol sistem  
+3. **Movement Commands**: Single axis dan group movement untuk gerakan motor
+
+**Alur processing**:
+- Web interface → Node.js server (compilation & optimization)
+- Node.js server → ESP32 Master (via WebSocket)  
+- ESP32 Master → Arduino slave (via Serial)
+- Arduino slave → Motor controllers (AccelStepper)
+
+**Real-time updates** melalui WebSocket untuk status monitoring dan error handling di semua level.
