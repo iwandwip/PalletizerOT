@@ -1,6 +1,6 @@
 #include "CommandParser.h"
 
-CommandParser::CommandParser(MotorController* motorController) 
+CommandParser::CommandParser(MotorController* motorController)
   : motorController(motorController), responseCallback(nullptr), errorCallback(nullptr) {
 }
 
@@ -9,12 +9,12 @@ CommandParser::~CommandParser() {
 
 bool CommandParser::processCommand(const String& command) {
   ParsedCommand cmd = parseCommand(command);
-  
+
   if (!cmd.isValid) {
     notifyError(cmd.errorMessage);
     return false;
   }
-  
+
   return executeCommand(cmd);
 }
 
@@ -24,20 +24,20 @@ CommandParser::ParsedCommand CommandParser::parseCommand(const String& command) 
   cmd.type = CMD_UNKNOWN;
   cmd.speed = -1;
   cmd.acceleration = -1;
-  
+
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     cmd.hasAxis[i] = false;
     cmd.axisValues[i] = 0;
   }
-  
+
   String trimmedCommand = trimCommand(command);
   if (trimmedCommand.length() == 0) {
     cmd.errorMessage = "Empty command";
     return cmd;
   }
-  
+
   cmd.type = identifyCommandType(trimmedCommand);
-  
+
   switch (cmd.type) {
     case CMD_MOVE:
       return parseMoveCommand(trimmedCommand);
@@ -60,7 +60,7 @@ CommandParser::ParsedCommand CommandParser::parseCommand(const String& command) 
 
 CommandParser::CommandType CommandParser::identifyCommandType(const String& command) {
   char firstChar = command.charAt(0);
-  
+
   switch (firstChar) {
     case 'M': return CMD_MOVE;
     case 'G': return CMD_GROUP_MOVE;
@@ -78,44 +78,44 @@ CommandParser::ParsedCommand CommandParser::parseMoveCommand(const String& comma
   ParsedCommand cmd;
   cmd.type = CMD_MOVE;
   cmd.isValid = true;
-  
+
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     cmd.hasAxis[i] = false;
     cmd.axisValues[i] = 0;
   }
-  
+
   if (!extractAxisValues(command, cmd)) {
     cmd.isValid = false;
     cmd.errorMessage = "Invalid axis values";
     return cmd;
   }
-  
+
   extractSpeed(command, cmd);
   extractAcceleration(command, cmd);
-  
-  return validateCommand(cmd) ? cmd : ParsedCommand{CMD_UNKNOWN, {false}, {0}, -1, -1, false, "Validation failed"};
+
+  return validateCommand(cmd) ? cmd : ParsedCommand{ CMD_UNKNOWN, { false }, { 0 }, -1, -1, false, "Validation failed" };
 }
 
 CommandParser::ParsedCommand CommandParser::parseGroupMoveCommand(const String& command) {
   ParsedCommand cmd;
   cmd.type = CMD_GROUP_MOVE;
   cmd.isValid = true;
-  
+
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     cmd.hasAxis[i] = false;
     cmd.axisValues[i] = 0;
   }
-  
+
   if (!extractAxisValues(command, cmd)) {
     cmd.isValid = false;
     cmd.errorMessage = "Invalid axis values";
     return cmd;
   }
-  
+
   extractSpeed(command, cmd);
   extractAcceleration(command, cmd);
-  
-  return validateCommand(cmd) ? cmd : ParsedCommand{CMD_UNKNOWN, {false}, {0}, -1, -1, false, "Validation failed"};
+
+  return validateCommand(cmd) ? cmd : ParsedCommand{ CMD_UNKNOWN, { false }, { 0 }, -1, -1, false, "Validation failed" };
 }
 
 CommandParser::ParsedCommand CommandParser::parseSystemCommand(const String& command) {
@@ -124,18 +124,18 @@ CommandParser::ParsedCommand CommandParser::parseSystemCommand(const String& com
   cmd.isValid = true;
   cmd.speed = -1;
   cmd.acceleration = -1;
-  
+
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     cmd.hasAxis[i] = false;
     cmd.axisValues[i] = 0;
   }
-  
+
   return cmd;
 }
 
 bool CommandParser::extractAxisValues(const String& command, ParsedCommand& cmd) {
   const char* axes = "XYZTG";
-  
+
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     long value = extractAxisValue(command, axes[i]);
     if (value != LONG_MIN) {
@@ -143,8 +143,7 @@ bool CommandParser::extractAxisValues(const String& command, ParsedCommand& cmd)
       cmd.axisValues[i] = value;
     }
   }
-  
-  // Check if at least one axis was specified
+
   bool hasAnyAxis = false;
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     if (cmd.hasAxis[i]) {
@@ -152,31 +151,29 @@ bool CommandParser::extractAxisValues(const String& command, ParsedCommand& cmd)
       break;
     }
   }
-  
+
   return hasAnyAxis;
 }
 
 long CommandParser::extractAxisValue(const String& command, char axis) {
   int axisIndex = command.indexOf(axis);
   if (axisIndex == -1) return LONG_MIN;
-  
+
   int startIndex = axisIndex + 1;
   int endIndex = startIndex;
-  
-  // Handle negative numbers
+
   if (endIndex < command.length() && command.charAt(endIndex) == '-') {
     endIndex++;
   }
-  
-  // Find end of number
+
   while (endIndex < command.length() && isDigit(command.charAt(endIndex))) {
     endIndex++;
   }
-  
+
   if (endIndex == startIndex || (endIndex == startIndex + 1 && command.charAt(startIndex) == '-')) {
     return LONG_MIN;
   }
-  
+
   return command.substring(startIndex, endIndex).toInt();
 }
 
@@ -207,7 +204,7 @@ bool CommandParser::executeMoveCommand(const ParsedCommand& cmd) {
       motorController->moveTo((MotorController::MotorAxis)i, cmd.axisValues[i]);
     }
   }
-  
+
   if (cmd.speed > 0) {
     for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
       if (cmd.hasAxis[i]) {
@@ -215,19 +212,18 @@ bool CommandParser::executeMoveCommand(const ParsedCommand& cmd) {
       }
     }
   }
-  
-  notifyResponse("B"); // Busy
+
+  notifyResponse("B");
   return true;
 }
 
 bool CommandParser::executeGroupMoveCommand(const ParsedCommand& cmd) {
-  // For group moves, set all positions first, then start movement
   for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
     if (cmd.hasAxis[i]) {
       motorController->moveTo((MotorController::MotorAxis)i, cmd.axisValues[i]);
     }
   }
-  
+
   if (cmd.speed > 0) {
     for (int i = 0; i < MotorController::AXIS_COUNT; i++) {
       if (cmd.hasAxis[i]) {
@@ -235,8 +231,8 @@ bool CommandParser::executeGroupMoveCommand(const ParsedCommand& cmd) {
       }
     }
   }
-  
-  notifyResponse("B"); // Busy
+
+  notifyResponse("B");
   return true;
 }
 
@@ -247,11 +243,11 @@ bool CommandParser::executeSystemCommand(const ParsedCommand& cmd) {
       return true;
     case CMD_HOME:
       motorController->homeAll();
-      notifyResponse("B"); // Busy
+      notifyResponse("B");
       return true;
     case CMD_ZERO:
       motorController->zeroAll();
-      notifyResponse("D"); // Done
+      notifyResponse("D");
       return true;
     case CMD_EMERGENCY_STOP:
       motorController->emergencyStop();
@@ -316,7 +312,6 @@ String CommandParser::trimCommand(const String& command) {
   return trimmed;
 }
 
-// Placeholder implementations for remaining methods
 CommandParser::ParsedCommand CommandParser::parseSpeedCommand(const String& command) {
   ParsedCommand cmd;
   cmd.type = CMD_SET_SPEED;
@@ -362,16 +357,16 @@ bool CommandParser::extractAcceleration(const String& command, ParsedCommand& cm
 int CommandParser::extractParameter(const String& command, char parameter) {
   int paramIndex = command.indexOf(parameter);
   if (paramIndex == -1) return -1;
-  
+
   int startIndex = paramIndex + 1;
   int endIndex = startIndex;
-  
+
   while (endIndex < command.length() && isDigit(command.charAt(endIndex))) {
     endIndex++;
   }
-  
+
   if (endIndex == startIndex) return -1;
-  
+
   return command.substring(startIndex, endIndex).toInt();
 }
 

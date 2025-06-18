@@ -1,145 +1,127 @@
 'use client'
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Moon, Sun, Wifi, WifiOff, Circle } from "lucide-react"
-import { useState, useEffect } from "react"
+import { Wifi, WifiOff, Circle } from "lucide-react"
 
-interface TimeoutStats {
-  totalTimeouts: number
-  successfulWaits: number
-  successRate: number
-  lastTimeoutTime: number
-  totalWaitTime: number
-  currentRetryCount: number
+interface Position {
+  X: number;
+  Y: number;
+  Z: number;
+  T: number;
+  G: number;
 }
 
 interface StatusDisplayProps {
-  status: 'IDLE' | 'RUNNING' | 'PAUSED' | 'STOPPING'
-  connected: boolean
-  timeoutStats: TimeoutStats
-  darkMode: boolean
-  onToggleDarkMode: () => void
+  position: Position
+  systemStatus: string
+  esp32Connected: boolean
+  queueLength: number
 }
 
 export default function StatusDisplay({
-  status,
-  connected,
-  timeoutStats,
-  darkMode,
-  onToggleDarkMode
+  position,
+  systemStatus,
+  esp32Connected,
+  queueLength
 }: StatusDisplayProps) {
-  const [currentTime, setCurrentTime] = useState(new Date())
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
 
   const getStatusVariant = () => {
-    switch (status) {
+    switch (systemStatus) {
       case 'RUNNING': return 'default'
       case 'PAUSED': return 'secondary'
       case 'IDLE':
-      case 'STOPPING': return 'destructive'
+      case 'READY': return 'outline'
+      case 'ERROR': return 'destructive'
       default: return 'outline'
     }
   }
 
   const getStatusColor = () => {
-    switch (status) {
+    switch (systemStatus) {
       case 'RUNNING': return 'text-green-600'
       case 'PAUSED': return 'text-yellow-600'
       case 'IDLE':
-      case 'STOPPING': return 'text-red-600'
+      case 'READY': return 'text-blue-600'
+      case 'ERROR': return 'text-red-600'
       default: return 'text-gray-600'
     }
   }
 
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`
-    return `${(ms / 1000).toFixed(1)}s`
+  const getConnectionStatus = () => {
+    if (esp32Connected) {
+      return { icon: Wifi, color: 'text-green-500', text: 'ESP32 Connected' }
+    } else {
+      return { icon: WifiOff, color: 'text-red-500', text: 'ESP32 Disconnected' }
+    }
   }
 
-  const formatTimestamp = (timestamp: number) => {
-    if (timestamp === 0) return 'Never'
-    return new Date(timestamp).toLocaleTimeString()
-  }
-
-  const getSuccessRateColor = () => {
-    const rate = timeoutStats.successRate
-    if (rate >= 95) return 'text-green-600'
-    if (rate >= 80) return 'text-yellow-600'
-    return 'text-red-600'
-  }
+  const connectionStatus = getConnectionStatus()
+  const ConnectionIcon = connectionStatus.icon
 
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-4 bg-card rounded-lg border">
-      <div className="flex items-center gap-4">
+    <div className="space-y-4">
+      {/* Connection Status */}
+      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <Circle className={`w-3 h-3 fill-current ${getStatusColor()}`} />
-            <Badge variant={getStatusVariant()} className="font-medium">
-              {status}
-            </Badge>
-          </div>
-          
-          <div className="flex items-center gap-1">
-            {connected ? (
-              <Wifi className="w-4 h-4 text-green-600" />
-            ) : (
-              <WifiOff className="w-4 h-4 text-red-600" />
-            )}
-            <span className="text-sm text-muted-foreground">
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
+          <ConnectionIcon className={`w-4 h-4 ${connectionStatus.color}`} />
+          <span className="text-sm font-medium">{connectionStatus.text}</span>
         </div>
+        <Badge variant={getStatusVariant()}>
+          <Circle className={`w-2 h-2 mr-1 fill-current ${getStatusColor()}`} />
+          {systemStatus}
+        </Badge>
+      </div>
 
-        <div className="text-sm text-muted-foreground">
-          {currentTime.toLocaleTimeString()}
+      {/* Position Display */}
+      <div className="grid grid-cols-5 gap-2">
+        <div className="text-center p-2 bg-muted/30 rounded">
+          <div className="text-xs text-muted-foreground">X</div>
+          <div className="font-mono text-sm">{position.X}</div>
+        </div>
+        <div className="text-center p-2 bg-muted/30 rounded">
+          <div className="text-xs text-muted-foreground">Y</div>
+          <div className="font-mono text-sm">{position.Y}</div>
+        </div>
+        <div className="text-center p-2 bg-muted/30 rounded">
+          <div className="text-xs text-muted-foreground">Z</div>
+          <div className="font-mono text-sm">{position.Z}</div>
+        </div>
+        <div className="text-center p-2 bg-muted/30 rounded">
+          <div className="text-xs text-muted-foreground">T</div>
+          <div className="font-mono text-sm">{position.T}</div>
+        </div>
+        <div className="text-center p-2 bg-muted/30 rounded">
+          <div className="text-xs text-muted-foreground">G</div>
+          <div className="font-mono text-sm">{position.G}</div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          <div className="text-center">
-            <div className="font-medium text-green-600">{timeoutStats.successfulWaits}</div>
-            <div className="text-muted-foreground">Success</div>
-          </div>
-          
-          <div className="text-center">
-            <div className="font-medium text-red-600">{timeoutStats.totalTimeouts}</div>
-            <div className="text-muted-foreground">Timeouts</div>
-          </div>
-          
-          <div className="text-center">
-            <div className={`font-medium ${getSuccessRateColor()}`}>
-              {timeoutStats.successRate.toFixed(1)}%
-            </div>
-            <div className="text-muted-foreground">Rate</div>
-          </div>
-          
-          <div className="text-center">
-            <div className="font-medium">
-              {formatDuration(timeoutStats.totalWaitTime)}
-            </div>
-            <div className="text-muted-foreground">Total</div>
-          </div>
-        </div>
+      {/* Queue Status */}
+      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+        <span className="text-sm text-muted-foreground">Commands in Queue</span>
+        <Badge variant="outline" className="font-mono">
+          {queueLength}
+        </Badge>
+      </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleDarkMode}
-          className="p-2"
-        >
-          {darkMode ? (
-            <Sun className="w-4 h-4" />
-          ) : (
-            <Moon className="w-4 h-4" />
-          )}
-        </Button>
+      {/* System Information */}
+      <div className="text-xs text-muted-foreground space-y-1">
+        <div className="flex justify-between">
+          <span>System Status:</span>
+          <span className={getStatusColor()}>{systemStatus}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>ESP32 Connection:</span>
+          <span className={esp32Connected ? 'text-green-600' : 'text-red-600'}>
+            {esp32Connected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span>Position:</span>
+          <span className="font-mono">
+            X{position.X} Y{position.Y} Z{position.Z} T{position.T} G{position.G}
+          </span>
+        </div>
       </div>
     </div>
   )

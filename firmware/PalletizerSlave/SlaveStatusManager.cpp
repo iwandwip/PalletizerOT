@@ -1,19 +1,17 @@
 #include "SlaveStatusManager.h"
 
-SlaveStatusManager::SlaveStatusManager(MotorController* motorController) 
-  : motorController(motorController), lastLoopTime(0), loopCount(0), 
-    loopTimeSum(0), lastHealthCheck(0), healthChangeCallback(nullptr), 
+SlaveStatusManager::SlaveStatusManager(MotorController* motorController)
+  : motorController(motorController), lastLoopTime(0), loopCount(0),
+    loopTimeSum(0), lastHealthCheck(0), healthChangeCallback(nullptr),
     metricsUpdateCallback(nullptr) {
-  
-  // Initialize metrics
+
   metrics.uptime = 0;
   metrics.freeRAM = 0;
   metrics.commandsProcessed = 0;
   metrics.errorsCount = 0;
   metrics.loopFrequency = 0.0;
   metrics.lastCommandTime = 0;
-  
-  // Initialize diagnostic info
+
   diagnosticInfo.healthStatus = HEALTH_GOOD;
   diagnosticInfo.lastError = "";
   diagnosticInfo.errorTimestamp = 0;
@@ -27,25 +25,22 @@ SlaveStatusManager::~SlaveStatusManager() {
 void SlaveStatusManager::updateStatus() {
   updateMetrics();
   updateHealthStatus();
-  
-  // Check if health status changed
+
   HealthStatus newHealth = determineOverallHealth();
   if (newHealth != diagnosticInfo.healthStatus) {
     diagnosticInfo.healthStatus = newHealth;
     notifyHealthChange(newHealth);
   }
-  
+
   notifyMetricsUpdate();
 }
 
 void SlaveStatusManager::updateMetrics() {
   metrics.uptime = millis();
   metrics.freeRAM = getFreeRAM();
-  
-  // Update communication activity
+
   diagnosticInfo.communicationActive = (millis() - metrics.lastCommandTime) < COMMUNICATION_TIMEOUT;
-  
-  // Check motor initialization
+
   diagnosticInfo.motorsInitialized = (motorController != nullptr);
 }
 
@@ -57,7 +52,7 @@ void SlaveStatusManager::updateHealthStatus() {
 
 void SlaveStatusManager::checkCommunicationHealth() {
   unsigned long timeSinceLastCommand = millis() - metrics.lastCommandTime;
-  
+
   if (timeSinceLastCommand > COMMUNICATION_TIMEOUT) {
     diagnosticInfo.communicationActive = false;
   } else {
@@ -79,28 +74,26 @@ void SlaveStatusManager::checkMemoryHealth() {
 }
 
 SlaveStatusManager::HealthStatus SlaveStatusManager::determineOverallHealth() const {
-  // Critical conditions
   if (!diagnosticInfo.motorsInitialized) {
     return HEALTH_CRITICAL;
   }
-  
+
   if (metrics.freeRAM < MIN_FREE_RAM) {
     return HEALTH_CRITICAL;
   }
-  
+
   if (metrics.errorsCount > MAX_ERROR_COUNT) {
     return HEALTH_ERROR;
   }
-  
-  // Warning conditions
+
   if (!diagnosticInfo.communicationActive) {
     return HEALTH_WARNING;
   }
-  
+
   if (metrics.loopFrequency < MIN_LOOP_FREQUENCY && metrics.loopFrequency > 0) {
     return HEALTH_WARNING;
   }
-  
+
   return HEALTH_GOOD;
 }
 
@@ -116,15 +109,10 @@ void SlaveStatusManager::recordCommandError(const String& error) {
 }
 
 void SlaveStatusManager::recordResponseTime(unsigned long responseTime) {
-  // Could be used for performance monitoring
 }
 
 String SlaveStatusManager::generateStatusMessage() const {
-  return "STATUS " + healthStatusToString(diagnosticInfo.healthStatus) + 
-         " CMD:" + String(metrics.commandsProcessed) + 
-         " ERR:" + String(metrics.errorsCount) + 
-         " RAM:" + String(metrics.freeRAM) + 
-         " FREQ:" + String(metrics.loopFrequency, 1);
+  return "STATUS " + healthStatusToString(diagnosticInfo.healthStatus) + " CMD:" + String(metrics.commandsProcessed) + " ERR:" + String(metrics.errorsCount) + " RAM:" + String(metrics.freeRAM) + " FREQ:" + String(metrics.loopFrequency, 1);
 }
 
 String SlaveStatusManager::generatePositionMessage() const {
@@ -136,10 +124,7 @@ String SlaveStatusManager::generatePositionMessage() const {
 }
 
 String SlaveStatusManager::generateDiagnosticMessage() const {
-  return "DIAG HEALTH:" + healthStatusToString(diagnosticInfo.healthStatus) + 
-         " MOTORS:" + (diagnosticInfo.motorsInitialized ? "OK" : "FAIL") +
-         " COMM:" + (diagnosticInfo.communicationActive ? "OK" : "TIMEOUT") +
-         " UPTIME:" + String(metrics.uptime);
+  return "DIAG HEALTH:" + healthStatusToString(diagnosticInfo.healthStatus) + " MOTORS:" + (diagnosticInfo.motorsInitialized ? "OK" : "FAIL") + " COMM:" + (diagnosticInfo.communicationActive ? "OK" : "TIMEOUT") + " UPTIME:" + String(metrics.uptime);
 }
 
 String SlaveStatusManager::generateReadyMessage() const {
@@ -160,7 +145,7 @@ String SlaveStatusManager::generateErrorMessage(const String& error) const {
 
 void SlaveStatusManager::performHealthCheck() {
   unsigned long currentTime = millis();
-  
+
   if (currentTime - lastHealthCheck >= HEALTH_CHECK_INTERVAL) {
     updateStatus();
     lastHealthCheck = currentTime;
@@ -179,29 +164,28 @@ void SlaveStatusManager::clearErrors() {
 
 void SlaveStatusManager::updateLoopTiming() {
   unsigned long currentTime = micros();
-  
+
   if (lastLoopTime > 0) {
     unsigned long loopTime = currentTime - lastLoopTime;
     loopTimeSum += loopTime;
     loopCount++;
-    
-    // Calculate frequency every 100 loops
+
     if (loopCount >= 100) {
       float avgLoopTime = loopTimeSum / float(loopCount);
-      metrics.loopFrequency = 1000000.0 / avgLoopTime; // Convert to Hz
-      
+      metrics.loopFrequency = 1000000.0 / avgLoopTime;
+
       loopCount = 0;
       loopTimeSum = 0;
     }
   }
-  
+
   lastLoopTime = currentTime;
 }
 
 unsigned long SlaveStatusManager::getFreeRAM() const {
   extern int __heap_start, *__brkval;
   int v;
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 
 void SlaveStatusManager::setHealthChangeCallback(void (*callback)(HealthStatus status)) {

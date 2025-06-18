@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, Save, Download, FileText, Play, Compile, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import { Upload, Save, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
 
 interface CompilationResult {
@@ -307,7 +307,7 @@ export default function CommandEditor({
                 {isCompiling ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : (
-                  <Compile className="w-4 h-4 mr-2" />
+                  <Cpu className="w-4 h-4 mr-2" />
                 )}
                 Compile Script
               </Button>

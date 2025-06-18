@@ -1,6 +1,5 @@
 #include "PalletizerSlave.h"
 
-// Static instance for Singleton pattern
 PalletizerSlave* PalletizerSlave::instance = nullptr;
 
 PalletizerSlave* PalletizerSlave::getInstance() {
@@ -10,7 +9,7 @@ PalletizerSlave* PalletizerSlave::getInstance() {
   return instance;
 }
 
-PalletizerSlave::PalletizerSlave() 
+PalletizerSlave::PalletizerSlave()
   : motorController(nullptr), commandParser(nullptr), statusManager(nullptr),
     currentState(INITIALIZING), lastStatusUpdate(0), lastHeartbeat(0),
     stateChangeCallback(nullptr), errorCallback(nullptr) {
@@ -22,23 +21,23 @@ PalletizerSlave::~PalletizerSlave() {
 
 void PalletizerSlave::begin() {
   Serial.begin(SERIAL_BAUD_RATE);
-  
+
   initializeComponents();
-  
+
   setState(READY);
-  
+
   Serial.println("PalletizerSlave ready!");
 }
 
 void PalletizerSlave::loop() {
   processSerialInput();
-  
+
   if (motorController) {
     motorController->run();
   }
-  
+
   handlePeriodicTasks();
-  
+
   if (statusManager) {
     statusManager->updateLoopTiming();
   }
@@ -50,16 +49,13 @@ void PalletizerSlave::end() {
 }
 
 void PalletizerSlave::initializeComponents() {
-  // Initialize motor controller
   motorController = new MotorController();
   motorController->begin();
-  
-  // Initialize command parser
+
   commandParser = new CommandParser(motorController);
   commandParser->setResponseCallback(onCommandResponseWrapper);
   commandParser->setErrorCallback(onCommandErrorWrapper);
-  
-  // Initialize status manager
+
   statusManager = new SlaveStatusManager(motorController);
 }
 
@@ -68,12 +64,12 @@ void PalletizerSlave::cleanupComponents() {
     delete statusManager;
     statusManager = nullptr;
   }
-  
+
   if (commandParser) {
     delete commandParser;
     commandParser = nullptr;
   }
-  
+
   if (motorController) {
     delete motorController;
     motorController = nullptr;
@@ -90,7 +86,7 @@ void PalletizerSlave::setState(SystemState newState) {
 void PalletizerSlave::processSerialInput() {
   while (Serial.available()) {
     char c = Serial.read();
-    
+
     if (c == '\n' || c == '\r') {
       if (serialBuffer.length() > 0) {
         processCommand(serialBuffer);
@@ -107,10 +103,10 @@ void PalletizerSlave::processCommand(const String& command) {
     sendError("System in error state");
     return;
   }
-  
+
   if (commandParser) {
     bool success = commandParser->processCommand(command);
-    
+
     if (success) {
       setState(BUSY);
       if (statusManager) {
@@ -160,33 +156,30 @@ void PalletizerSlave::handleEmergencyStop() {
 void PalletizerSlave::handleResume() {
   if (currentState == EMERGENCY_STOP) {
     setState(READY);
-    sendResponse("D"); // Done - ready to accept commands
+    sendResponse("D");
   }
 }
 
 void PalletizerSlave::handlePeriodicTasks() {
   unsigned long currentTime = millis();
-  
-  // Status updates
+
   if (currentTime - lastStatusUpdate >= STATUS_UPDATE_INTERVAL) {
     if (statusManager) {
       statusManager->updateStatus();
     }
     lastStatusUpdate = currentTime;
   }
-  
-  // Heartbeat
+
   if (currentTime - lastHeartbeat >= HEARTBEAT_INTERVAL) {
     if (statusManager) {
       statusManager->performHealthCheck();
     }
     lastHeartbeat = currentTime;
   }
-  
-  // Check if motors are done moving
+
   if (currentState == BUSY && motorController && !motorController->isMoving()) {
     setState(READY);
-    sendResponse("D"); // Done
+    sendResponse("D");
   }
 }
 
@@ -210,7 +203,6 @@ void PalletizerSlave::notifyError(const String& error) {
   }
 }
 
-// Static callback wrappers
 void PalletizerSlave::onMotionCompleteWrapper() {
   if (instance) {
     instance->onMotionComplete();
@@ -241,15 +233,12 @@ void PalletizerSlave::onCommandErrorWrapper(const String& error) {
   }
 }
 
-// Instance callback handlers
 void PalletizerSlave::onMotionComplete() {
   setState(READY);
-  sendResponse("D"); // Done
+  sendResponse("D");
 }
 
 void PalletizerSlave::onPositionChange(const MotorController::Position& position) {
-  // Position updates can be sent if needed
-  // For now, we'll just update status
 }
 
 void PalletizerSlave::onMotionStateChange(MotorController::MotionState state) {
