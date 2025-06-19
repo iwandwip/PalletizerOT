@@ -6,7 +6,7 @@ import { Bonjour } from 'bonjour-service'
 
 const app = express()
 const server = createServer(app)
-const PORT = process.env.PORT || 3006
+const PORT = Number(process.env.PORT) || 3006
 
 const scriptCompiler = new ScriptCompiler()
 
@@ -61,7 +61,7 @@ app.post('/api/script/save', (req, res) => {
     
     const compiledScript: CompiledScript = {
       id: Date.now().toString(),
-      commands,
+      commands: commands.map(cmd => `${cmd.type} ${JSON.stringify(cmd.data || {})}`),
       timestamp: Date.now(),
       executed: false
     }
@@ -112,10 +112,11 @@ app.get('/api/script/poll', (req, res) => {
 
 app.post('/api/control/start', (req, res) => {
   if (!systemState.currentScript) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       error: 'No script loaded' 
     })
+    return
   }
   
   systemState.isRunning = true
@@ -150,10 +151,11 @@ app.post('/api/control/pause', (req, res) => {
 
 app.post('/api/control/resume', (req, res) => {
   if (!systemState.currentScript) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       error: 'No script loaded' 
     })
+    return
   }
   
   systemState.isRunning = true

@@ -174,14 +174,14 @@ export default function SystemControls({
           className="h-12 md:h-10 text-white bg-green-600 hover:bg-green-700"
         >
           <Play className="w-4 h-4 mr-2" />
-          {executionStatus?.state === 'PAUSED' ? 'RESUME' : 'PLAY'}
+          {executionStatus?.status === 'PAUSED' ? 'RESUME' : 'PLAY'}
         </Button>
         
         <Button
           size="lg"
           variant="outline"
           onClick={() => handleCommand('PAUSE')}
-          disabled={disabled || !executionStatus || executionStatus.state !== 'RUNNING'}
+          disabled={disabled || !executionStatus || executionStatus.status !== 'RUNNING'}
           className="h-12 md:h-10 border-yellow-500 text-yellow-600 hover:bg-yellow-50"
         >
           <Pause className="w-4 h-4 mr-2" />

@@ -16,6 +16,10 @@ export class ScriptCompiler {
   private variables: Map<string, number> = new Map();
 
   public async parse(script: string): Promise<Command[]> {
+    return this.compileScript(script);
+  }
+
+  public compileScript(script: string): Command[] {
     const lines = script.split('\n').map(line => line.trim()).filter(line => line.length > 0);
     const commands: Command[] = [];
     
@@ -53,7 +57,7 @@ export class ScriptCompiler {
           }
         }
       } catch (error: unknown) {
-        throw new Error(`Line ${lineNumber}: ${error.message}`);
+        throw new Error(`Line ${lineNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       
       i++;
@@ -84,7 +88,7 @@ export class ScriptCompiler {
                 commands.push(command);
               }
             } catch (error: unknown) {
-              throw new Error(`Function ${funcName}, Line ${i + 1}: ${error.message}`);
+              throw new Error(`Function ${funcName}, Line ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
           }
           i++;
@@ -158,7 +162,7 @@ export class ScriptCompiler {
   }
 
   private parseAxisMove(line: string, lineNumber: number): Command {
-    const data: unknown = {};
+    const data: Record<string, unknown> = {};
     let speed: number | undefined;
     let accel: number | undefined;
     
@@ -195,7 +199,7 @@ export class ScriptCompiler {
   }
 
   private parseGroupMove(line: string, lineNumber: number): Command {
-    const data: unknown = {};
+    const data: Record<string, unknown> = {};
     let speed: number | undefined;
     let accel: number | undefined;
     
@@ -264,7 +268,7 @@ export class ScriptCompiler {
   }
 
   private parseSpeedCommand(line: string, lineNumber: number): Command {
-    const data: unknown = {};
+    const data: Record<string, unknown> = {};
     const parts = line.split(' ').slice(1); // Skip "SPEED"
     
     for (const part of parts) {
@@ -284,7 +288,7 @@ export class ScriptCompiler {
   }
 
   private parseAccelCommand(line: string, lineNumber: number): Command {
-    const data: unknown = {};
+    const data: Record<string, unknown> = {};
     const parts = line.split(' ').slice(1); // Skip "ACCEL"
     
     for (const part of parts) {
@@ -362,7 +366,7 @@ export class ScriptCompiler {
     
     for (const command of commands) {
       if (command.type === 'CALL') {
-        const funcName = command.data.functionName;
+        const funcName = command.data?.functionName as string;
         const func = this.functions.get(funcName);
         if (func) {
           expanded.push(...this.expandFunctionCalls(func.commands));
