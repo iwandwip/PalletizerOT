@@ -42,18 +42,11 @@ export default function CommandEditor({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Setup WebSocket listeners
+  // Check connection status periodically
   useEffect(() => {
-    api.on('esp32_connected', () => setConnectionStatus('connected'))
-    api.on('esp32_disconnected', () => setConnectionStatus('disconnected'))
-    
-    // Check initial connection status
     checkConnectionStatus()
-    
-    return () => {
-      api.off('esp32_connected', () => setConnectionStatus('connected'))
-      api.off('esp32_disconnected', () => setConnectionStatus('disconnected'))
-    }
+    const interval = setInterval(checkConnectionStatus, 3000)
+    return () => clearInterval(interval)
   }, [])
 
   // Auto-compile when text changes
@@ -83,12 +76,12 @@ export default function CommandEditor({
 
     setIsCompiling(true)
     try {
-      const result = await api.parseScript(commandText)
+      const result = await api.saveScript(commandText)
       setCompilationResult({
         success: result.success,
-        commands: result.commands,
+        commands: [],
         error: result.error,
-        commandCount: result.commands?.length || 0
+        commandCount: result.commandCount || 0
       })
     } catch (error) {
       setCompilationResult({

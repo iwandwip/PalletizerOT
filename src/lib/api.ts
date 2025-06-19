@@ -17,7 +17,7 @@ interface SystemStatus {
 class PalletizerAPI {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'http://localhost:3001') {
+  constructor(baseUrl: string = 'http://localhost:3006') {
     this.baseUrl = baseUrl;
   }
 

@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 
 class ESP32Simulator {
-  constructor(serverHost = 'localhost', serverPort = 3001) {
+  constructor(serverHost = 'localhost', serverPort = 3006) {
     this.serverHost = serverHost;
     this.serverPort = serverPort;
     this.isRunning = false;

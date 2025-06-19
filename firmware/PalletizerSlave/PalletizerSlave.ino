@@ -7,7 +7,7 @@ CommandProcessor* commandProcessor;
 void setup() {
   Serial.begin(115200);
   Serial.println("Arduino Slave ready");
-  
+
   motorController = new MotorController();
   motorController->begin();
   commandProcessor = new CommandProcessor(*motorController);

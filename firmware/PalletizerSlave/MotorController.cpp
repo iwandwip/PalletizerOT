@@ -14,9 +14,7 @@ const float MotorController::DEFAULT_ACCEL = 1000.0;
 MotorController::MotorController()
   : moving(false) {
   for (int i = 0; i < AXIS_COUNT; i++) {
-    motors[i] = new AccelStepper(AccelStepper::DRIVER,
-                                 motorPins[i].stepPin,
-                                 motorPins[i].dirPin);
+    motors[i] = new AccelStepper(AccelStepper::DRIVER, motorPins[i].stepPin, motorPins[i].dirPin);
   }
 }
 

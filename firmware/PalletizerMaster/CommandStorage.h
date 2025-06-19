@@ -7,7 +7,7 @@
 class CommandStorage {
 private:
   String currentScriptId;
-  
+
 public:
   CommandStorage();
   bool saveScript(const String& scriptId, JsonArray& commands);
