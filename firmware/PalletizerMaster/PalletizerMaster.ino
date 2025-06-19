@@ -4,7 +4,7 @@
 
 const char* WIFI_SSID = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
-const char* SERVER_IP = "192.168.1.100";
+const char* SERVER_HOST = "palletizer.local";
 const int SERVER_PORT = 3001;
 
 const int RX2_PIN = 16;
@@ -23,7 +23,7 @@ void setup() {
   Serial.println("\n=== PalletizerMaster Starting ===");
   Serial.println("Simple OOP Architecture");
   connectWiFi();
-  webSocket = new WebSocketManager(SERVER_IP, SERVER_PORT);
+  webSocket = new WebSocketManager(SERVER_HOST, SERVER_PORT);
   webSocket->setMessageCallback(onWebSocketMessage);
   webSocket->begin();
   serialBridge = new SerialBridge(Serial2, RX2_PIN, TX2_PIN);

@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { Bonjour } from 'bonjour-service';
 import { ScriptCompiler } from './ScriptCompiler';
 import { MotionPlanner } from './MotionPlanner';
 import { ESP32Manager } from './ESP32Manager';
@@ -205,6 +206,18 @@ server.listen(PORT, () => {
   console.log(`🚀 Palletizer Server running on port ${PORT}`);
   console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/ws`);
   console.log(`🌐 Web interface: http://localhost:${PORT}`);
+  
+  // Setup mDNS for local domain name
+  const bonjour = new Bonjour();
+  bonjour.publish({
+    name: 'palletizer',
+    type: 'http',
+    port: PORT,
+    host: 'palletizer.local'
+  });
+  
+  console.log(`🔗 mDNS: Server available at http://palletizer.local:${PORT}`);
+  console.log(`📡 ESP32 can connect to: palletizer.local:${PORT}`);
 });
 
 // Graceful shutdown

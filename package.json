@@ -7,11 +7,14 @@
     "dev:server": "tsx src/server/index.ts",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "next build",
-    "build:copy": "next build && node scripts/copy-to-esp32.mjs",
+    "build:export": "next build && next export",
+    "build:copy": "npm run build:export && node scripts/copy-to-esp32.mjs",
     "build:test": "npm run build:copy && cd out && npx http-server -p 3002",
     "start": "next start -p 3003",
     "start:server": "tsx src/server/index.ts",
     "start:all": "concurrently \"npm run start:server\" \"npm run start\"",
+    "test": "node src/test/esp32-simulator.js",
+    "test:all": "concurrently \"npm run start:server\" \"npm run test\"",
     "lint": "next lint"
   },
   "dependencies": {
@@ -33,7 +36,8 @@
     "react-simple-code-editor": "^0.14.1",
     "tailwind-merge": "^3.3.0",
     "ws": "^8.18.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "bonjour-service": "^1.2.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
