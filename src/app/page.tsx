@@ -6,12 +6,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, X, Wifi, WifiOff, Terminal, Eye, EyeOff } from "lucide-react"
 import SystemControls from '@/components/system-controls'
-import SpeedPanel from '@/components/speed-panel'
 import CommandEditor from '@/components/command-editor'
 import StatusDisplay from '@/components/status-display'
-import DebugTerminal from '@/components/debug-terminal'
 import { api } from '@/lib/api'
-import { Axis } from '@/lib/types'
 
 interface ErrorNotification {
   id: string
@@ -19,84 +16,30 @@ interface ErrorNotification {
   type: 'error' | 'warning' | 'info'
 }
 
-interface Position {
-  X: number;
-  Y: number;
-  Z: number;
-  T: number;
-  G: number;
-}
-
 export default function PalletizerControl() {
-  const [axes, setAxes] = useState<Axis[]>([
-    { id: 'x', name: 'X', speed: 1000 },
-    { id: 'y', name: 'Y', speed: 1000 },
-    { id: 'z', name: 'Z', speed: 1000 },
-    { id: 't', name: 'T', speed: 1000 },
-    { id: 'g', name: 'G', speed: 1000 },
-  ])
-  
-  const [globalSpeed, setGlobalSpeed] = useState(1000)
   const [commandText, setCommandText] = useState('')
   const [darkMode, setDarkMode] = useState(false)
   const [errors, setErrors] = useState<ErrorNotification[]>([])
   const [showDebugTerminal, setShowDebugTerminal] = useState(true)
   
-  // Server connection state
   const [connected, setConnected] = useState(false)
   const [esp32Connected, setEsp32Connected] = useState(false)
-  const [currentPosition, setCurrentPosition] = useState<Position>({ X: 0, Y: 0, Z: 0, T: 0, G: 0 })
-  const [systemStatus, setSystemStatus] = useState<string>('IDLE')
-  const [queueLength, setQueueLength] = useState(0)
+  const [hasScript, setHasScript] = useState(false)
+  const [isRunning, setIsRunning] = useState(false)
+  const [currentCommandIndex, setCurrentCommandIndex] = useState(0)
+  const [totalCommands, setTotalCommands] = useState(0)
   
-  // Debug terminal state
   const [debugMessages, setDebugMessages] = useState<string[]>([])
 
   useEffect(() => {
-    // Setup WebSocket event listeners
-    api.on('status', handleStatusUpdate)
-    api.on('position', handlePositionUpdate)
-    api.on('error', handleErrorUpdate)
-    api.on('esp32_connected', () => {
-      setEsp32Connected(true)
-      addDebugMessage('ESP32 connected')
-    })
-    api.on('esp32_disconnected', () => {
-      setEsp32Connected(false)
-      addDebugMessage('ESP32 disconnected')
-    })
-
-    // Check initial connection status
     checkServerStatus()
-    
-    // Setup periodic status check
-    const statusInterval = setInterval(checkServerStatus, 5000)
-
-    return () => {
-      clearInterval(statusInterval)
-      // Note: We don't disconnect WebSocket here as it's managed by api
-    }
+    const statusInterval = setInterval(checkServerStatus, 3000)
+    return () => clearInterval(statusInterval)
   }, [])
-
-  const handleStatusUpdate = (data: any) => {
-    setSystemStatus(data.status || 'IDLE')
-    setQueueLength(data.queue || 0)
-    addDebugMessage(`Status: ${data.status}, Queue: ${data.queue}`)
-  }
-
-  const handlePositionUpdate = (data: any) => {
-    setCurrentPosition(data.position)
-    addDebugMessage(`Position: X${data.position.X} Y${data.position.Y} Z${data.position.Z} T${data.position.T} G${data.position.G}`)
-  }
-
-  const handleErrorUpdate = (data: any) => {
-    addError(data.error, 'error')
-    addDebugMessage(`Error: ${data.error}`)
-  }
 
   const addDebugMessage = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
-    setDebugMessages(prev => [...prev, `[${timestamp}] ${message}`].slice(-100)) // Keep last 100 messages
+    setDebugMessages(prev => [...prev, `[${timestamp}] ${message}`].slice(-100))
   }
 
   const checkServerStatus = async () => {
@@ -107,9 +50,10 @@ export default function PalletizerControl() {
       if (ping) {
         const status = await api.getStatus()
         setEsp32Connected(status.esp32Connected)
-        setCurrentPosition(status.currentPosition)
-        setSystemStatus(status.systemStatus)
-        setQueueLength(status.queueLength)
+        setHasScript(status.hasScript)
+        setIsRunning(status.isRunning)
+        setCurrentCommandIndex(status.currentCommandIndex)
+        setTotalCommands(status.totalCommands)
       }
     } catch (error) {
       setConnected(false)
@@ -125,7 +69,6 @@ export default function PalletizerControl() {
     }
     setErrors(prev => [...prev, error])
     
-    // Auto-remove after 5 seconds
     setTimeout(() => {
       removeError(error.id)
     }, 5000)
@@ -141,7 +84,7 @@ export default function PalletizerControl() {
       
       switch (command) {
         case 'PLAY':
-          await api.play()
+          await api.start()
           break
         case 'PAUSE':
           await api.pause()
@@ -149,14 +92,12 @@ export default function PalletizerControl() {
         case 'STOP':
           await api.stop()
           break
-        case 'HOME':
-          await api.home()
-          break
-        case 'ZERO':
-          await api.zero()
+        case 'RESUME':
+          await api.resume()
           break
         default:
-          await api.sendCommand(command)
+          addError(`Unknown command: ${command}`)
+          return
       }
       
       addDebugMessage(`Command executed: ${command}`)
@@ -164,48 +105,17 @@ export default function PalletizerControl() {
       const errorMsg = error instanceof Error ? error.message : 'Command failed'
       addError(errorMsg)
       addDebugMessage(`Command failed: ${errorMsg}`)
-      throw error
-    }
-  }
-
-  const handleSpeedChange = async (axisId: string, speed: number) => {
-    const updatedAxes = axes.map(axis =>
-      axis.id === axisId ? { ...axis, speed } : axis
-    )
-    setAxes(updatedAxes)
-
-    try {
-      await api.setSpeed({ [axisId.toUpperCase()]: speed })
-      addDebugMessage(`Speed updated: ${axisId.toUpperCase()}=${speed}`)
-    } catch (error) {
-      addError(`Failed to set speed for ${axisId.toUpperCase()}`)
-    }
-  }
-
-  const handleGlobalSpeedChange = async (speed: number) => {
-    setGlobalSpeed(speed)
-    const speedObj: any = {}
-    axes.forEach(axis => {
-      speedObj[axis.name] = speed
-    })
-    
-    const updatedAxes = axes.map(axis => ({ ...axis, speed }))
-    setAxes(updatedAxes)
-
-    try {
-      await api.setSpeed(speedObj)
-      addDebugMessage(`Global speed updated: ${speed}`)
-    } catch (error) {
-      addError('Failed to set global speed')
     }
   }
 
   const handleSaveCommands = async () => {
     try {
-      await api.saveCommands(commandText)
-      addDebugMessage('Commands saved to local storage')
+      const result = await api.saveCommands(commandText)
+      addDebugMessage(result)
+      addError('Script compiled and saved successfully', 'info')
     } catch (error) {
       addError('Failed to save commands')
+      addDebugMessage(`Save failed: ${error}`)
     }
   }
 
@@ -223,6 +133,7 @@ export default function PalletizerControl() {
     try {
       const result = await api.uploadFile(file)
       addDebugMessage(`File uploaded: ${file.name}`)
+      addError('File uploaded and compiled successfully', 'info')
     } catch (error) {
       addError(`Failed to upload file: ${file.name}`)
     }
@@ -237,12 +148,13 @@ export default function PalletizerControl() {
     try {
       const result = await api.executeScript(commandText)
       if (result.success) {
-        addDebugMessage(`Script executed: ${result.commandCount} commands queued`)
+        addDebugMessage(`Script compiled: ${result.commandCount} commands`)
+        addError(`Script compiled: ${result.commandCount} commands ready`, 'info')
       } else {
-        addError(result.error || 'Script execution failed')
+        addError(result.error || 'Script compilation failed')
       }
     } catch (error) {
-      addError('Failed to execute script')
+      addError('Failed to compile script')
     }
   }
 
@@ -250,7 +162,6 @@ export default function PalletizerControl() {
     <div className={`min-h-screen transition-colors duration-200 ${
       darkMode ? 'dark bg-gray-900' : 'bg-gray-50'
     }`}>
-      {/* Error notifications */}
       {errors.length > 0 && (
         <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
           {errors.map((error) => (
@@ -277,19 +188,17 @@ export default function PalletizerControl() {
       )}
 
       <div className="container mx-auto p-4 space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
               Palletizer Control System
             </h1>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Server-Based Architecture
+              HTTP-Based Architecture
             </p>
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Connection Status */}
             <div className="flex items-center gap-2">
               {connected ? (
                 <Wifi className="w-5 h-5 text-green-500" />
@@ -303,7 +212,6 @@ export default function PalletizerControl() {
               </span>
             </div>
 
-            {/* Dark mode toggle */}
             <Button
               variant="outline"
               size="sm"
@@ -312,7 +220,6 @@ export default function PalletizerControl() {
               {darkMode ? '☀️' : '🌙'}
             </Button>
 
-            {/* Debug terminal toggle */}
             <Button
               variant="outline"
               size="sm"
@@ -325,9 +232,7 @@ export default function PalletizerControl() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
           <div className="space-y-6">
-            {/* System Controls */}
             <Card>
               <CardHeader>
                 <CardTitle>System Controls</CardTitle>
@@ -340,41 +245,23 @@ export default function PalletizerControl() {
               </CardContent>
             </Card>
 
-            {/* Speed Control */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Speed Control</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SpeedPanel
-                  axes={axes}
-                  globalSpeed={globalSpeed}
-                  onSpeedChange={handleSpeedChange}
-                  onGlobalSpeedChange={handleGlobalSpeedChange}
-                  disabled={!connected || !esp32Connected}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Status Display */}
             <Card>
               <CardHeader>
                 <CardTitle>System Status</CardTitle>
               </CardHeader>
               <CardContent>
                 <StatusDisplay
-                  position={currentPosition}
-                  systemStatus={systemStatus}
                   esp32Connected={esp32Connected}
-                  queueLength={queueLength}
+                  hasScript={hasScript}
+                  isRunning={isRunning}
+                  currentCommandIndex={currentCommandIndex}
+                  totalCommands={totalCommands}
                 />
               </CardContent>
             </Card>
           </div>
 
-          {/* Right Column */}
           <div className="space-y-6">
-            {/* Command Editor */}
             <Card>
               <CardHeader>
                 <CardTitle>Script Editor</CardTitle>
@@ -391,7 +278,6 @@ export default function PalletizerControl() {
               </CardContent>
             </Card>
 
-            {/* Debug Terminal */}
             {showDebugTerminal && (
               <Card>
                 <CardHeader>

@@ -1,232 +1,234 @@
-import express from 'express';
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
-import { Bonjour } from 'bonjour-service';
-import { ScriptCompiler } from './ScriptCompiler';
-import { MotionPlanner } from './MotionPlanner';
-import { ESP32Manager } from './ESP32Manager';
-import { CommandQueue } from './CommandQueue';
+import express from 'express'
+import { createServer } from 'http'
+import cors from 'cors'
+import { ScriptCompiler } from './ScriptCompiler'
+import { Bonjour } from 'bonjour-service'
 
-const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ 
-  server,
-  path: '/ws'
-});
+const app = express()
+const server = createServer(app)
+const PORT = process.env.PORT || 3001
 
-const PORT = process.env.PORT || 3001;
+const scriptCompiler = new ScriptCompiler()
 
-// Initialize components
-const scriptCompiler = new ScriptCompiler();
-const motionPlanner = new MotionPlanner();
-const commandQueue = new CommandQueue();
-const esp32Manager = new ESP32Manager(wss);
+interface CompiledScript {
+  id: string
+  commands: string[]
+  timestamp: number
+  executed: boolean
+}
 
-// Middleware
-app.use(express.json());
-app.use(express.static('out')); // Serve static files
+interface SystemState {
+  currentScript: CompiledScript | null
+  isRunning: boolean
+  currentCommandIndex: number
+  esp32LastPoll: number
+  esp32Connected: boolean
+}
 
-// API Routes
-app.post('/api/script/parse', async (req, res) => {
-  try {
-    const { script } = req.body;
-    const commands = await scriptCompiler.parse(script);
-    res.json({ commands, success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
+const systemState: SystemState = {
+  currentScript: null,
+  isRunning: false,
+  currentCommandIndex: 0,
+  esp32LastPoll: 0,
+  esp32Connected: false
+}
 
-app.post('/api/script/execute', async (req, res) => {
-  try {
-    const { script } = req.body;
-    
-    // Parse script
-    const commands = await scriptCompiler.parse(script);
-    
-    // Plan motion
-    const optimizedCommands = await motionPlanner.plan(commands);
-    
-    // Queue for execution
-    commandQueue.enqueue(optimizedCommands);
-    
-    // Send to ESP32
-    esp32Manager.executeCommands(optimizedCommands);
-    
-    res.json({ 
-      success: true, 
-      commandCount: optimizedCommands.length,
-      message: 'Script queued for execution'
-    });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
+app.use(cors())
+app.use(express.json())
 
-app.post('/api/control/:action', (req, res) => {
-  const { action } = req.params;
-  
-  try {
-    switch (action) {
-      case 'play':
-        esp32Manager.sendCommand({ cmd: 'RESUME' });
-        break;
-      case 'pause':
-        esp32Manager.sendCommand({ cmd: 'PAUSE' });
-        break;
-      case 'stop':
-        esp32Manager.sendCommand({ cmd: 'STOP' });
-        commandQueue.clear();
-        break;
-      case 'home':
-        esp32Manager.sendCommand({ cmd: 'HOME' });
-        break;
-      case 'zero':
-        esp32Manager.sendCommand({ cmd: 'ZERO' });
-        break;
-      default:
-        throw new Error(`Unknown action: ${action}`);
-    }
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
-
-app.post('/api/move', (req, res) => {
-  try {
-    const { axes, speed, accel } = req.body;
-    
-    esp32Manager.sendCommand({
-      cmd: 'MOVE',
-      data: {
-        ...axes,
-        speed: speed || 1000,
-        accel: accel || 500
-      }
-    });
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
-
-app.post('/api/group-move', (req, res) => {
-  try {
-    const { axes, speed, accel } = req.body;
-    
-    esp32Manager.sendCommand({
-      cmd: 'GROUP',
-      data: {
-        ...axes,
-        speed: speed || 1000,
-        accel: accel || 500
-      }
-    });
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
-
-app.post('/api/speed', (req, res) => {
-  try {
-    const { axes } = req.body;
-    
-    esp32Manager.sendCommand({
-      cmd: 'SET_SPEED',
-      data: axes
-    });
-    
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message, success: false });
-  }
-});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
 
 app.get('/api/status', (req, res) => {
   res.json({
-    esp32Connected: esp32Manager.isConnected(),
-    queueLength: commandQueue.length(),
-    currentPosition: esp32Manager.getCurrentPosition(),
-    systemStatus: esp32Manager.getStatus()
-  });
-});
+    esp32Connected: systemState.esp32Connected,
+    hasScript: !!systemState.currentScript,
+    isRunning: systemState.isRunning,
+    currentCommandIndex: systemState.currentCommandIndex,
+    totalCommands: systemState.currentScript?.commands.length || 0,
+    scriptId: systemState.currentScript?.id || null,
+    lastPoll: systemState.esp32LastPoll
+  })
+})
 
-// WebSocket connection handling for web clients
-wss.on('connection', (ws, req) => {
-  console.log('New WebSocket connection');
-  
-  // Send initial status
-  ws.send(JSON.stringify({
-    type: 'status',
-    data: {
-      esp32Connected: esp32Manager.isConnected(),
-      queueLength: commandQueue.length(),
-      currentPosition: esp32Manager.getCurrentPosition()
+app.post('/api/script/save', (req, res) => {
+  try {
+    const { script } = req.body
+    console.log('Compiling script:', script.substring(0, 100) + '...')
+    
+    const commands = scriptCompiler.compileScript(script)
+    
+    const compiledScript: CompiledScript = {
+      id: Date.now().toString(),
+      commands,
+      timestamp: Date.now(),
+      executed: false
     }
-  }));
+    
+    systemState.currentScript = compiledScript
+    systemState.currentCommandIndex = 0
+    systemState.isRunning = false
+    
+    console.log(`✅ Script compiled: ${commands.length} commands`)
+    
+    res.json({ 
+      success: true, 
+      scriptId: compiledScript.id,
+      commandCount: commands.length,
+      message: 'Script compiled and saved'
+    })
+  } catch (error) {
+    console.error('Script compilation error:', error)
+    res.status(400).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Compilation error' 
+    })
+  }
+})
+
+app.get('/api/script/poll', (req, res) => {
+  systemState.esp32LastPoll = Date.now()
+  systemState.esp32Connected = true
   
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message.toString());
-      
-      // Handle client commands
-      switch (data.type) {
-        case 'ping':
-          ws.send(JSON.stringify({ type: 'pong' }));
-          break;
-        case 'subscribe':
-          // Add to subscribers list for real-time updates
-          esp32Manager.addSubscriber(ws);
-          break;
-      }
-    } catch (error) {
-      console.error('WebSocket message error:', error);
+  const result = {
+    hasNewScript: false,
+    scriptId: null as string | null,
+    commands: [] as string[],
+    shouldStart: systemState.isRunning,
+    currentIndex: systemState.currentCommandIndex
+  }
+  
+  if (systemState.currentScript && !systemState.currentScript.executed) {
+    result.hasNewScript = true
+    result.scriptId = systemState.currentScript.id
+    result.commands = systemState.currentScript.commands
+    systemState.currentScript.executed = true
+    console.log(`📤 ESP32 downloaded script: ${result.commands.length} commands`)
+  }
+  
+  res.json(result)
+})
+
+app.post('/api/control/start', (req, res) => {
+  if (!systemState.currentScript) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'No script loaded' 
+    })
+  }
+  
+  systemState.isRunning = true
+  console.log('▶️ Execution started')
+  
+  res.json({ 
+    success: true,
+    message: 'Execution started'
+  })
+})
+
+app.post('/api/control/stop', (req, res) => {
+  systemState.isRunning = false
+  systemState.currentCommandIndex = 0
+  console.log('⏹️ Execution stopped and reset')
+  
+  res.json({ 
+    success: true,
+    message: 'Execution stopped and reset'
+  })
+})
+
+app.post('/api/control/pause', (req, res) => {
+  systemState.isRunning = false
+  console.log('⏸️ Execution paused')
+  
+  res.json({ 
+    success: true,
+    message: 'Execution paused'
+  })
+})
+
+app.post('/api/control/resume', (req, res) => {
+  if (!systemState.currentScript) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'No script loaded' 
+    })
+  }
+  
+  systemState.isRunning = true
+  console.log('▶️ Execution resumed')
+  
+  res.json({ 
+    success: true,
+    message: 'Execution resumed'
+  })
+})
+
+app.get('/api/command/next', (req, res) => {
+  systemState.esp32LastPoll = Date.now()
+  systemState.esp32Connected = true
+  
+  const result = {
+    hasCommand: false,
+    command: null as string | null,
+    isRunning: systemState.isRunning,
+    commandIndex: systemState.currentCommandIndex,
+    totalCommands: systemState.currentScript?.commands.length || 0,
+    isComplete: false
+  }
+  
+  if (systemState.isRunning && systemState.currentScript) {
+    if (systemState.currentCommandIndex < systemState.currentScript.commands.length) {
+      result.hasCommand = true
+      result.command = systemState.currentScript.commands[systemState.currentCommandIndex]
+      console.log(`📤 Sending command ${systemState.currentCommandIndex + 1}/${systemState.currentScript.commands.length}: ${result.command}`)
+    } else {
+      result.isComplete = true
+      systemState.isRunning = false
+      console.log('✅ All commands completed')
     }
-  });
+  }
   
-  ws.on('close', () => {
-    esp32Manager.removeSubscriber(ws);
-    console.log('WebSocket connection closed');
-  });
-});
+  res.json(result)
+})
 
-// Error handling
-app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Server error:', error);
-  res.status(500).json({ error: 'Internal server error', success: false });
-});
+app.post('/api/command/ack', (req, res) => {
+  const { success, error } = req.body
+  
+  if (success) {
+    systemState.currentCommandIndex++
+    console.log(`✅ Command ${systemState.currentCommandIndex} acknowledged`)
+  } else {
+    console.error(`❌ Command failed: ${error}`)
+    systemState.isRunning = false
+  }
+  
+  res.json({ success: true })
+})
 
-// Start server
+setInterval(() => {
+  const now = Date.now()
+  if (now - systemState.esp32LastPoll > 30000) {
+    if (systemState.esp32Connected) {
+      console.log('❌ ESP32 connection timeout')
+      systemState.esp32Connected = false
+    }
+  }
+}, 10000)
+
 server.listen(PORT, () => {
-  console.log(`🚀 Palletizer Server running on port ${PORT}`);
-  console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/ws`);
-  console.log(`🌐 Web interface: http://localhost:${PORT}`);
+  console.log(`🚀 Palletizer HTTP Server running on port ${PORT}`)
+  console.log(`🌐 Web interface: http://localhost:${PORT}`)
   
-  // Setup mDNS for local domain name
-  const bonjour = new Bonjour();
+  const bonjour = new Bonjour()
   bonjour.publish({
     name: 'palletizer',
     type: 'http',
     port: PORT,
     host: 'palletizer.local'
-  });
+  })
   
-  console.log(`🔗 mDNS: Server available at http://palletizer.local:${PORT}`);
-  console.log(`📡 ESP32 can connect to: palletizer.local:${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Shutting down server...');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
-
-export { app, server, wss };
+  console.log(`🔗 mDNS: Server available at http://palletizer.local:${PORT}`)
+  console.log(`📡 ESP32 can connect to: palletizer.local:${PORT}`)
+})

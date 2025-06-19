@@ -1,259 +1,206 @@
-const WebSocket = require('ws');
+const http = require('http');
+const fs = require('fs');
 
 class ESP32Simulator {
   constructor(serverHost = 'localhost', serverPort = 3001) {
     this.serverHost = serverHost;
     this.serverPort = serverPort;
-    this.ws = null;
-    this.connected = false;
-    this.commandQueue = [];
-    this.currentPosition = { X: 0, Y: 0, Z: 0, T: 0, G: 0 };
     this.isRunning = false;
-    this.speed = { X: 1000, Y: 1000, Z: 1000, T: 1000, G: 1000 };
+    this.currentScript = null;
+    this.currentCommandIndex = 0;
+    this.scriptStorage = new Map();
+    this.lastPollTime = 0;
+    this.pollInterval = 2000;
+    this.commandInterval = 1000;
+    this.lastCommandTime = 0;
   }
 
-  connect() {
-    console.log(`🔌 Connecting to ws://${this.serverHost}:${this.serverPort}/ws`);
+  start() {
+    console.log('🤖 ESP32 Simulator Starting...');
+    console.log('================================');
+    console.log(`📡 Server: ${this.serverHost}:${this.serverPort}`);
     
-    this.ws = new WebSocket(`ws://${this.serverHost}:${this.serverPort}/ws?client=esp32`, {
-      headers: {
-        'User-Agent': 'ESP32-WebSocket-Client'
-      }
-    });
+    this.startPollingLoop();
+    this.startCommandLoop();
     
-    this.ws.on('open', () => {
-      this.connected = true;
-      console.log('✅ WebSocket connected');
-      this.sendStatus();
-    });
-    
-    this.ws.on('message', (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        this.handleMessage(message);
-      } catch (error) {
-        console.log('📨 Raw message:', data.toString());
-        this.handleRawMessage(data.toString());
-      }
-    });
-    
-    this.ws.on('close', () => {
-      this.connected = false;
-      console.log('❌ WebSocket disconnected');
-    });
-    
-    this.ws.on('error', (error) => {
-      console.error('🚨 WebSocket error:', error.message);
+    process.on('SIGINT', () => {
+      console.log('\n🛑 Shutting down simulator...');
+      process.exit(0);
     });
   }
 
-  handleMessage(message) {
-    console.log('📨 Received message:', JSON.stringify(message, null, 2));
-    
-    if (message.type === 'status' && message.data) {
-      console.log('📊 Server status update received, ignoring');
-      return;
-    }
-    
-    switch (message.cmd || message.type) {
-      case 'MOVE':
-        this.handleMove(message.data || message);
-        break;
-      case 'GROUP':
-        this.handleGroupMove(message.data || message);
-        break;
-      case 'HOME':
-        this.handleHome();
-        break;
-      case 'ZERO':
-        this.handleZero();
-        break;
-      case 'STOP':
-        this.handleStop();
-        break;
-      case 'PAUSE':
-        this.handlePause();
-        break;
-      case 'RESUME':
-        this.handleResume();
-        break;
-      case 'SET_SPEED':
-        this.handleSetSpeed(message.data || message);
-        break;
-      case 'STATUS':
-        this.sendStatus();
-        break;
-      default:
-        console.log('❓ Unknown command:', message);
-    }
-  }
-
-  handleRawMessage(message) {
-    console.log('📨 Raw command:', message);
-    
-    if (message.startsWith('M')) {
-      this.parseMotorCommand(message);
-    } else if (message.startsWith('G')) {
-      this.parseGroupCommand(message);
-    } else if (message === 'H') {
-      this.handleHome();
-    } else if (message === 'Z') {
-      this.handleZero();
-    } else if (message === 'S') {
-      this.handleStop();
-    } else {
-      console.log('❓ Unknown raw command:', message);
-    }
-  }
-
-  parseMotorCommand(cmd) {
-    const match = cmd.match(/M([XYZTG])([+-]?\d+)(?:F(\d+))?/);
-    if (match) {
-      const [, axis, steps, feedrate] = match;
-      console.log(`🎯 Motor ${axis}: ${steps} steps${feedrate ? `, feed: ${feedrate}` : ''}`);
-      this.simulateMovement(axis, parseInt(steps), feedrate ? parseInt(feedrate) : null);
-    }
-  }
-
-  parseGroupCommand(cmd) {
-    console.log(`🎯 Group movement: ${cmd}`);
-    const axes = {};
-    const axisMatches = cmd.matchAll(/([XYZTG])([+-]?\d+)/g);
-    for (const match of axisMatches) {
-      axes[match[1]] = parseInt(match[2]);
-    }
-    this.simulateGroupMovement(axes);
-  }
-
-  handleMove(data) {
-    console.log('🎯 Single axis move:', data);
-    Object.keys(data).forEach(axis => {
-      if (['X', 'Y', 'Z', 'T', 'G'].includes(axis)) {
-        this.simulateMovement(axis, data[axis], data.speed);
-      }
-    });
-  }
-
-  handleGroupMove(data) {
-    console.log('🎯 Group move:', data);
-    const axes = {};
-    Object.keys(data).forEach(axis => {
-      if (['X', 'Y', 'Z', 'T', 'G'].includes(axis)) {
-        axes[axis] = data[axis];
-      }
-    });
-    this.simulateGroupMovement(axes);
-  }
-
-  handleHome() {
-    console.log('🏠 Homing all axes');
-    this.currentPosition = { X: 0, Y: 0, Z: 0, T: 0, G: 0 };
-    this.sendResponse('HOMED');
-  }
-
-  handleZero() {
-    console.log('0️⃣ Zeroing all axes');
-    this.currentPosition = { X: 0, Y: 0, Z: 0, T: 0, G: 0 };
-    this.sendResponse('ZEROED');
-  }
-
-  handleStop() {
-    console.log('⏹️ Emergency stop');
-    this.isRunning = false;
-    this.commandQueue = [];
-    this.sendResponse('STOPPED');
-  }
-
-  handlePause() {
-    console.log('⏸️ Pausing execution');
-    this.isRunning = false;
-    this.sendResponse('PAUSED');
-  }
-
-  handleResume() {
-    console.log('▶️ Resuming execution');
-    this.isRunning = true;
-    this.sendResponse('RESUMED');
-  }
-
-  handleSetSpeed(data) {
-    console.log('⚡ Setting speeds:', data);
-    Object.keys(data).forEach(axis => {
-      if (['X', 'Y', 'Z', 'T', 'G'].includes(axis)) {
-        this.speed[axis] = data[axis];
-      }
-    });
-    this.sendResponse('SPEED_SET');
-  }
-
-  simulateMovement(axis, steps, feedrate = null) {
-    setTimeout(() => {
-      this.currentPosition[axis] += steps;
-      console.log(`✅ ${axis} moved to position: ${this.currentPosition[axis]}`);
-      this.sendResponse(`${axis}_MOVED:${this.currentPosition[axis]}`);
-    }, 100);
-  }
-
-  simulateGroupMovement(axes) {
-    setTimeout(() => {
-      Object.keys(axes).forEach(axis => {
-        this.currentPosition[axis] += axes[axis];
-      });
-      console.log('✅ Group movement completed:', this.currentPosition);
-      this.sendResponse('GROUP_MOVED:' + JSON.stringify(this.currentPosition));
-    }, 200);
-  }
-
-  sendResponse(message) {
-    if (this.connected && this.ws) {
-      this.ws.send(message);
-      console.log('📤 Sent response:', message);
-    }
-  }
-
-  sendStatus() {
-    const status = {
-      type: 'status',
-      status: this.isRunning ? 'RUNNING' : 'IDLE',
-      position: this.currentPosition,
-      queue: this.commandQueue.length
-    };
-    
-    if (this.connected && this.ws) {
-      this.ws.send(JSON.stringify(status));
-      console.log('📊 Sent ESP32 status:', status);
-    }
-  }
-
-  startStatusUpdates() {
+  startPollingLoop() {
     setInterval(() => {
-      if (this.connected) {
-        this.sendStatus();
-      }
-    }, 5000);
+      this.pollForScript();
+    }, this.pollInterval);
   }
 
-  disconnect() {
-    if (this.ws) {
-      this.ws.close();
+  startCommandLoop() {
+    setInterval(() => {
+      if (this.isRunning) {
+        this.processNextCommand();
+      }
+    }, this.commandInterval);
+  }
+
+  async pollForScript() {
+    try {
+      const response = await this.httpGet('/api/script/poll');
+      
+      if (response.hasNewScript) {
+        console.log(`📥 New script received: ${response.scriptId}`);
+        console.log(`📋 Commands: ${response.commands.length}`);
+        
+        this.scriptStorage.set(response.scriptId, response.commands);
+        this.currentScript = response.commands;
+        this.currentCommandIndex = 0;
+        
+        console.log('💾 Script saved to local storage');
+      }
+      
+      if (response.shouldStart && !this.isRunning) {
+        this.isRunning = true;
+        console.log('▶️ Execution started');
+      } else if (!response.shouldStart && this.isRunning) {
+        this.isRunning = false;
+        console.log('⏸️ Execution paused');
+      }
+      
+    } catch (error) {
+      console.error('❌ Poll error:', error.message);
     }
+  }
+
+  async processNextCommand() {
+    try {
+      const response = await this.httpGet('/api/command/next');
+      
+      if (response.hasCommand) {
+        console.log(`📤 Command ${response.commandIndex + 1}/${response.totalCommands}: ${response.command}`);
+        
+        const result = await this.simulateArduinoExecution(response.command);
+        
+        await this.httpPost('/api/command/ack', {
+          success: result.success,
+          error: result.error
+        });
+        
+        if (result.success) {
+          console.log(`✅ Command completed: ${response.command}`);
+        } else {
+          console.log(`❌ Command failed: ${result.error}`);
+          this.isRunning = false;
+        }
+        
+      } else if (response.isComplete) {
+        this.isRunning = false;
+        console.log('🏁 All commands completed');
+      }
+      
+    } catch (error) {
+      console.error('❌ Command processing error:', error.message);
+    }
+  }
+
+  async simulateArduinoExecution(command) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (command.startsWith('M') || command.startsWith('G')) {
+          console.log(`🎯 Simulating motor movement: ${command}`);
+          resolve({ success: true });
+        } else if (command === 'H') {
+          console.log('🏠 Simulating homing');
+          resolve({ success: true });
+        } else if (command === 'Z') {
+          console.log('0️⃣ Simulating zero');
+          resolve({ success: true });
+        } else if (command.startsWith('V')) {
+          console.log('⚡ Simulating speed change');
+          resolve({ success: true });
+        } else {
+          console.log(`❓ Unknown command: ${command}`);
+          resolve({ success: false, error: 'Unknown command' });
+        }
+      }, Math.random() * 500 + 200);
+    });
+  }
+
+  httpGet(path) {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: this.serverHost,
+        port: this.serverPort,
+        path: path,
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (error) {
+            reject(new Error('Invalid JSON response'));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+      
+      req.end();
+    });
+  }
+
+  httpPost(path, data) {
+    return new Promise((resolve, reject) => {
+      const jsonData = JSON.stringify(data);
+      
+      const options = {
+        hostname: this.serverHost,
+        port: this.serverPort,
+        path: path,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(jsonData)
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let responseData = '';
+        res.on('data', chunk => responseData += chunk);
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(responseData));
+          } catch (error) {
+            reject(new Error('Invalid JSON response'));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+      
+      req.write(jsonData);
+      req.end();
+    });
   }
 }
 
 function runSimulator() {
-  console.log('🤖 ESP32 Simulator Starting...');
-  console.log('================================');
-  
   const simulator = new ESP32Simulator();
-  
-  simulator.connect();
-  simulator.startStatusUpdates();
-  
-  process.on('SIGINT', () => {
-    console.log('\n🛑 Shutting down simulator...');
-    simulator.disconnect();
-    process.exit(0);
-  });
+  simulator.start();
 }
 
 if (require.main === module) {

@@ -5,13 +5,13 @@ MotorController* motorController;
 CommandProcessor* commandProcessor;
 
 void setup() {
-  Serial.println("\n=== PalletizerSlave Starting ===");
-  Serial.println("Simple OOP Architecture");
+  Serial.begin(115200);
+  Serial.println("Arduino Slave ready");
+  
   motorController = new MotorController();
   motorController->begin();
   commandProcessor = new CommandProcessor(*motorController);
   commandProcessor->begin();
-  Serial.println("Slave system ready!");
 }
 
 void loop() {

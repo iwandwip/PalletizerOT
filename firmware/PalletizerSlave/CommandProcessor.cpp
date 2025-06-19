@@ -57,17 +57,29 @@ void CommandProcessor::processCommand(const String& command) {
 
 void CommandProcessor::handleMove(const String& cmd) {
   parseMove(cmd);
-  Serial.println("B");
+  while (motorController.isMoving()) {
+    motorController.run();
+    delay(1);
+  }
+  Serial.println("OK");
 }
 
 void CommandProcessor::handleGroupMove(const String& cmd) {
   parseMove(cmd);
-  Serial.println("B");
+  while (motorController.isMoving()) {
+    motorController.run();
+    delay(1);
+  }
+  Serial.println("OK");
 }
 
 void CommandProcessor::handleHome() {
   motorController.homeAll();
-  Serial.println("B");
+  while (motorController.isMoving()) {
+    motorController.run();
+    delay(1);
+  }
+  Serial.println("OK");
 }
 
 void CommandProcessor::handleZero() {
