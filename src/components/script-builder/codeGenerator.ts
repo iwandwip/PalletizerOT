@@ -27,7 +27,7 @@ export function generateScriptFromBlocks(blocks: BlockInstance[]): string {
   return lines.join('\n')
 }
 
-function generateCommandFromBlock(block: BlockInstance, definition: any): string {
+function generateCommandFromBlock(block: BlockInstance, definition: { id: string; label: string }): string {
   const params = block.parameters
 
   switch (block.definitionId) {

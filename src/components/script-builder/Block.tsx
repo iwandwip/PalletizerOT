@@ -172,7 +172,11 @@ function ParameterPopover({
   parameters, 
   onParameterChange 
 }: {
-  definition: any
+  definition: {
+    label: string
+    description?: string
+    parameters: Parameter[]
+  }
   parameters: Record<string, any>
   onParameterChange: (name: string, value: any) => void
 }) {

@@ -86,7 +86,7 @@ export function Canvas({
       <div 
         ref={setNodeRef}
         className={cn(
-          "flex-1 relative overflow-auto bg-gray-25 bg-grid-pattern",
+          "flex-1 relative overflow-auto bg-gray-50",
           isOver && "bg-blue-50 border-2 border-blue-200 border-dashed"
         )}
         style={{
