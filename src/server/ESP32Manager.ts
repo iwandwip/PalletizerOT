@@ -29,6 +29,12 @@ export class ESP32Manager {
     this.wss.on('connection', (ws, req) => {
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       
+      console.log('New WebSocket connection:', {
+        userAgent: req.headers['user-agent'],
+        clientParam: url.searchParams.get('client'),
+        url: req.url
+      });
+      
       // Check if this is ESP32 connection (could add authentication here)
       if (req.headers['user-agent']?.includes('ESP32') || 
           url.searchParams.get('client') === 'esp32') {
@@ -70,6 +76,7 @@ export class ESP32Manager {
   }
 
   private handleWebClientConnection(ws: WebSocket) {
+    console.log('Web client connected');
     this.webClients.add(ws);
     
     // Send current status
@@ -77,13 +84,15 @@ export class ESP32Manager {
       type: 'status',
       data: {
         esp32Connected: this.isConnected(),
-        position: this.currentPosition,
-        status: this.systemStatus
+        queueLength: this.commandQueue.length,
+        currentPosition: this.currentPosition,
+        systemStatus: this.systemStatus
       }
     }));
 
     ws.on('close', () => {
       this.webClients.delete(ws);
+      console.log('Web client disconnected');
     });
   }
 

@@ -15,7 +15,11 @@ class ESP32Simulator {
   connect() {
     console.log(`🔌 Connecting to ws://${this.serverHost}:${this.serverPort}/ws`);
     
-    this.ws = new WebSocket(`ws://${this.serverHost}:${this.serverPort}/ws`);
+    this.ws = new WebSocket(`ws://${this.serverHost}:${this.serverPort}/ws?client=esp32`, {
+      headers: {
+        'User-Agent': 'ESP32-WebSocket-Client'
+      }
+    });
     
     this.ws.on('open', () => {
       this.connected = true;
@@ -46,6 +50,11 @@ class ESP32Simulator {
   handleMessage(message) {
     console.log('📨 Received message:', JSON.stringify(message, null, 2));
     
+    if (message.type === 'status' && message.data) {
+      console.log('📊 Server status update received, ignoring');
+      return;
+    }
+    
     switch (message.cmd || message.type) {
       case 'MOVE':
         this.handleMove(message.data || message);
@@ -70,6 +79,9 @@ class ESP32Simulator {
         break;
       case 'SET_SPEED':
         this.handleSetSpeed(message.data || message);
+        break;
+      case 'STATUS':
+        this.sendStatus();
         break;
       default:
         console.log('❓ Unknown command:', message);
@@ -202,16 +214,14 @@ class ESP32Simulator {
   sendStatus() {
     const status = {
       type: 'status',
-      connected: this.connected,
+      status: this.isRunning ? 'RUNNING' : 'IDLE',
       position: this.currentPosition,
-      speed: this.speed,
-      isRunning: this.isRunning,
-      queueLength: this.commandQueue.length
+      queue: this.commandQueue.length
     };
     
     if (this.connected && this.ws) {
       this.ws.send(JSON.stringify(status));
-      console.log('📊 Sent status:', status);
+      console.log('📊 Sent ESP32 status:', status);
     }
   }
 
