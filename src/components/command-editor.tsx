@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, Save, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import { Upload, Save, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Blocks } from "lucide-react"
 import { api } from "@/lib/api"
+import { BlockEditor } from "./script-builder/BlockEditor"
 
 interface CompilationResult {
   success: boolean;
@@ -34,6 +35,7 @@ export default function CommandEditor({
   onExecute
 }: CommandEditorProps) {
   const [activeTab, setActiveTab] = useState("editor")
+  const [editorMode, setEditorMode] = useState<'text' | 'visual'>('text')
   const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -205,25 +207,63 @@ export default function CommandEditor({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Modern Script Language</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Auto-compile</span>
-                <Button
-                  size="sm"
-                  variant={autoCompile ? "default" : "outline"}
-                  onClick={() => setAutoCompile(!autoCompile)}
-                  className="h-6 px-2 text-xs"
-                >
-                  {autoCompile ? "ON" : "OFF"}
-                </Button>
+              <div className="flex items-center gap-4">
+                {/* Editor Mode Toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Editor Mode</span>
+                  <div className="flex border rounded-md">
+                    <Button
+                      size="sm"
+                      variant={editorMode === 'text' ? "default" : "ghost"}
+                      onClick={() => setEditorMode('text')}
+                      className="h-7 px-3 text-xs rounded-r-none"
+                    >
+                      <FileText className="w-3 h-3 mr-1" />
+                      Text
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={editorMode === 'visual' ? "default" : "ghost"}
+                      onClick={() => setEditorMode('visual')}
+                      className="h-7 px-3 text-xs rounded-l-none border-l"
+                    >
+                      <Blocks className="w-3 h-3 mr-1" />
+                      Visual
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Auto-compile toggle (only for text mode) */}
+                {editorMode === 'text' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Auto-compile</span>
+                    <Button
+                      size="sm"
+                      variant={autoCompile ? "default" : "outline"}
+                      onClick={() => setAutoCompile(!autoCompile)}
+                      className="h-6 px-2 text-xs"
+                    >
+                      {autoCompile ? "ON" : "OFF"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
             
-            <Textarea
-              value={commandText}
-              onChange={(e) => onCommandTextChange(e.target.value)}
-              placeholder="Enter your palletizer commands here...&#10;&#10;Example:&#10;X1000 Y2000 F1500&#10;GROUP X0 Y0 Z500&#10;SYNC&#10;&#10;FUNC pickup&#10;  Z-100&#10;  G1&#10;  Z100&#10;ENDFUNC&#10;&#10;CALL pickup"
-              className="min-h-[300px] font-mono text-sm"
-            />
+            {editorMode === 'text' ? (
+              <Textarea
+                value={commandText}
+                onChange={(e) => onCommandTextChange(e.target.value)}
+                placeholder="Enter your palletizer commands here...&#10;&#10;Example:&#10;X1000 Y2000 F1500&#10;GROUP X0 Y0 Z500&#10;SYNC&#10;&#10;FUNC pickup&#10;  Z-100&#10;  G1&#10;  Z100&#10;ENDFUNC&#10;&#10;CALL pickup"
+                className="min-h-[300px] font-mono text-sm"
+              />
+            ) : (
+              <div className="border rounded-lg min-h-[400px]">
+                <BlockEditor
+                  onScriptGenerated={(script) => onCommandTextChange(script)}
+                />
+              </div>
+            )}
           </div>
 
           {compilationResult && !compilationResult.success && (
