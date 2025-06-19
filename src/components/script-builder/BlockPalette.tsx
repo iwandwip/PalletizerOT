@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { BLOCK_DEFINITIONS, BLOCK_CATEGORIES, getBlocksByCategory } from './BlockTypes'
+import { BLOCK_CATEGORIES, getBlocksByCategory } from './BlockTypes'
 import { BlockDefinition } from './types'
 import { cn } from '@/lib/utils'
 

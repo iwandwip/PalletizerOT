@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Play, Pause, Square, Home, Upload, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { Play, Pause, Square, Home, Upload, CheckCircle } from "lucide-react"
 import { ExecutionStatus } from "@/lib/types"
 import { api } from "@/lib/api"
 
@@ -36,10 +35,17 @@ export default function SystemControls({
     if (isPolling) {
       intervalId = setInterval(async () => {
         try {
-          const status = await api.getExecutionStatus()
-          setExecutionStatus(status)
+          const status = await api.getStatus()
+          setExecutionStatus({
+            status: status.isRunning ? 'RUNNING' : 'IDLE',
+            current_line: status.currentCommandIndex,
+            total_lines: status.totalCommands,
+            progress: status.totalCommands > 0 ? (status.currentCommandIndex / status.totalCommands) * 100 : 0,
+            current_command: `Command ${status.currentCommandIndex}`,
+            timestamp: Date.now()
+          })
           
-          if (status.state === 'IDLE' || status.state === 'ERROR') {
+          if (!status.isRunning) {
             setIsPolling(false)
           }
         } catch (error) {
@@ -59,8 +65,8 @@ export default function SystemControls({
   const checkUploadStatus = async () => {
     try {
       const status = await api.getStatus()
-      setUploadReady(status.queueLength > 0)
-    } catch (error) {
+      setUploadReady(status.hasScript)
+    } catch {
       setUploadReady(false)
     }
   }
@@ -88,15 +94,15 @@ export default function SystemControls({
     }
   }
 
-  const formatTime = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`
-    }
-    return `${seconds}s`
-  }
+  // const formatTime = (ms: number) => {
+  //   if (ms < 1000) return `${ms}ms`
+  //   const seconds = Math.floor(ms / 1000)
+  //   const minutes = Math.floor(seconds / 60)
+  //   if (minutes > 0) {
+  //     return `${minutes}m ${seconds % 60}s`
+  //   }
+  //   return `${seconds}s`
+  // }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -107,14 +113,14 @@ export default function SystemControls({
     }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'RUNNING': return <Play className="w-3 h-3" />
-      case 'PAUSED': return <Pause className="w-3 h-3" />
-      case 'ERROR': return <AlertCircle className="w-3 h-3" />
-      default: return <Square className="w-3 h-3" />
-    }
-  }
+  // const getStatusIcon = (status: string) => {
+  //   switch (status) {
+  //     case 'RUNNING': return <Play className="w-3 h-3" />
+  //     case 'PAUSED': return <Pause className="w-3 h-3" />
+  //     case 'ERROR': return <AlertCircle className="w-3 h-3" />
+  //     default: return <Square className="w-3 h-3" />
+  //   }
+  // }
 
   return (
     <div className="space-y-4">
@@ -135,26 +141,27 @@ export default function SystemControls({
         </div>
       )}
 
-      {executionStatus && executionStatus.state !== 'IDLE' && (
+      {executionStatus && executionStatus.status !== 'IDLE' && (
         <Alert>
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${getStatusColor(executionStatus.state)}`} />
-            <span className="font-medium capitalize">{executionStatus.state.toLowerCase()}</span>
+            <div className={`w-2 h-2 rounded-full ${getStatusColor(executionStatus.status)}`} />
+            <span className="font-medium capitalize">{executionStatus.status.toLowerCase()}</span>
           </div>
           <AlertDescription className="mt-2 space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Commands in buffer: {executionStatus.commandsInBuffer}</span>
+              <span>Progress: {executionStatus.current_line}/{executionStatus.total_lines} commands</span>
             </div>
-            {executionStatus.currentCommand && (
+            {executionStatus.current_command && (
               <div className="text-xs font-mono bg-muted p-2 rounded">
-                Current: {executionStatus.currentCommand}
+                Current: {executionStatus.current_command}
               </div>
             )}
-            {executionStatus.position && (
-              <div className="text-xs text-muted-foreground">
-                Position: X{executionStatus.position.X} Y{executionStatus.position.Y} Z{executionStatus.position.Z} T{executionStatus.position.T} G{executionStatus.position.G}
-              </div>
-            )}
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${executionStatus.progress}%` }}
+              />
+            </div>
           </AlertDescription>
         </Alert>
       )}

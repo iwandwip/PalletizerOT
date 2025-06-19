@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Terminal, 
   Trash2, 
@@ -16,13 +16,11 @@ import {
   Filter,
   Minimize2,
   Maximize2,
-  X,
   Wifi,
   WifiOff,
   ChevronRight,
   Activity,
   Clock,
-  CheckCircle2,
   AlertCircle,
   Info
 } from 'lucide-react'
@@ -151,7 +149,7 @@ export default function DebugTerminal({ className }: DebugTerminalProps) {
                   <div>Functions Found: {msg.data.parsingResults.functions.length}</div>
                   {msg.data.parsingResults.functions.map((func, i) => (
                     <div key={i} className="ml-4">
-                      {i === msg.data.parsingResults.functions!.length - 1 ? '└─' : '├─'} {func.name} ({func.commands} commands)
+                      {i === (msg.data?.parsingResults?.functions?.length || 1) - 1 ? '└─' : '├─'} {func.name} ({func.commands} commands)
                     </div>
                   ))}
                   {msg.data.parsingResults.totalCommands && (

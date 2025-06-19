@@ -1,7 +1,9 @@
 interface ServerResponse {
   success: boolean;
   error?: string;
-  data?: any;
+  data?: unknown;
+  message?: string;
+  commandCount?: number;
 }
 
 interface SystemStatus {
@@ -76,7 +78,7 @@ class PalletizerAPI {
         signal: AbortSignal.timeout(5000)
       });
       return response.ok;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

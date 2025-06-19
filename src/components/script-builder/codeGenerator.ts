@@ -82,7 +82,7 @@ function generateCommandFromBlock(block: BlockInstance, definition: { id: string
       if (params.axis === 'all') {
         return `SPEED ALL ${params.speed}`
       } else {
-        return `SPEED ${params.axis.toUpperCase()} ${params.speed}`
+        return `SPEED ${String(params.axis).toUpperCase()} ${params.speed}`
       }
 
     default:
@@ -90,7 +90,7 @@ function generateCommandFromBlock(block: BlockInstance, definition: { id: string
   }
 }
 
-export function parseScriptToBlocks(script: string): BlockInstance[] {
+export function parseScriptToBlocks(): BlockInstance[] {
   // This would be the reverse operation - parsing text script back to blocks
   // For now, returning empty array as this is complex and not immediately needed
   // Could be implemented later for full backward compatibility

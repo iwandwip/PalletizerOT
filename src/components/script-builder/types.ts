@@ -15,7 +15,7 @@ export interface Parameter {
   name: string
   label: string
   type: 'number' | 'select' | 'boolean' | 'text'
-  default: any
+  default: unknown
   options?: string[]
   min?: number
   max?: number
@@ -26,7 +26,7 @@ export interface BlockInstance {
   id: string
   definitionId: string
   position: { x: number; y: number }
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
   connections: {
     inputs: string[]
     outputs: string[]

@@ -26,7 +26,7 @@ export interface TimeoutStats {
 export interface ApiResponse {
   success: boolean
   message: string
-  data?: any
+  data?: unknown
 }
 
 export interface StatusResponse {

@@ -2,7 +2,6 @@ import { BlockDefinition } from './types'
 import { 
   Move, 
   Home, 
-  RotateCcw, 
   Repeat, 
   Code2, 
   Timer, 

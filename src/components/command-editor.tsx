@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -12,7 +12,7 @@ import { BlockEditor } from "./script-builder/BlockEditor"
 
 interface CompilationResult {
   success: boolean;
-  commands?: any[];
+  commands?: unknown[];
   error?: string;
   commandCount?: number;
 }
@@ -44,33 +44,16 @@ export default function CommandEditor({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Check connection status periodically
-  useEffect(() => {
-    checkConnectionStatus()
-    const interval = setInterval(checkConnectionStatus, 3000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Auto-compile when text changes
-  useEffect(() => {
-    if (autoCompile && commandText.trim()) {
-      const timeoutId = setTimeout(() => {
-        handleCompile()
-      }, 1000)
-      return () => clearTimeout(timeoutId)
-    }
-  }, [commandText, autoCompile])
-
   const checkConnectionStatus = async () => {
     try {
       const status = await api.getStatus()
       setConnectionStatus(status.esp32Connected ? 'connected' : 'disconnected')
-    } catch (error) {
+    } catch {
       setConnectionStatus('disconnected')
     }
   }
 
-  const handleCompile = async () => {
+  const handleCompile = useCallback(async () => {
     if (!commandText.trim()) {
       setCompilationResult(null)
       return
@@ -94,7 +77,24 @@ export default function CommandEditor({
     } finally {
       setIsCompiling(false)
     }
-  }
+  }, [commandText])
+
+  // Check connection status periodically
+  useEffect(() => {
+    checkConnectionStatus()
+    const interval = setInterval(checkConnectionStatus, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-compile when text changes
+  useEffect(() => {
+    if (autoCompile && commandText.trim()) {
+      const timeoutId = setTimeout(() => {
+        handleCompile()
+      }, 1000)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [commandText, autoCompile, handleCompile])
 
   const handleExecuteScript = async () => {
     if (!commandText.trim()) {

@@ -1,6 +1,6 @@
 interface Command {
   type: 'MOVE' | 'GROUP' | 'SYNC' | 'CALL' | 'LOOP' | 'SET_SPEED' | 'SET_ACCEL' | 'HOME' | 'ZERO';
-  data?: any;
+  data?: Record<string, unknown>;
   line?: number;
 }
 
@@ -52,7 +52,7 @@ export class ScriptCompiler {
             commands.push(command);
           }
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         throw new Error(`Line ${lineNumber}: ${error.message}`);
       }
       
@@ -83,7 +83,7 @@ export class ScriptCompiler {
               if (command) {
                 commands.push(command);
               }
-            } catch (error: any) {
+            } catch (error: unknown) {
               throw new Error(`Function ${funcName}, Line ${i + 1}: ${error.message}`);
             }
           }
@@ -158,7 +158,7 @@ export class ScriptCompiler {
   }
 
   private parseAxisMove(line: string, lineNumber: number): Command {
-    const data: any = {};
+    const data: unknown = {};
     let speed: number | undefined;
     let accel: number | undefined;
     
@@ -195,7 +195,7 @@ export class ScriptCompiler {
   }
 
   private parseGroupMove(line: string, lineNumber: number): Command {
-    const data: any = {};
+    const data: unknown = {};
     let speed: number | undefined;
     let accel: number | undefined;
     
@@ -264,7 +264,7 @@ export class ScriptCompiler {
   }
 
   private parseSpeedCommand(line: string, lineNumber: number): Command {
-    const data: any = {};
+    const data: unknown = {};
     const parts = line.split(' ').slice(1); // Skip "SPEED"
     
     for (const part of parts) {
@@ -284,7 +284,7 @@ export class ScriptCompiler {
   }
 
   private parseAccelCommand(line: string, lineNumber: number): Command {
-    const data: any = {};
+    const data: unknown = {};
     const parts = line.split(' ').slice(1); // Skip "ACCEL"
     
     for (const part of parts) {
