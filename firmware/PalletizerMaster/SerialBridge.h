@@ -2,24 +2,25 @@
 #define SERIAL_BRIDGE_H
 
 #include "Arduino.h"
+#include "ArduinoJson.h"
 
 class SerialBridge {
 public:
-  SerialBridge(HardwareSerial* serial, int rxPin, int txPin);
-
-  void begin();
+  SerialBridge(HardwareSerial& serial, int rxPin, int txPin);
+  void begin(unsigned long baudRate = 115200);
   void loop();
-  bool sendCommand(const String& command);
-
-  void setDataCallback(void (*callback)(const String&));
+  void sendCommand(const String& command);
+  void setResponseCallback(void (*callback)(const String&));
+  String jsonToSerial(const String& jsonCmd);
+  String serialToJson(const String& serialResp);
 
 private:
-  HardwareSerial* serialPort;
-  int rxPin, txPin;
+  HardwareSerial& serial;
+  int rxPin;
+  int txPin;
   String inputBuffer;
-  void (*dataCallback)(const String&);
-
-  void processIncomingData();
+  void (*responseCallback)(const String&);
+  void processResponse(const String& response);
 };
 
 #endif

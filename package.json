@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3003",
     "dev:server": "tsx src/server/index.ts",
+    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "next build",
     "build:copy": "next build && node scripts/copy-to-esp32.mjs",
     "build:test": "npm run build:copy && cd out && npx http-server -p 3002",
-    "start": "next start",
+    "start": "next start -p 3003",
+    "start:server": "tsx src/server/index.ts",
+    "start:all": "concurrently \"npm run start:server\" \"npm run start\"",
     "lint": "next lint"
   },
   "dependencies": {
@@ -38,6 +41,7 @@
     "@types/node": "^20",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "concurrently": "^8.2.2",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "tailwindcss": "^4",

@@ -1,12 +1,21 @@
 #include "MotorController.h"
+#include "CommandProcessor.h"
 
-MotorController* controller;
+MotorController* motorController;
+CommandProcessor* commandProcessor;
 
 void setup() {
-  controller = new MotorController();
-  controller->begin();
+  Serial.println("\n=== PalletizerSlave Starting ===");
+  Serial.println("Simple OOP Architecture");
+  motorController = new MotorController();
+  motorController->begin();
+  commandProcessor = new CommandProcessor(*motorController);
+  commandProcessor->begin();
+  Serial.println("Slave system ready!");
 }
 
 void loop() {
-  controller->loop();
+  commandProcessor->loop();
+  motorController->run();
+  delay(1);
 }
