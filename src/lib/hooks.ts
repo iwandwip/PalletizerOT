@@ -487,7 +487,7 @@ export function useDebugMonitor() {
       eventSourceRef.current.close()
     }
 
-    const eventSource = new EventSource('/debug')
+    const eventSource = new EventSource('http://localhost:3006/debug')
     eventSourceRef.current = eventSource
 
     eventSource.onopen = () => {

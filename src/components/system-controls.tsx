@@ -36,8 +36,10 @@ export default function SystemControls({
       intervalId = setInterval(async () => {
         try {
           const status = await api.getStatus()
+          const executionState = status.isRunning ? 'RUNNING' : 
+                                status.isPaused ? 'PAUSED' : 'IDLE'
           setExecutionStatus({
-            status: status.isRunning ? 'RUNNING' : 'IDLE',
+            status: executionState,
             current_line: status.currentCommandIndex,
             total_lines: status.totalCommands,
             progress: status.totalCommands > 0 ? (status.currentCommandIndex / status.totalCommands) * 100 : 0,
@@ -45,7 +47,7 @@ export default function SystemControls({
             timestamp: Date.now()
           })
           
-          if (!status.isRunning) {
+          if (!status.isRunning && !status.isPaused) {
             setIsPolling(false)
           }
         } catch (error) {
@@ -75,11 +77,13 @@ export default function SystemControls({
     try {
       await onCommand(command)
       
-      if (command === 'PLAY') {
+      if (['PLAY', 'RESUME'].includes(command)) {
         setIsPolling(true)
       } else if (['PAUSE', 'STOP', 'IDLE'].includes(command)) {
         setIsPolling(false)
-        setExecutionStatus(null)
+        if (command === 'STOP') {
+          setExecutionStatus(null)
+        }
       }
     } catch (error) {
       console.error(`Failed to execute ${command}:`, error)
@@ -90,7 +94,8 @@ export default function SystemControls({
     if (onExecute) {
       onExecute()
     } else {
-      handleCommand('PLAY')
+      const command = executionStatus?.status === 'PAUSED' ? 'RESUME' : 'PLAY'
+      handleCommand(command)
     }
   }
 

@@ -17,10 +17,10 @@ interface BlockPaletteProps {
 export function BlockPalette({ onBlockSelect }: BlockPaletteProps) {
   return (
     <TooltipProvider>
-      <Card className="w-64 h-full flex flex-col">
+      <Card className="w-64 h-full flex flex-col bg-card">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-lg">Block Palette</h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Drag blocks to the canvas to build your script
           </p>
         </div>
@@ -99,7 +99,7 @@ function PaletteBlock({
           onClick={() => onSelect?.(definition)}
         >
           <Card className={cn(
-            "p-3 hover:shadow-md transition-all border-l-4",
+            "p-3 hover:shadow-md transition-all border-l-4 bg-card",
             definition.color.replace('bg-', 'border-l-'),
             "hover:scale-105"
           )}>
@@ -118,7 +118,7 @@ function PaletteBlock({
         <div className="max-w-xs">
           <div className="font-medium">{definition.label}</div>
           {definition.description && (
-            <div className="text-sm text-gray-500 mt-1">
+            <div className="text-sm text-muted-foreground mt-1">
               {definition.description}
             </div>
           )}
@@ -129,7 +129,7 @@ function PaletteBlock({
                 {definition.parameters.map((param) => (
                   <li key={param.name}>
                     <span className="font-mono">{param.name}</span>
-                    {param.required && <span className="text-red-500">*</span>}
+                    {param.required && <span className="text-destructive">*</span>}
                     : {param.type}
                   </li>
                 ))}

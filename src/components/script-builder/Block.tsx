@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Settings, X, GripVertical, Maximize2 } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Settings, X, GripVertical, Maximize2, Play, Square, MoreVertical, Link } from 'lucide-react'
 import { BlockInstance, Parameter } from './types'
 import { getBlockDefinition } from './BlockTypes'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,8 @@ interface BlockProps {
   onSelect?: (blockId: string) => void
   onUpdate?: (blockId: string, updates: Partial<BlockInstance>) => void
   onDelete?: (blockId: string) => void
+  onConnect?: (blockId: string, port: number, type: 'input' | 'output') => void
+  connectionMode?: boolean
   isDraggable?: boolean
   style?: React.CSSProperties
 }
@@ -30,6 +33,8 @@ export function Block({
   onSelect, 
   onUpdate, 
   onDelete,
+  onConnect,
+  connectionMode = false,
   isDraggable = true,
   style
 }: BlockProps) {
@@ -81,6 +86,34 @@ export function Block({
     }
   }
 
+  const handleRoleChange = (role: 'start' | 'end' | 'normal') => {
+    if (onUpdate) {
+      onUpdate(block.id, { role })
+    }
+  }
+
+  const handlePortClick = (port: number, type: 'input' | 'output') => {
+    if (connectionMode && onConnect) {
+      onConnect(block.id, port, type)
+    }
+  }
+
+  const getRoleIcon = () => {
+    switch (block.role) {
+      case 'start': return <Play className="w-3 h-3 text-green-500" />
+      case 'end': return <Square className="w-3 h-3 text-red-500" />
+      default: return null
+    }
+  }
+
+  const getRoleBadge = () => {
+    switch (block.role) {
+      case 'start': return <Badge variant="default" className="text-xs bg-green-500">START</Badge>
+      case 'end': return <Badge variant="default" className="text-xs bg-red-500">END</Badge>
+      default: return <Badge variant="outline" className="text-xs">#{block.executionOrder || 'N/A'}</Badge>
+    }
+  }
+
   return (
     <div 
       ref={setNodeRef} 
@@ -92,8 +125,8 @@ export function Block({
     >
       <Card 
         className={cn(
-          "w-48 cursor-pointer border-2 transition-all select-none hover:shadow-md",
-          isSelected ? "border-blue-500 shadow-lg ring-2 ring-blue-200" : "border-gray-200 hover:border-gray-300",
+          "w-48 cursor-pointer border-2 transition-all select-none hover:shadow-md bg-card",
+          isSelected ? "border-primary shadow-lg ring-2 ring-primary/20" : "border-border hover:border-primary/50",
           `border-l-4 border-l-${definition.color.split('-')[1]}-500`
         )}
         onClick={handleSelect}
@@ -113,10 +146,10 @@ export function Block({
                 <div 
                   {...attributes} 
                   {...listeners} 
-                  className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded"
+                  className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <GripVertical className="w-3 h-3 text-gray-400" />
+                  <GripVertical className="w-3 h-3 text-muted-foreground" />
                 </div>
               )}
               
@@ -126,14 +159,36 @@ export function Block({
                 onParameterChange={handleParameterChange}
               />
               
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
-                onClick={handleDelete}
-              >
-                <X className="w-3 h-3" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleRoleChange('start')}>
+                    <Play className="w-3 h-3 mr-2 text-green-500" />
+                    Set as Start
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRoleChange('end')}>
+                    <Square className="w-3 h-3 mr-2 text-red-500" />
+                    Set as End
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRoleChange('normal')}>
+                    <Link className="w-3 h-3 mr-2" />
+                    Set as Normal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+                    <X className="w-3 h-3 mr-2" />
+                    Delete Block
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -144,15 +199,15 @@ export function Block({
                 const value = block.parameters[param.name] ?? param.default
                 return (
                   <div key={param.name} className="flex justify-between text-xs">
-                    <span className="text-gray-500 truncate mr-2">{param.label}:</span>
-                    <span className="font-mono text-gray-800 truncate">
+                    <span className="text-muted-foreground truncate mr-2">{param.label}:</span>
+                    <span className="font-mono text-foreground truncate">
                       {param.type === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}
                     </span>
                   </div>
                 )
               })}
               {definition.parameters.length > 2 && (
-                <div className="text-xs text-gray-400 text-center">
+                <div className="text-xs text-muted-foreground text-center">
                   +{definition.parameters.length - 2} more...
                 </div>
               )}
@@ -160,23 +215,42 @@ export function Block({
           )}
 
           {/* Connection Points */}
-          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+          <div className="flex justify-between items-center pt-2 border-t border-border">
             {/* Input Port */}
             <div className="flex items-center">
               {definition.inputs > 0 && (
-                <div className="w-3 h-3 bg-gray-300 rounded-full border-2 border-white -ml-6 shadow-sm" />
+                <div 
+                  className={cn(
+                    "w-3 h-3 rounded-full border-2 border-background -ml-6 shadow-sm transition-colors",
+                    connectionMode ? "bg-blue-500 cursor-pointer hover:bg-blue-600" : "bg-muted"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handlePortClick(0, 'input')
+                  }}
+                />
               )}
             </div>
             
-            {/* Block Index/Order */}
-            <Badge variant="outline" className="text-xs">
-              #{Math.floor(Math.random() * 99) + 1}
-            </Badge>
+            {/* Block Role/Order Badge */}
+            <div className="flex items-center gap-1">
+              {getRoleIcon()}
+              {getRoleBadge()}
+            </div>
             
             {/* Output Port */}
             <div className="flex items-center">
               {definition.outputs > 0 && (
-                <div className="w-3 h-3 bg-gray-300 rounded-full border-2 border-white -mr-6 shadow-sm" />
+                <div 
+                  className={cn(
+                    "w-3 h-3 rounded-full border-2 border-background -mr-6 shadow-sm transition-colors",
+                    connectionMode ? "bg-green-500 cursor-pointer hover:bg-green-600" : "bg-muted"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handlePortClick(0, 'output')
+                  }}
+                />
               )}
             </div>
           </div>
@@ -226,7 +300,7 @@ function ParameterPopover({
               {definition.label} Settings
             </h4>
             {definition.description && (
-              <p className="text-sm text-gray-500 mt-1">{definition.description}</p>
+              <p className="text-sm text-muted-foreground mt-1">{definition.description}</p>
             )}
           </div>
           
@@ -259,7 +333,7 @@ function ParameterInput({
     <div className="space-y-2">
       <Label className="text-sm font-medium">
         {parameter.label}
-        {parameter.required && <span className="text-red-500 ml-1">*</span>}
+        {parameter.required && <span className="text-destructive ml-1">*</span>}
       </Label>
       
       {parameter.type === 'number' && (

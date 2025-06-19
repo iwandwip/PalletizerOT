@@ -7,6 +7,7 @@ interface StatusDisplayProps {
   esp32Connected: boolean
   hasScript: boolean
   isRunning: boolean
+  isPaused?: boolean
   currentCommandIndex: number
   totalCommands: number
 }
@@ -15,6 +16,7 @@ export default function StatusDisplay({
   esp32Connected,
   hasScript,
   isRunning,
+  isPaused = false,
   currentCommandIndex,
   totalCommands
 }: StatusDisplayProps) {
@@ -22,6 +24,7 @@ export default function StatusDisplay({
   const getSystemStatus = () => {
     if (!hasScript) return 'NO_SCRIPT'
     if (isRunning) return 'RUNNING'
+    if (isPaused) return 'PAUSED'
     if (currentCommandIndex >= totalCommands && totalCommands > 0) return 'COMPLETED'
     return 'READY'
   }
@@ -31,6 +34,7 @@ export default function StatusDisplay({
   const getStatusVariant = () => {
     switch (systemStatus) {
       case 'RUNNING': return 'default'
+      case 'PAUSED': return 'secondary'
       case 'READY': return 'secondary'
       case 'COMPLETED': return 'outline'
       case 'NO_SCRIPT': return 'destructive'
@@ -41,6 +45,7 @@ export default function StatusDisplay({
   const getStatusColor = () => {
     switch (systemStatus) {
       case 'RUNNING': return 'text-green-600'
+      case 'PAUSED': return 'text-yellow-600'
       case 'READY': return 'text-blue-600'
       case 'COMPLETED': return 'text-purple-600'
       case 'NO_SCRIPT': return 'text-red-600'

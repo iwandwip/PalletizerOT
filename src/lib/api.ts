@@ -10,10 +10,13 @@ interface SystemStatus {
   esp32Connected: boolean;
   hasScript: boolean;
   isRunning: boolean;
+  isPaused: boolean;
   currentCommandIndex: number;
   totalCommands: number;
   scriptId: string | null;
   lastPoll: number;
+  connectedAxes: number;
+  efficiency: number;
 }
 
 class PalletizerAPI {
@@ -61,6 +64,14 @@ class PalletizerAPI {
 
   async resume(): Promise<ServerResponse> {
     const response = await fetch(`${this.baseUrl}/api/control/resume`, {
+      method: 'POST',
+    });
+    
+    return response.json();
+  }
+
+  async zero(): Promise<ServerResponse> {
+    const response = await fetch(`${this.baseUrl}/api/control/zero`, {
       method: 'POST',
     });
     

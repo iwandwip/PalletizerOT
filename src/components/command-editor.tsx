@@ -4,11 +4,11 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, Save, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Blocks } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Upload, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Blocks, Zap, Code2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { BlockEditor } from "./script-builder/BlockEditor"
+import { cn } from "@/lib/utils"
 
 interface CompilationResult {
   success: boolean;
@@ -18,24 +18,13 @@ interface CompilationResult {
 }
 
 interface CommandEditorProps {
-  commandText: string
-  onCommandTextChange: (text: string) => void
-  onSaveCommands: () => void
-  onLoadCommands: () => void
-  onUploadFile: (file: File) => void
-  onExecute?: () => void
+  onNotification?: (message: string, type: 'error' | 'warning' | 'info' | 'success') => void
 }
 
-export default function CommandEditor({
-  commandText,
-  onCommandTextChange,
-  onSaveCommands,
-  onLoadCommands,
-  onUploadFile,
-  onExecute
-}: CommandEditorProps) {
+export function CommandEditor({ onNotification }: CommandEditorProps) {
   const [activeTab, setActiveTab] = useState("editor")
   const [editorMode, setEditorMode] = useState<'text' | 'visual'>('text')
+  const [commandText, setCommandText] = useState('')
   const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
@@ -98,6 +87,7 @@ export default function CommandEditor({
 
   const handleExecuteScript = async () => {
     if (!commandText.trim()) {
+      onNotification?.('No script to execute', 'warning')
       return
     }
 
@@ -106,15 +96,13 @@ export default function CommandEditor({
       const result = await api.executeScript(commandText)
       
       if (result.success) {
-        if (onExecute) {
-          onExecute()
-        }
+        onNotification?.('Script executed successfully', 'success')
       } else {
         throw new Error(result.error || 'Execution failed')
       }
     } catch (error) {
-      console.error('Script execution failed:', error)
-      // You might want to show a toast or alert here
+      const errorMsg = error instanceof Error ? error.message : 'Script execution error'
+      onNotification?.(errorMsg, 'error')
     } finally {
       setIsExecuting(false)
     }
@@ -137,10 +125,10 @@ export default function CommandEditor({
       const reader = new FileReader()
       reader.onload = (e) => {
         const content = e.target?.result as string
-        onCommandTextChange(content)
+        setCommandText(content)
+        onNotification?.(`File ${file.name} loaded successfully`, 'success')
       }
       reader.readAsText(file)
-      onUploadFile(file)
     }
   }
 
@@ -154,6 +142,26 @@ export default function CommandEditor({
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+    onNotification?.('Script saved to file', 'success')
+  }
+
+  const handleSaveToMemory = async () => {
+    try {
+      await api.saveCommands(commandText)
+      onNotification?.('Script saved to memory', 'success')
+    } catch {
+      onNotification?.('Failed to save script', 'error')
+    }
+  }
+
+  const handleLoadFromMemory = async () => {
+    try {
+      const commands = await api.loadCommands()
+      setCommandText(commands)
+      onNotification?.('Script loaded from memory', 'success')
+    } catch {
+      onNotification?.('Failed to load script', 'error')
+    }
   }
 
   const getConnectionStatusColor = () => {
@@ -173,240 +181,328 @@ export default function CommandEditor({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Connection Status */}
-      <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${getConnectionStatusColor()}`} />
-          <span className="text-sm font-medium">{getConnectionStatusText()}</span>
-        </div>
+    <div className="space-y-6">
+      {/* Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="border-0 bg-gradient-to-r from-primary/5 to-primary/10">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className={cn("w-3 h-3 rounded-full animate-pulse", getConnectionStatusColor())} />
+              <div>
+                <p className="text-sm font-medium">{getConnectionStatusText()}</p>
+                <p className="text-xs text-muted-foreground">ESP32 Connection Status</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
         {compilationResult && (
-          <Badge variant={compilationResult.success ? "default" : "destructive"} className="text-xs">
-            {compilationResult.success ? (
-              <>
-                <CheckCircle className="w-3 h-3 mr-1" />
-                {compilationResult.commandCount} Commands
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-3 h-3 mr-1" />
-                Compilation Error
-              </>
-            )}
-          </Badge>
+          <Card className={cn("border-0", 
+            compilationResult.success ? "bg-gradient-to-r from-green-50 to-green-100" : "bg-gradient-to-r from-red-50 to-red-100"
+          )}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                {compilationResult.success ? (
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-600" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">
+                    {compilationResult.success ? `${compilationResult.commandCount} Commands` : 'Compilation Error'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {compilationResult.success ? 'Script compiled successfully' : 'Check script syntax'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="editor">Script Editor</TabsTrigger>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 bg-muted/50">
+          <TabsTrigger value="editor" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Code2 className="w-4 h-4 mr-2" />
+            Script Editor
+          </TabsTrigger>
+          <TabsTrigger value="actions" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Zap className="w-4 h-4 mr-2" />
+            Actions
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="editor" className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Modern Script Language</span>
-              <div className="flex items-center gap-4">
-                {/* Editor Mode Toggle */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Editor Mode</span>
-                  <div className="flex border rounded-md">
-                    <Button
-                      size="sm"
-                      variant={editorMode === 'text' ? "default" : "ghost"}
-                      onClick={() => setEditorMode('text')}
-                      className="h-7 px-3 text-xs rounded-r-none"
-                    >
-                      <FileText className="w-3 h-3 mr-1" />
-                      Text
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={editorMode === 'visual' ? "default" : "ghost"}
-                      onClick={() => setEditorMode('visual')}
-                      className="h-7 px-3 text-xs rounded-l-none border-l"
-                    >
-                      <Blocks className="w-3 h-3 mr-1" />
-                      Visual
-                    </Button>
-                  </div>
-                </div>
-                
-                {/* Auto-compile toggle (only for text mode) */}
-                {editorMode === 'text' && (
+        <TabsContent value="editor" className="space-y-6 mt-6">
+          {/* Editor Controls */}
+          <Card className="border-0 bg-card/50 backdrop-blur">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Modern Script Language</CardTitle>
+                <div className="flex items-center gap-4">
+                  {/* Editor Mode Toggle */}
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Auto-compile</span>
-                    <Button
-                      size="sm"
-                      variant={autoCompile ? "default" : "outline"}
-                      onClick={() => setAutoCompile(!autoCompile)}
-                      className="h-6 px-2 text-xs"
-                    >
-                      {autoCompile ? "ON" : "OFF"}
-                    </Button>
+                    <span className="text-xs text-muted-foreground">Editor Mode</span>
+                    <div className="flex bg-muted rounded-lg p-1">
+                      <Button
+                        size="sm"
+                        variant={editorMode === 'text' ? "default" : "ghost"}
+                        onClick={() => setEditorMode('text')}
+                        className="h-7 px-3 text-xs"
+                      >
+                        <FileText className="w-3 h-3 mr-1" />
+                        Text
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={editorMode === 'visual' ? "default" : "ghost"}
+                        onClick={() => setEditorMode('visual')}
+                        className="h-7 px-3 text-xs"
+                      >
+                        <Blocks className="w-3 h-3 mr-1" />
+                        Visual
+                      </Button>
+                    </div>
                   </div>
-                )}
+                  
+                  {/* Auto-compile toggle (only for text mode) */}
+                  {editorMode === 'text' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Auto-compile</span>
+                      <Button
+                        size="sm"
+                        variant={autoCompile ? "default" : "outline"}
+                        onClick={() => setAutoCompile(!autoCompile)}
+                        className="h-7 px-3 text-xs"
+                      >
+                        {autoCompile ? "ON" : "OFF"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            
-            {editorMode === 'text' ? (
-              <Textarea
-                value={commandText}
-                onChange={(e) => onCommandTextChange(e.target.value)}
-                placeholder="Enter your palletizer commands here...&#10;&#10;Example:&#10;X1000 Y2000 F1500&#10;GROUP X0 Y0 Z500&#10;SYNC&#10;&#10;FUNC pickup&#10;  Z-100&#10;  G1&#10;  Z100&#10;ENDFUNC&#10;&#10;CALL pickup"
-                className="min-h-[300px] font-mono text-sm"
-              />
-            ) : (
-              <div className="border rounded-lg min-h-[400px]">
-                <BlockEditor
-                  onScriptGenerated={(script) => onCommandTextChange(script)}
+            </CardHeader>
+            <CardContent>
+              {editorMode === 'text' ? (
+                <Textarea
+                  value={commandText}
+                  onChange={(e) => setCommandText(e.target.value)}
+                  placeholder="Enter your palletizer commands here...&#10;&#10;Example:&#10;X1000 Y2000 F1500&#10;GROUP X0 Y0 Z500&#10;SYNC&#10;&#10;FUNC pickup&#10;  Z-100&#10;  G1&#10;  Z100&#10;ENDFUNC&#10;&#10;CALL pickup"
+                  className="min-h-[400px] font-mono text-sm bg-background/50 border-0 focus:ring-2 focus:ring-primary/20"
                 />
-              </div>
-            )}
+              ) : (
+                <div className="border-0 rounded-lg min-h-[400px] bg-background/30">
+                  <BlockEditor
+                    onScriptGenerated={(script) => setCommandText(script)}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Button
+              onClick={handleCompile}
+              disabled={isCompiling || !commandText.trim()}
+              variant="outline"
+              className="h-12 flex-col gap-1 hover:bg-primary/5 hover:border-primary/30"
+            >
+              {isCompiling ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Cpu className="w-4 h-4" />
+              )}
+              <span className="text-xs">Compile</span>
+            </Button>
+
+            <Button
+              onClick={handleExecuteScript}
+              disabled={isExecuting || !compilationResult?.success || connectionStatus !== 'connected'}
+              className="h-12 flex-col gap-1 bg-primary hover:bg-primary/90"
+            >
+              {isExecuting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              <span className="text-xs">Execute</span>
+            </Button>
+
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              variant="outline"
+              className="h-12 flex-col gap-1 hover:bg-primary/5 hover:border-primary/30"
+            >
+              <Upload className="w-4 h-4" />
+              <span className="text-xs">Load</span>
+            </Button>
+
+            <Button
+              onClick={handleSaveToFile}
+              variant="outline"
+              className="h-12 flex-col gap-1 hover:bg-primary/5 hover:border-primary/30"
+            >
+              <Download className="w-4 h-4" />
+              <span className="text-xs">Save</span>
+            </Button>
           </div>
-
-          {compilationResult && !compilationResult.success && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Compilation Error:</strong> {compilationResult.error}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {compilationResult?.success && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                Script compiled successfully! Generated {compilationResult.commandCount} commands ready for execution.
-              </AlertDescription>
-            </Alert>
-          )}
         </TabsContent>
 
-        <TabsContent value="actions" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <TabsContent value="actions" className="space-y-6 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* File Operations */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium">File Operations</h3>
-              
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full justify-start"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Load from File
-              </Button>
-              
-              <Button
-                variant="outline"
-                onClick={handleSaveToFile}
-                className="w-full justify-start"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Save to File
-              </Button>
+            <Card className="border-0 bg-card/50 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  File Operations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Load from File
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={handleSaveToFile}
+                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Save to File
+                </Button>
 
-              <Button
-                variant="outline"
-                onClick={onSaveCommands}
-                className="w-full justify-start"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Save to Memory
-              </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleSaveToMemory}
+                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Save to Memory
+                </Button>
 
-              <Button
-                variant="outline"
-                onClick={onLoadCommands}
-                className="w-full justify-start"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Load from Memory
-              </Button>
-            </div>
+                <Button
+                  variant="outline"
+                  onClick={handleLoadFromMemory}
+                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Load from Memory
+                </Button>
+              </CardContent>
+            </Card>
 
             {/* Script Operations */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium">Script Operations</h3>
-              
-              <Button
-                onClick={handleCompile}
-                disabled={isCompiling || !commandText.trim()}
-                className="w-full justify-start"
-              >
-                {isCompiling ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Cpu className="w-4 h-4 mr-2" />
-                )}
-                Compile Script
-              </Button>
+            <Card className="border-0 bg-card/50 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-primary" />
+                  Script Operations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button
+                  onClick={handleCompile}
+                  disabled={isCompiling || !commandText.trim()}
+                  className="w-full justify-start bg-primary hover:bg-primary/90"
+                >
+                  {isCompiling ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Cpu className="w-4 h-4 mr-2" />
+                  )}
+                  Compile Script
+                </Button>
 
-              <Button
-                onClick={handleExecuteScript}
-                disabled={isExecuting || !compilationResult?.success || connectionStatus !== 'connected'}
-                className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {isExecuting ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4 mr-2" />
-                )}
-                Execute Script
-              </Button>
+                <Button
+                  onClick={handleExecuteScript}
+                  disabled={isExecuting || !compilationResult?.success || connectionStatus !== 'connected'}
+                  variant="outline"
+                  className="w-full justify-start hover:bg-green-50 hover:border-green-300 hover:text-green-700"
+                >
+                  {isExecuting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  Execute Script
+                </Button>
 
-              <Button
-                onClick={handleCompileAndExecute}
-                disabled={isCompiling || isExecuting || !commandText.trim() || connectionStatus !== 'connected'}
-                className="w-full justify-start bg-green-600 hover:bg-green-700 text-white"
-              >
-                {isCompiling || isExecuting ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4 mr-2" />
-                )}
-                Compile & Execute
-              </Button>
-            </div>
+                <Button
+                  onClick={handleCompileAndExecute}
+                  disabled={isCompiling || isExecuting || !commandText.trim() || connectionStatus !== 'connected'}
+                  variant="outline"
+                  className="w-full justify-start hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                >
+                  {isCompiling || isExecuting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  Compile & Execute
+                </Button>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Script Examples */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium">Quick Examples</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCommandTextChange('X1000 Y2000 F1500\nSYNC\nX0 Y0 F3000')}
-              >
-                Simple Movement
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCommandTextChange('GROUP X1000 Y2000 Z500\nSYNC\nGROUP X0 Y0 Z0')}
-              >
-                Group Movements
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCommandTextChange('FUNC pickup\n  Z-100\n  G1\n  Z100\nENDFUNC\n\nCALL pickup')}
-              >
-                Function Example
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onCommandTextChange('LOOP 5\n  X100\n  Y100\n  X0\n  Y0\nENDLOOP')}
-              >
-                Loop Example
-              </Button>
-            </div>
-          </div>
+          <Card className="border-0 bg-card/50 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Examples</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('X1000 Y2000 F1500\nSYNC\nX0 Y0 F3000')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Simple Movement
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('GROUP X1000 Y2000 Z500\nSYNC\nGROUP X0 Y0 Z0')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Group Movements
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('FUNC pickup\n  Z-100\n  G1\n  Z100\nENDFUNC\n\nCALL pickup')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Function Example
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('LOOP 5\n  X100\n  Y100\n  X0\n  Y0\nENDLOOP')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Loop Example
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC place_item\n  X{pos_x} Y{pos_y} F2000\n  Z-50\n  G0  // Release gripper\n  Z50\nENDFUNC\n\nLOOP 3\n  LOOP 4\n    CALL place_item\n    X+200\n  ENDLOOP\n  X0\n  Y+150\nENDLOOP')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Palletizing Pattern
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setCommandText('// Advanced Sequence\nFUNC home_all\n  GROUP X0 Y0 Z0 T0 G0\n  SYNC\nENDFUNC\n\nFUNC safety_check\n  // Check all axes\n  X1 Y1 Z1  // Test movement\n  X0 Y0 Z0  // Return home\nENDFUNC\n\nCALL safety_check\nCALL home_all')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Safety & Homing
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

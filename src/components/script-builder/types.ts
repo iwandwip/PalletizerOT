@@ -31,6 +31,8 @@ export interface BlockInstance {
     inputs: string[]
     outputs: string[]
   }
+  role?: 'start' | 'end' | 'normal'
+  executionOrder?: number
 }
 
 export interface Connection {
@@ -45,4 +47,13 @@ export interface BlockEditorState {
   blocks: BlockInstance[]
   connections: Connection[]
   selectedBlockId: string | null
+  connectionMode: boolean
+  connectionStart: { blockId: string; port: number } | null
+}
+
+export interface ConnectionPort {
+  id: string
+  blockId: string
+  type: 'input' | 'output'
+  position: { x: number; y: number }
 }

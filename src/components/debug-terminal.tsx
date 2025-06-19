@@ -14,8 +14,6 @@ import {
   Pause, 
   Play, 
   Filter,
-  Minimize2,
-  Maximize2,
   Wifi,
   WifiOff,
   ChevronRight,
@@ -47,9 +45,6 @@ export default function DebugTerminal({ className }: DebugTerminalProps) {
   
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
-  const [minimized, setMinimized] = useState(false)
-  const [height, setHeight] = useState(400)
-  const [isResizing, setIsResizing] = useState(false)
   const [showExecutionTree, setShowExecutionTree] = useState(true)
 
   useEffect(() => {
@@ -57,32 +52,6 @@ export default function DebugTerminal({ className }: DebugTerminalProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages, autoScroll, paused])
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-  }
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return
-      const newHeight = window.innerHeight - e.clientY - 20
-      setHeight(Math.max(150, Math.min(800, newHeight)))
-    }
-
-    const handleMouseUp = () => {
-      setIsResizing(false)
-    }
-
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-    }
-  }, [isResizing])
 
   const getLevelColor = (level: string) => {
     switch(level) {
@@ -176,39 +145,14 @@ export default function DebugTerminal({ className }: DebugTerminalProps) {
     )
   }
 
-  if (minimized) {
-    return (
-      <Card className="fixed bottom-4 right-4 p-2 flex items-center gap-2 z-50 shadow-lg">
-        <Terminal className="h-4 w-4" />
-        <span className="text-sm font-medium">Debug Terminal</span>
-        {executionState.isExecuting && (
-          <Badge variant="default" className="text-xs">
-            {executionState.currentCommand}/{executionState.totalCommands}
-          </Badge>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setMinimized(false)}
-          className="h-6 w-6 p-0"
-        >
-          <Maximize2 className="h-3 w-3" />
-        </Button>
-      </Card>
-    )
-  }
 
   return (
     <Card 
-      className={`fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur shadow-2xl ${className}`}
-      style={{ height: `${height}px` }}
+      className={`border bg-background/95 backdrop-blur shadow-lg rounded-lg ${className}`}
+      style={{ minHeight: '500px', maxHeight: '600px' }}
     >
-      <div
-        className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-primary/20 transition-colors"
-        onMouseDown={handleMouseDown}
-      />
       
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col" style={{ height: '500px' }}>
         <div className="flex items-center justify-between p-2 border-b bg-muted/50">
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4" />
@@ -256,15 +200,6 @@ export default function DebugTerminal({ className }: DebugTerminalProps) {
               className="h-7 w-7 p-0"
             >
               {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setMinimized(true)}
-              title="Minimize"
-              className="h-7 w-7 p-0"
-            >
-              <Minimize2 className="h-3 w-3" />
             </Button>
           </div>
         </div>

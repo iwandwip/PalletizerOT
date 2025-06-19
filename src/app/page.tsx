@@ -1,61 +1,83 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { 
-  AlertTriangle, 
-  X, 
+  PlayCircle, 
+  PauseCircle, 
+  StopCircle, 
+  Settings, 
   Terminal, 
-  Eye, 
-  EyeOff, 
+  Code, 
+  MonitorSpeaker,
+  Layers3,
+  Zap,
+  Activity,
+  Wifi,
+  WifiOff,
   Menu,
-  Play,
-  Pause,
-  Square
-} from "lucide-react"
-import SystemControls from '@/components/system-controls'
-import CommandEditor from '@/components/command-editor'
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  TrendingUp
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+import { CommandEditor } from '@/components/command-editor'
+import DebugTerminal from '@/components/debug-terminal'
 import StatusDisplay from '@/components/status-display'
+import SystemControls from '@/components/system-controls'
+import SpeedPanel from '@/components/speed-panel'
+import { SettingsModal } from '@/components/settings-modal'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { api } from '@/lib/api'
 
 interface ErrorNotification {
   id: string
   message: string
-  type: 'error' | 'warning' | 'info'
+  type: 'error' | 'warning' | 'info' | 'success'
 }
 
-export default function PalletizerControl() {
-  const [commandText, setCommandText] = useState('')
-  const [darkMode, setDarkMode] = useState(false)
+export default function PalletizerInterface() {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [currentTab, setCurrentTab] = useState('editor')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [errors, setErrors] = useState<ErrorNotification[]>([])
-  const [showDebugTerminal, setShowDebugTerminal] = useState(true)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
+  // System state
   const [connected, setConnected] = useState(false)
   const [esp32Connected, setEsp32Connected] = useState(false)
   const [hasScript, setHasScript] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [currentCommandIndex, setCurrentCommandIndex] = useState(0)
   const [totalCommands, setTotalCommands] = useState(0)
-  
-  const [debugMessages, setDebugMessages] = useState<string[]>([])
+  const [systemStatus, setSystemStatus] = useState<'IDLE' | 'RUNNING' | 'PAUSED' | 'ERROR'>('IDLE')
 
-  useEffect(() => {
-    checkServerStatus()
-    const statusInterval = setInterval(checkServerStatus, 3000)
-    return () => clearInterval(statusInterval)
-  }, [])
+  // Stats
+  const [executedCommands, setExecutedCommands] = useState(0)
+  const [executionTime, setExecutionTime] = useState('00:00')
+  const [startTime, setStartTime] = useState<number | null>(null)
+  const [connectedAxes, setConnectedAxes] = useState(5)
+  const [efficiency, setEfficiency] = useState(100)
 
-  const addDebugMessage = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    setDebugMessages(prev => [...prev, `[${timestamp}] ${message}`].slice(-100))
-  }
+  // Speed control
+  const [globalSpeed, setGlobalSpeed] = useState(1000)
+  const [axisConfig, setAxisConfig] = useState([
+    { id: 'X', name: 'X Axis', speed: 1000 },
+    { id: 'Y', name: 'Y Axis', speed: 1000 },
+    { id: 'Z', name: 'Z Axis', speed: 500 },
+    { id: 'T', name: 'T Axis', speed: 800 },
+    { id: 'G', name: 'G Axis', speed: 300 }
+  ])
 
-  const checkServerStatus = async () => {
+  const checkServerStatus = useCallback(async () => {
     try {
       const ping = await api.ping()
       setConnected(ping)
@@ -67,401 +89,527 @@ export default function PalletizerControl() {
         setIsRunning(status.isRunning)
         setCurrentCommandIndex(status.currentCommandIndex)
         setTotalCommands(status.totalCommands)
+        setExecutedCommands(status.currentCommandIndex)
+        
+        // Update stats
+        if (status.connectedAxes !== undefined) {
+          setConnectedAxes(status.connectedAxes)
+        }
+        if (status.efficiency !== undefined) {
+          setEfficiency(status.efficiency)
+        }
+        
+        // Update system status
+        if (!status.esp32Connected) {
+          setSystemStatus('ERROR')
+        } else if (status.isRunning) {
+          setSystemStatus('RUNNING')
+          // Start timer if not already started
+          if (!startTime) {
+            setStartTime(Date.now())
+          }
+        } else if (status.isPaused) {
+          setSystemStatus('PAUSED')
+          // Keep timer running when paused
+        } else {
+          setSystemStatus('IDLE')
+          // Reset timer when stopped
+          if (startTime && status.currentCommandIndex === 0) {
+            setStartTime(null)
+            setExecutionTime('00:00')
+          }
+        }
       }
     } catch {
       setConnected(false)
       setEsp32Connected(false)
+      setSystemStatus('ERROR')
     }
-  }
+  }, [startTime])
 
-  const addError = (message: string, type: 'error' | 'warning' | 'info' = 'error') => {
-    const error: ErrorNotification = {
+  useEffect(() => {
+    checkServerStatus()
+    const statusInterval = setInterval(checkServerStatus, 2000)
+    return () => clearInterval(statusInterval)
+  }, [checkServerStatus])
+
+  // Update execution timer
+  useEffect(() => {
+    if (startTime && (systemStatus === 'RUNNING' || systemStatus === 'PAUSED')) {
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const minutes = Math.floor(elapsed / 60000)
+        const seconds = Math.floor((elapsed % 60000) / 1000)
+        setExecutionTime(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`)
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [startTime, systemStatus])
+
+
+  const addNotification = (message: string, type: 'error' | 'warning' | 'info' | 'success' = 'info') => {
+    const notification: ErrorNotification = {
       id: Date.now().toString(),
       message,
       type
     }
-    setErrors(prev => [...prev, error])
+    setErrors(prev => [...prev, notification])
     
     setTimeout(() => {
-      removeError(error.id)
-    }, 5000)
+      removeNotification(notification.id)
+    }, type === 'error' ? 7000 : 4000)
   }
 
-  const removeError = (id: string) => {
+  const removeNotification = (id: string) => {
     setErrors(prev => prev.filter(error => error.id !== id))
   }
 
   const handleCommand = async (command: string) => {
     try {
-      addDebugMessage(`Sending command: ${command}`)
-      
       switch (command) {
         case 'PLAY':
           await api.start()
+          addNotification('Execution started', 'success')
           break
         case 'PAUSE':
           await api.pause()
+          addNotification('Execution paused', 'warning')
           break
         case 'STOP':
           await api.stop()
+          addNotification('Execution stopped', 'info')
           break
         case 'RESUME':
           await api.resume()
+          addNotification('Execution resumed', 'success')
+          break
+        case 'ZERO':
+          await api.zero()
+          addNotification('Homing all axes to zero position', 'info')
           break
         default:
-          addError(`Unknown command: ${command}`)
+          addNotification(`Unknown command: ${command}`, 'error')
           return
       }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Command error'
+      addNotification(errorMsg, 'error')
+    }
+  }
+
+  const handleGlobalSpeedChange = async (speed: number) => {
+    setGlobalSpeed(speed)
+    // Update all axis speeds
+    setAxisConfig(prev => prev.map(axis => ({ ...axis, speed })))
+    
+    try {
+      // Send speed update to ESP32
+      const speedData: Record<string, number> = {}
+      axisConfig.forEach(axis => {
+        speedData[axis.id] = speed
+      })
       
-      addDebugMessage(`Command executed: ${command}`)
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Command failed'
-      addError(errorMsg)
-      addDebugMessage(`Command failed: ${errorMsg}`)
-    }
-  }
-
-  const handleSaveCommands = async () => {
-    try {
-      const result = await api.saveCommands(commandText)
-      addDebugMessage(result)
-      addError('Script compiled and saved successfully', 'info')
-    } catch (error) {
-      addError('Failed to save commands')
-      addDebugMessage(`Save failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
-  const handleLoadCommands = async () => {
-    try {
-      const commands = await api.loadCommands()
-      setCommandText(commands)
-      addDebugMessage('Commands loaded from local storage')
-    } catch {
-      addError('Failed to load commands')
-    }
-  }
-
-  const handleUploadFile = async (file: File) => {
-    try {
-      await api.uploadFile(file)
-      addDebugMessage(`File uploaded: ${file.name}`)
-      addError('File uploaded and compiled successfully', 'info')
-    } catch {
-      addError(`Failed to upload file: ${file.name}`)
-    }
-  }
-
-  const handleExecuteScript = async () => {
-    if (!commandText.trim()) {
-      addError('No script to execute')
-      return
-    }
-
-    try {
-      const result = await api.executeScript(commandText)
-      if (result.success) {
-        addDebugMessage(`Script compiled: ${result.commandCount} commands`)
-        addError(`Script compiled: ${result.commandCount} commands ready`, 'info')
-      } else {
-        addError(result.error || 'Script compilation failed')
+      const response = await fetch('http://localhost:3006/api/speed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speeds: speedData })
+      })
+      
+      if (response.ok) {
+        addNotification('Speed updated successfully', 'success')
       }
     } catch {
-      addError('Failed to compile script')
+      addNotification('Failed to update speed', 'error')
     }
   }
 
-  const StatusBar = () => (
-    <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border-b shadow-sm">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${
-            connected ? 'bg-green-500' : 'bg-red-500'
-          }`} />
-          <span className="text-sm font-medium">
-            {connected ? 'Server Online' : 'Server Offline'}
-          </span>
-        </div>
-        
-        <Separator orientation="vertical" className="h-4" />
-        
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${
-            esp32Connected ? 'bg-green-500' : 'bg-red-500'
-          }`} />
-          <span className="text-sm font-medium">
-            ESP32 {esp32Connected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
-        
-        {hasScript && (
-          <>
-            <Separator orientation="vertical" className="h-4" />
-            <Badge variant={isRunning ? "default" : "secondary"} className="text-xs">
-              {isRunning ? 'Running' : 'Ready'} 
-              {totalCommands > 0 && ` (${currentCommandIndex}/${totalCommands})`}
-            </Badge>
-          </>
-        )}
-      </div>
+  const handleAxisSpeedChange = async (axisId: string, speed: number) => {
+    setAxisConfig(prev => prev.map(axis => 
+      axis.id === axisId ? { ...axis, speed } : axis
+    ))
+    
+    try {
+      const response = await fetch('http://localhost:3006/api/speed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speeds: { [axisId]: speed } })
+      })
+      
+      if (response.ok) {
+        addNotification(`${axisId} axis speed updated`, 'success')
+      }
+    } catch {
+      addNotification('Failed to update axis speed', 'error')
+    }
+  }
 
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowDebugTerminal(!showDebugTerminal)}
-          className="hidden md:flex"
-        >
-          {showDebugTerminal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          <Terminal className="w-4 h-4 ml-1" />
-        </Button>
-        
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setDarkMode(!darkMode)}
-        >
-          {darkMode ? '☀️' : '🌙'}
-        </Button>
+  const statusColors = {
+    IDLE: 'bg-gray-500',
+    RUNNING: 'bg-primary',
+    PAUSED: 'bg-yellow-500',
+    ERROR: 'bg-destructive'
+  }
 
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="sm" className="md:hidden">
-              <Menu className="w-4 h-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-80">
-            <MobileSidebar 
-              onCommand={handleCommand}
-              connected={connected}
-              esp32Connected={esp32Connected}
-              hasScript={hasScript}
-              isRunning={isRunning}
-              currentCommandIndex={currentCommandIndex}
-              totalCommands={totalCommands}
-              onClose={() => setMobileMenuOpen(false)}
-            />
-          </SheetContent>
-        </Sheet>
-      </div>
-    </div>
-  )
+  const statusTexts = {
+    IDLE: 'System Idle',
+    RUNNING: 'Running',
+    PAUSED: 'Paused',
+    ERROR: 'Error'
+  }
 
-  const MobileSidebar = ({ 
-    onCommand, 
-    connected, 
-    esp32Connected, 
-    hasScript, 
-    isRunning, 
-    currentCommandIndex, 
-    totalCommands,
-    onClose 
-  }: {
-    onCommand: (command: string) => void
-    connected: boolean
-    esp32Connected: boolean
-    hasScript: boolean
-    isRunning: boolean
-    currentCommandIndex: number
-    totalCommands: number
-    onClose: () => void
-  }) => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">System Controls</h2>
-        <div className="mt-4 space-y-2">
-          <Button
-            onClick={() => { onCommand('PLAY'); onClose() }}
-            disabled={!connected || !esp32Connected || !hasScript}
-            className="w-full justify-start"
-            variant={isRunning ? "secondary" : "default"}
-          >
-            <Play className="w-4 h-4 mr-2" />
-            {isRunning ? 'Playing' : 'Play'}
-          </Button>
-          
-          <Button
-            onClick={() => { onCommand('PAUSE'); onClose() }}
-            disabled={!connected || !esp32Connected || !isRunning}
-            className="w-full justify-start"
-            variant="outline"
-          >
-            <Pause className="w-4 h-4 mr-2" />
-            Pause
-          </Button>
-          
-          <Button
-            onClick={() => { onCommand('STOP'); onClose() }}
-            disabled={!connected || !esp32Connected}
-            className="w-full justify-start"
-            variant="destructive"
-          >
-            <Square className="w-4 h-4 mr-2" />
-            Stop
-          </Button>
-        </div>
-      </div>
+  const notificationIcons = {
+    error: AlertTriangle,
+    warning: AlertTriangle,
+    info: CheckCircle2,
+    success: CheckCircle2
+  }
 
-      <Separator />
-
-      <div>
-        <h2 className="text-lg font-semibold">System Status</h2>
-        <div className="mt-4">
-          <StatusDisplay
-            esp32Connected={esp32Connected}
-            hasScript={hasScript}
-            isRunning={isRunning}
-            currentCommandIndex={currentCommandIndex}
-            totalCommands={totalCommands}
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      <div>
-        <h2 className="text-lg font-semibold">Debug Terminal</h2>
-        <Button
-          onClick={() => { setShowDebugTerminal(!showDebugTerminal); onClose() }}
-          className="w-full justify-start mt-2"
-          variant="outline"
-        >
-          {showDebugTerminal ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-          {showDebugTerminal ? 'Hide' : 'Show'} Terminal
-        </Button>
-      </div>
-    </div>
-  )
+  const progress = totalCommands > 0 ? (currentCommandIndex / totalCommands) * 100 : 0
 
   return (
-    <div className={`min-h-screen transition-colors duration-200 ${
-      darkMode ? 'dark bg-gray-900' : 'bg-gray-50'
-    }`}>
-      {/* Toast Notifications */}
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+      {/* Notifications */}
       {errors.length > 0 && (
         <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
-          {errors.map((error) => (
-            <Alert 
-              key={error.id} 
-              variant={error.type === 'error' ? 'destructive' : 'default'}
-              className="relative shadow-lg"
-            >
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription className="pr-8 text-sm">
-                {error.message}
-              </AlertDescription>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-1 right-1 h-6 w-6"
-                onClick={() => removeError(error.id)}
+          {errors.map((error) => {
+            const Icon = notificationIcons[error.type]
+            return (
+              <Alert 
+                key={error.id} 
+                variant={error.type === 'error' ? 'destructive' : 'default'}
+                className={cn(
+                  "relative shadow-lg backdrop-blur border-l-4 animate-in slide-in-from-right-full",
+                  {
+                    'border-l-destructive bg-destructive/5': error.type === 'error',
+                    'border-l-yellow-500 bg-yellow-50': error.type === 'warning',
+                    'border-l-primary bg-primary/5': error.type === 'success',
+                    'border-l-blue-500 bg-blue-50': error.type === 'info'
+                  }
+                )}
               >
-                <X className="h-3 w-3" />
-              </Button>
-            </Alert>
-          ))}
+                <Icon className="h-4 w-4" />
+                <AlertDescription className="pr-8 text-sm font-medium">
+                  {error.message}
+                </AlertDescription>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1 right-1 h-6 w-6 hover:bg-background/20"
+                  onClick={() => removeNotification(error.id)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Alert>
+            )
+          })}
         </div>
       )}
 
-      {/* Status Bar */}
-      <StatusBar />
+      {/* Header */}
+      <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
+        <div className="container flex h-16 items-center justify-between px-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden hover:bg-primary/10"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+            
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Layers3 className="h-8 w-8 text-primary" />
+                <div className={cn(
+                  "absolute -top-1 -right-1 h-3 w-3 rounded-full transition-colors",
+                  connected ? "bg-primary animate-pulse" : "bg-destructive"
+                )} />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-foreground">PalletizerOT</h1>
+                <p className="text-xs text-muted-foreground">Industrial Control System</p>
+              </div>
+            </div>
+          </div>
 
-      {/* Main Content */}
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-73px)]">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:block w-80 bg-white dark:bg-gray-800 border-r overflow-y-auto">
-          <div className="p-6 space-y-6">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                Palletizer Control
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                HTTP-Based Architecture
-              </p>
+          <div className="flex items-center gap-4">
+            {/* Connection Status */}
+            <div className="flex items-center gap-2">
+              {connected ? (
+                <Wifi className="h-4 w-4 text-primary" />
+              ) : (
+                <WifiOff className="h-4 w-4 text-destructive" />
+              )}
+              <Badge 
+                variant={connected ? "default" : "destructive"}
+                className="text-xs font-medium"
+              >
+                {connected ? 'Connected' : 'Disconnected'}
+              </Badge>
             </div>
 
-            <Separator />
-
-            <div>
-              <h2 className="text-lg font-semibold mb-4">System Controls</h2>
-              <SystemControls
-                onCommand={handleCommand}
-                disabled={!connected || !esp32Connected}
-              />
+            {/* System Status */}
+            <div className="flex items-center gap-2">
+              <div className={cn("h-2 w-2 rounded-full animate-pulse", statusColors[systemStatus])} />
+              <span className="text-sm font-medium">{statusTexts[systemStatus]}</span>
             </div>
 
-            <Separator />
+            {/* Progress indicator */}
+            {isRunning && totalCommands > 0 && (
+              <div className="hidden md:flex items-center gap-2 min-w-24">
+                <Progress value={progress} className="w-16 h-2" />
+                <span className="text-xs font-mono">
+                  {currentCommandIndex}/{totalCommands}
+                </span>
+              </div>
+            )}
 
-            <div>
-              <h2 className="text-lg font-semibold mb-4">System Status</h2>
-              <StatusDisplay
-                esp32Connected={esp32Connected}
-                hasScript={hasScript}
-                isRunning={isRunning}
-                currentCommandIndex={currentCommandIndex}
-                totalCommands={totalCommands}
-              />
-            </div>
+            {/* Theme Toggle */}
+            <ThemeToggle />
+            
+            {/* Settings */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="hover:bg-primary/10"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="container mx-auto p-4 space-y-6">
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left Sidebar - Controls */}
+          <div className={cn(
+            "lg:col-span-1 space-y-4",
+            "lg:block",
+            sidebarOpen ? "block" : "hidden"
+          )}>
+            {/* Quick Controls */}
+            <Card className="border-0 shadow-lg bg-card/50 backdrop-blur-sm hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MonitorSpeaker className="h-5 w-5 text-primary" />
+                  System Control
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    size="sm" 
+                    className="w-full bg-primary hover:bg-primary/90 shadow-sm"
+                    disabled={systemStatus === 'RUNNING' || !connected || !esp32Connected}
+                    onClick={() => handleCommand(systemStatus === 'PAUSED' ? 'RESUME' : 'PLAY')}
+                  >
+                    <PlayCircle className="h-4 w-4 mr-1" />
+                    {systemStatus === 'PAUSED' ? 'Resume' : 'Start'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="w-full hover:bg-yellow-50 hover:border-yellow-300"
+                    disabled={systemStatus !== 'RUNNING'}
+                    onClick={() => handleCommand('PAUSE')}
+                  >
+                    <PauseCircle className="h-4 w-4 mr-1" />
+                    Pause
+                  </Button>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="destructive"
+                  className="w-full shadow-sm"
+                  disabled={systemStatus === 'IDLE'}
+                  onClick={() => handleCommand('STOP')}
+                >
+                  <StopCircle className="h-4 w-4 mr-1" />
+                  Stop
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Status Display */}
+            <Card className="border-0 shadow-lg bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  System Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <StatusDisplay
+                  esp32Connected={esp32Connected}
+                  hasScript={hasScript}
+                  isRunning={isRunning}
+                  isPaused={systemStatus === 'PAUSED'}
+                  currentCommandIndex={currentCommandIndex}
+                  totalCommands={totalCommands}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Speed Controls */}
+            <Card className="border-0 shadow-lg bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  Speed Control
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SpeedPanel
+                  axes={axisConfig}
+                  globalSpeed={globalSpeed}
+                  onGlobalSpeedChange={handleGlobalSpeedChange}
+                  onAxisSpeedChange={handleAxisSpeedChange}
+                  onSetAllSpeeds={async () => {
+                    // Apply global speed to all axes
+                    await handleGlobalSpeedChange(globalSpeed)
+                  }}
+                  onSetAxisSpeed={async (axisId: string) => {
+                    // Apply individual axis speed
+                    const axis = axisConfig.find(a => a.id === axisId)
+                    if (axis) {
+                      await handleAxisSpeedChange(axisId, axis.speed)
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="lg:col-span-3">
+            <Card className="border-0 shadow-xl bg-card/50 backdrop-blur-sm">
+              <CardHeader className="border-b bg-muted/30">
+                <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 bg-background/50">
+                    <TabsTrigger 
+                      value="editor" 
+                      className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <Code className="h-4 w-4" />
+                      Script Editor
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="terminal"
+                      className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <Terminal className="h-4 w-4" />
+                      Debug Terminal
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="system"
+                      className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Configuration
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </CardHeader>
+
+              <CardContent className="p-0">
+                <Tabs value={currentTab} className="w-full">
+                  <TabsContent value="editor" className="m-0 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-foreground">Script Editor</h2>
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                          Advanced Mode
+                        </Badge>
+                      </div>
+                      <Separator />
+                      <CommandEditor onNotification={addNotification} />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="terminal" className="m-0 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-foreground">Debug Terminal</h2>
+                        <Badge variant="secondary" className="bg-accent/50 text-accent-foreground">
+                          Real Time
+                        </Badge>
+                      </div>
+                      <Separator />
+                      <DebugTerminal />
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="system" className="m-0 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-foreground">System Configuration</h2>
+                        <Badge variant="secondary" className="bg-secondary/50 text-secondary-foreground">
+                          Settings
+                        </Badge>
+                      </div>
+                      <Separator />
+                      <SystemControls
+                        onCommand={handleCommand}
+                        disabled={!connected || !esp32Connected}
+                      />
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        {/* Main Editor Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 p-4 lg:p-6">
-            <CommandEditor
-              commandText={commandText}
-              onCommandTextChange={setCommandText}
-              onSaveCommands={handleSaveCommands}
-              onLoadCommands={handleLoadCommands}
-              onUploadFile={handleUploadFile}
-              onExecute={handleExecuteScript}
-            />
-          </div>
-
-          {/* Debug Terminal */}
-          {showDebugTerminal && (
-            <div className="border-t bg-white dark:bg-gray-800 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Terminal className="w-4 h-4" />
-                  <span className="font-medium">Debug Terminal</span>
-                  <Badge variant="outline" className="text-xs">
-                    {debugMessages.length} messages
-                  </Badge>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDebugMessages([])}
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowDebugTerminal(false)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+        {/* Footer Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="border-0 bg-gradient-to-br from-card/30 to-primary/5 backdrop-blur hover:shadow-md transition-shadow">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+                <div className="text-2xl font-bold text-primary">{executedCommands}</div>
               </div>
-              
-              <div className="bg-black text-green-400 p-3 rounded font-mono text-xs lg:text-sm h-48 overflow-y-auto">
-                {debugMessages.length === 0 ? (
-                  <div className="text-gray-500">No messages yet...</div>
-                ) : (
-                  debugMessages.map((message, index) => (
-                    <div key={index} className="whitespace-pre-wrap break-all">
-                      {message}
-                    </div>
-                  ))
-                )}
+              <p className="text-xs text-muted-foreground">Executed Commands</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 bg-gradient-to-br from-card/30 to-primary/5 backdrop-blur hover:shadow-md transition-shadow">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Clock className="h-4 w-4 text-primary" />
+                <div className="text-2xl font-bold text-primary">{executionTime}</div>
               </div>
-            </div>
-          )}
+              <p className="text-xs text-muted-foreground">Execution Time</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 bg-gradient-to-br from-card/30 to-primary/5 backdrop-blur hover:shadow-md transition-shadow">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <div className="text-2xl font-bold text-primary">{connectedAxes}</div>
+              </div>
+              <p className="text-xs text-muted-foreground">Connected Axes</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 bg-gradient-to-br from-card/30 to-primary/5 backdrop-blur hover:shadow-md transition-shadow">
+            <CardContent className="p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                <div className="text-2xl font-bold text-primary">{efficiency}%</div>
+              </div>
+              <p className="text-xs text-muted-foreground">Efficiency</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onNotification={addNotification}
+      />
     </div>
   )
 }

@@ -13,18 +13,74 @@ export function generateScriptFromBlocks(blocks: BlockInstance[]): string {
   lines.push('// Modern Script Language (MSL) for Palletizer')
   lines.push('')
 
-  // Process blocks in order (simple sequential processing for now)
-  for (const block of blocks) {
+  // Sort blocks by execution order (considering connections and roles)
+  const sortedBlocks = getSortedBlocks(blocks)
+  
+  // Process blocks in proper execution order
+  for (const block of sortedBlocks) {
     const definition = getBlockDefinition(block.definitionId)
     if (!definition) continue
 
     const line = generateCommandFromBlock(block, definition)
     if (line) {
+      lines.push(`// Block #${block.executionOrder || '?'} (${block.role || 'normal'})`)
       lines.push(line)
+      lines.push('')
     }
   }
 
   return lines.join('\n')
+}
+
+function getSortedBlocks(blocks: BlockInstance[]): BlockInstance[] {
+  // First, find start blocks
+  const startBlocks = blocks.filter(block => block.role === 'start')
+  const normalBlocks = blocks.filter(block => block.role === 'normal' || !block.role)
+  const endBlocks = blocks.filter(block => block.role === 'end')
+  
+  // If we have explicit start/end blocks, use them to determine order
+  if (startBlocks.length > 0 || endBlocks.length > 0) {
+    const result: BlockInstance[] = []
+    
+    // Add start blocks first
+    result.push(...startBlocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0)))
+    
+    // Add normal blocks based on their connections and execution order
+    const connectedBlocks = new Set<string>()
+    const addConnectedBlocks = (blockId: string) => {
+      if (connectedBlocks.has(blockId)) return
+      
+      const block = blocks.find(b => b.id === blockId)
+      if (!block || block.role === 'start' || block.role === 'end') return
+      
+      connectedBlocks.add(blockId)
+      result.push(block)
+      
+      // Add blocks connected to this block's outputs
+      block.connections.outputs.forEach(outputBlockId => {
+        addConnectedBlocks(outputBlockId)
+      })
+    }
+    
+    // Follow connections from start blocks
+    startBlocks.forEach(startBlock => {
+      startBlock.connections.outputs.forEach(addConnectedBlocks)
+    })
+    
+    // Add any remaining normal blocks not connected
+    normalBlocks
+      .filter(block => !connectedBlocks.has(block.id))
+      .sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0))
+      .forEach(block => result.push(block))
+    
+    // Add end blocks last
+    result.push(...endBlocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0)))
+    
+    return result
+  }
+  
+  // Fallback: sort by execution order if no explicit start/end
+  return blocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0))
 }
 
 function generateCommandFromBlock(block: BlockInstance, definition: { id: string; label: string }): string {
