@@ -183,26 +183,34 @@ GROUP(X(0), Y(0), Z(0));
 ### Palletizing Pattern
 ```
 FUNC(pickup_from_conveyor) {
-  GROUP(X(0), Y(0), Z(100));
-  Z(-100);
-  G(1);
-  Z(100);
+  GROUP(X(0, 50), Y(0, 25), Z(100, 50, 0));
+  DELAY(200);
+  Z(-100, -80, -100);
+  DELAY(100);
+  G(100, 300, 600);
+  DELAY(150);
+  Z(50, 100);
 }
 
 FUNC(place_on_pallet) {
-  Z(-50);
-  G(0);
-  Z(100);
+  Z(-50, -20);
+  DELAY(300);
+  G(600, 400, 200, 0);
+  DELAY(100);
+  Z(20, 100);
 }
 
 SPEED;1500;
 
 LOOP(12) {
   CALL(pickup_from_conveyor);
+  DELAY(500);
   
-  GROUP(X(300), Y(450));
+  GROUP(X(300, 280, 300), Y(450, 430, 450), T(0, 90, 180));
+  DELAY(200);
   
   CALL(place_on_pallet);
+  DELAY(300);
 }
 
 HOME;
@@ -211,30 +219,41 @@ HOME;
 ### Multi-Layer Palletizing
 ```
 FUNC(pickup) {
-  GROUP(X(0), Y(0), Z(0));
-  Z(-100);
-  G(1);
-  Z(100);
+  GROUP(X(0, -20, 0), Y(0, -10, 0), Z(0, 50, 100));
+  DELAY(250);
+  Z(50, 0, -50, -100);
+  DELAY(150);
+  G(0, 200, 400, 600, 800);
+  DELAY(200);
+  Z(-50, 50, 100);
 }
 
 FUNC(place) {
-  Z(-50);
-  G(0);
-  Z(100);
+  Z(50, 0, -50);
+  DELAY(300);
+  G(800, 600, 300, 100, 0);
+  DELAY(100);
+  Z(0, 50, 100);
 }
 
 SPEED;2000;
 
 LOOP(6) {
   CALL(pickup);
-  GROUP(X(200), Y(200), Z(50));
+  DELAY(400);
+  GROUP(X(100, 150, 200), Y(100, 150, 200), Z(25, 50), T(0, 45));
+  DELAY(250);
   CALL(place);
+  DELAY(350);
 }
 
 LOOP(6) {
   CALL(pickup);
-  GROUP(X(200), Y(200), Z(150));
+  DELAY(400);
+  GROUP(X(200, 180, 200), Y(200, 180, 200), Z(125, 150), T(45, 90, 0));
+  DELAY(250);
   CALL(place);
+  DELAY(350);
 }
 
 HOME;
