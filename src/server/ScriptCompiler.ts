@@ -33,27 +33,27 @@ export class ScriptCompiler {
       const lineNumber = i + 1;
       
       if (line.startsWith('//') || line.startsWith('#')) {
-        // Skip comments
         i++;
         continue;
       }
       
+      // Skip function definitions completely
       if (line.startsWith('FUNC(') || line.startsWith('FUNC ')) {
-        // Skip function definitions in main parsing
-        i = this.skipToFunctionEnd(lines, i);
+        i = this.skipToFunctionEnd(lines, i) + 1;
         continue;
       }
       
-      if (line.startsWith('LOOP(')) {
-        // Handle MSL loop format: LOOP(2) { ... }
-        try {
-          const loopCommands = this.parseLoop(lines, i);
-          commands.push(...loopCommands);
-          i = this.skipToLoopEnd(lines, i);
-        } catch (error: unknown) {
-          throw new Error(`Line ${lineNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
+      // Skip standalone braces
+      if (line === '{' || line === '}') {
         i++;
+        continue;
+      }
+      
+      // Handle LOOP
+      if (line.startsWith('LOOP(')) {
+        const loopCommands = this.parseLoop(lines, i);
+        commands.push(...loopCommands);
+        i = this.skipToLoopEnd(lines, i) + 1;
         continue;
       }
       
@@ -70,7 +70,9 @@ export class ScriptCompiler {
     }
     
     // Expand function calls
-    return this.expandFunctionCalls(commands);
+    const expandedCommands = this.expandFunctionCalls(commands);
+    
+    return expandedCommands;
   }
 
   private extractFunctions(lines: string[]): void {
@@ -496,7 +498,8 @@ export class ScriptCompiler {
         const funcName = command.data?.functionName as string;
         const func = this.functions.get(funcName);
         if (func) {
-          expanded.push(...this.expandFunctionCalls(func.commands));
+          const expandedFuncCommands = this.expandFunctionCalls(func.commands);
+          expanded.push(...expandedFuncCommands);
         }
       } else {
         expanded.push(command);
@@ -510,6 +513,8 @@ export class ScriptCompiler {
     let i = startIndex + 1;
     let braceCount = 0;
     
+    console.log(`skipToFunctionEnd starting at line ${startIndex+1}: "${lines[startIndex]}"`);
+    
     // Check if it's MSL format FUNC(name) { or legacy FUNC name
     const isLegacy = lines[startIndex].startsWith('FUNC ');
     
@@ -520,19 +525,26 @@ export class ScriptCompiler {
       }
     } else {
       // MSL format: skip until closing brace
-      // Skip opening brace if present
-      if (lines[i] && lines[i].trim() === '{') {
-        braceCount++;
+      // Check if opening brace is on same line as FUNC
+      if (lines[startIndex].includes('{')) {
+        braceCount = 1;
+        console.log('Opening brace found on FUNC line');
+      } else if (lines[i] && lines[i].trim() === '{') {
+        braceCount = 1;
         i++;
+        console.log('Opening brace found on next line');
       }
       
-      while (i < lines.length) {
+      while (i < lines.length && braceCount > 0) {
         const line = lines[i].trim();
+        console.log(`  Checking line ${i+1}: "${line}" (braceCount: ${braceCount})`);
+        
         if (line === '{') {
           braceCount++;
         } else if (line === '}') {
           braceCount--;
           if (braceCount === 0) {
+            console.log(`Function ends at line ${i+1}`);
             break;
           }
         }
@@ -547,14 +559,17 @@ export class ScriptCompiler {
     let i = startIndex + 1;
     let braceCount = 0;
     
-    // Skip opening brace if present
-    if (lines[i] && lines[i].trim() === '{') {
-      braceCount++;
+    // Check if opening brace is on same line as LOOP
+    if (lines[startIndex].includes('{')) {
+      braceCount = 1;
+    } else if (lines[i] && lines[i].trim() === '{') {
+      braceCount = 1;
       i++;
     }
     
-    while (i < lines.length) {
+    while (i < lines.length && braceCount > 0) {
       const line = lines[i].trim();
+      
       if (line === '{') {
         braceCount++;
       } else if (line === '}') {
