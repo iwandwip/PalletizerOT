@@ -1,5 +1,5 @@
 interface Command {
-  type: 'MOVE' | 'GROUP' | 'HOME' | 'ZERO' | 'SPEED' | 'SET' | 'WAIT' | 'DETECT' | 'DELAY' | 'FUNC' | 'CALL' | 'LOOP';
+  type: 'MOVE' | 'GROUP' | 'GROUPSYNC' | 'HOME' | 'ZERO' | 'SPEED' | 'SET' | 'WAIT' | 'DETECT' | 'DELAY' | 'FUNC' | 'CALL' | 'LOOP';
   data?: Record<string, unknown>;
   line?: number;
 }
@@ -161,6 +161,11 @@ export class ScriptCompiler {
     
     // Handle MSL GROUP format: GROUP(X(100), Y(50), Z(10))
     if (line.startsWith('GROUP(')) {
+      return this.parseGroupMove(line, lineNumber);
+    }
+    
+    // Handle MSL GROUPSYNC format: GROUPSYNC(X(100), Y(50), Z(10))
+    if (line.startsWith('GROUPSYNC(')) {
       return this.parseGroupMove(line, lineNumber);
     }
     
@@ -660,8 +665,8 @@ export class ScriptCompiler {
     const paramStr = match[1];
     const positions = paramStr.split(',').map(p => parseInt(p.trim()));
     
-    // For now, take the first position (can be extended for multiple positions)
-    const data: Record<string, unknown> = { [axis]: positions[0] };
+    // Store all positions for multi-parameter movement
+    const data: Record<string, unknown> = { [axis]: positions };
     
     return {
       type: 'MOVE',
@@ -671,14 +676,15 @@ export class ScriptCompiler {
   }
 
   private parseGroupMove(line: string, lineNumber: number): Command {
-    // Parse GROUP(X(100), Y(50), Z(10))
-    const match = line.match(/GROUP\(([^)]+)\)/);
+    // Parse GROUP(X(100, 200), Y(50), Z(10, 20, 30)) and GROUPSYNC(...)
+    const isGroupSync = line.startsWith('GROUPSYNC');
+    const match = line.match(/(GROUP|GROUPSYNC)\(([^)]+)\)/);
     
     if (!match) {
-      throw new Error(`Invalid GROUP command format: ${line}`);
+      throw new Error(`Invalid ${isGroupSync ? 'GROUPSYNC' : 'GROUP'} command format: ${line}`);
     }
     
-    const movementsStr = match[1];
+    const movementsStr = match[2];
     const movements = this.splitGroupMovements(movementsStr);
     const data: Record<string, unknown> = {};
     
@@ -687,12 +693,12 @@ export class ScriptCompiler {
       if (axisMatch) {
         const axis = axisMatch[1].toUpperCase();
         const positions = axisMatch[2].split(',').map(p => parseInt(p.trim()));
-        data[axis] = positions[0]; // Take first position
+        data[axis] = positions; // Store all positions for GROUP/GROUPSYNC
       }
     });
     
     return {
-      type: 'GROUP',
+      type: isGroupSync ? 'GROUPSYNC' : 'GROUP',
       data,
       line: lineNumber
     };
@@ -856,15 +862,37 @@ export class ScriptCompiler {
         
       case 'MOVE':
         const axis = Object.keys(command.data || {})[0];
-        const position = command.data?.[axis];
-        return `MOVE:${axis}${position}`;
+        const positions = command.data?.[axis];
+        if (Array.isArray(positions)) {
+          return `MOVE:${axis}${positions.join(',')}`;
+        }
+        return `MOVE:${axis}${positions}`;
         
       case 'GROUP':
-        const axes = Object.keys(command.data || {})
+        const groupAxes = Object.keys(command.data || {})
           .filter(key => !key.includes('_'))
-          .map(axis => `${axis}${command.data?.[axis]}`)
+          .map(axis => {
+            const positions = command.data?.[axis];
+            if (Array.isArray(positions)) {
+              return `${axis}${positions.join(',')}`;
+            }
+            return `${axis}${positions}`;
+          })
           .join(':');
-        return `GROUP:${axes}`;
+        return `GROUP:${groupAxes}`;
+        
+      case 'GROUPSYNC':
+        const syncAxes = Object.keys(command.data || {})
+          .filter(key => !key.includes('_'))
+          .map(axis => {
+            const positions = command.data?.[axis];
+            if (Array.isArray(positions)) {
+              return `${axis}${positions.join(',')}`;
+            }
+            return `${axis}${positions}`;
+          })
+          .join(':');
+        return `GROUPSYNC:${syncAxes}`;
         
       case 'SET':
         return `SET:${command.data?.pin}`;

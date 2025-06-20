@@ -7,8 +7,9 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 ## Command Reference
 
 ### Movement Commands
-- `X(position);`, `Y(position);`, `Z(position);`, `T(position);`, `G(position);` - Single axis movement
-- `GROUP(axis1, axis2, ...);` - Multi-axis simultaneous movement
+- `X(position, ...);`, `Y(position, ...);`, `Z(position, ...);`, `T(position, ...);`, `G(position, ...);` - Single axis movement (1-5 parameters)
+- `GROUP(axis1, axis2, ...);` - Multi-axis asynchronous movement (each axis 1-5 parameters)
+- `GROUPSYNC(axis1, axis2, ...);` - Multi-axis synchronized movement (matrix execution)
 
 ### System Commands
 - `HOME();` - Home all axes to origin position
@@ -32,7 +33,7 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 ## Basic Syntax
 
 ### Single Axis Movement
-Move individual axes with multiple position parameters (up to 5 parameters max):
+Move individual axes with trajectory planning (up to 5 parameters max):
 
 ```
 X(100);
@@ -50,8 +51,10 @@ X(50, 100, 200, 300);
 X(10, 50, 100, 200, 300);
 ```
 
+**Behavior**: Each axis moves through all positions sequentially with smooth interpolation.
+
 ### Multi-Axis Movement (GROUP)
-Move multiple axes simultaneously (1-5 axes, each with 1-5 parameters):
+Asynchronous multi-axis movement - axes move independently:
 
 ```
 GROUP(X(1250), Y(500), Z(100));
@@ -60,12 +63,32 @@ GROUP(X(100), Y(50), Z(10));
 
 GROUP(X(100, 200), Y(50, 100), Z(10));
 GROUP(X(100, 200, 300), T(9900), G(600));
+```
 
+**Behavior**: All axes start moving simultaneously but don't wait for each other. Each axis follows its own trajectory.
+
+### Synchronized Multi-Axis Movement (GROUPSYNC)
+Matrix-based synchronized movement - coordinated step execution:
+
+```
+GROUPSYNC(X(1000, 5000), Y(100, 5000), Z(400, 500, 600));
+
+GROUPSYNC(X(100, 200), Y(50, 100));
+GROUPSYNC(T(90, 180, 270), G(0, 600, 0));
+```
+
+**Behavior**: 
+- **Step 1**: X→1000, Y→100, Z→400 (wait for all to complete)
+- **Step 2**: X→5000, Y→5000, Z→500 (wait for all to complete)  
+- **Step 3**: Z→600 (X&Y finished, only Z continues)
+
+### Practical Example
+```
 DETECT();
 GROUP(X(1250), T(9900));
 Z(6800);
 G(400);
-GROUP(Z(6000), X(0), T(0));
+GROUPSYNC(Z(6000), X(0), T(0));
 ```
 
 ### Speed Control
@@ -297,8 +320,8 @@ Z(10, 100, 200);
 T(90, 180, 270, 0);
 G(0, 300, 600, 400, 0);
 
-GROUP(X(300), Y(150, 250), Z(75));
-GROUP(T(45, 90), G(500, 700));
+GROUP(X(300, 400), Y(150, 250), Z(75));
+GROUPSYNC(X(1000, 5000), Y(100, 5000), Z(400, 500, 600));
 
 SET(1);
 SET(0);
@@ -315,9 +338,8 @@ FUNC(test_move) {
 CALL(test_move);
 
 LOOP(2) {
-  Z(100, 200);
-  T(180);
-  G(600, 0);
+  GROUP(Z(100, 200), T(180));
+  GROUPSYNC(G(600), X(0));
 }
 ```
 
@@ -328,46 +350,24 @@ ZERO
 SPEED:ALL:1500
 SPEED:X:2000
 MOVE:X100
-MOVE:Y50
-MOVE:Y150
-MOVE:Z10
-MOVE:Z100
-MOVE:Z200
-MOVE:T90
-MOVE:T180
-MOVE:T270
-MOVE:T0
-MOVE:G0
-MOVE:G300
-MOVE:G600
-MOVE:G400
-MOVE:G0
-GROUP:X300:Y150:Z75
-MOVE:Y250
-GROUP:T45:G500
-MOVE:T90
-MOVE:G700
+MOVE:Y50,150
+MOVE:Z10,100,200
+MOVE:T90,180,270,0
+MOVE:G0,300,600,400,0
+GROUP:X300,400:Y150,250:Z75
+GROUPSYNC:X1000,5000:Y100,5000:Z400,500,600
 SET:1
 SET:0
 WAIT
 DETECT
 DELAY:500
-MOVE:X400
-MOVE:X500
-MOVE:Y200
-MOVE:Y300
-MOVE:Y400
+MOVE:X400,500
+MOVE:Y200,300,400
 DELAY:200
-MOVE:Z100
-MOVE:Z200
-MOVE:T180
-MOVE:G600
-MOVE:G0
-MOVE:Z100
-MOVE:Z200
-MOVE:T180
-MOVE:G600
-MOVE:G0
+GROUPSYNC:Z100,200:T180
+GROUPSYNC:G600:X0
+GROUPSYNC:Z100,200:T180
+GROUPSYNC:G600:X0
 ```
 
 ## Integration with Hardware

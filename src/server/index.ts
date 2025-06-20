@@ -64,7 +64,7 @@ app.get('/api/status', (req, res) => {
 
 app.post('/api/script/save', (req, res) => {
   try {
-    const { script, format = 'hybrid' } = req.body
+    const { script, format = 'msl' } = req.body
     console.log(`Compiling script (${format}):`, script.substring(0, 100) + '...')
     
     let compiledScript: CompiledScript
