@@ -229,7 +229,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 z-50"
+      className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 z-50 flex flex-col"
       style={{ height: isMinimized ? 'auto' : height }}
     >
       {/* Resize Handle */}
@@ -325,11 +325,12 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
 
       {/* Content */}
       {!isMinimized && (
-        <Tabs value={activeTab} className="h-full">
-          <TabsContent value="terminal" className="h-full mt-0">
+        <Tabs value={activeTab} className="flex-1 flex flex-col overflow-hidden">
+          <TabsContent value="terminal" className="flex-1 mt-0 overflow-hidden">
             <div 
               ref={terminalRef}
-              className="h-full overflow-y-auto p-4 bg-gray-900 font-mono text-sm"
+              className="h-full overflow-y-auto overflow-x-hidden p-4 bg-gray-900 font-mono text-sm"
+              style={{ maxHeight: `${height - 60}px` }}
             >
               {terminalMessages.length === 0 ? (
                 <div className="text-gray-500 italic">No device messages yet...</div>
@@ -340,7 +341,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
                       [{message.timestamp}]
                     </span>
                     {getSourceBadge(message.source)}
-                    <span className={cn('flex-1', getMessageColor(message.type))}>
+                    <span className={cn('flex-1 break-words', getMessageColor(message.type))}>
                       {message.message}
                     </span>
                   </div>
@@ -349,10 +350,11 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
             </div>
           </TabsContent>
 
-          <TabsContent value="output" className="h-full mt-0">
+          <TabsContent value="output" className="flex-1 mt-0 overflow-hidden">
             <div 
               ref={outputRef}
-              className="h-full overflow-y-auto p-4 bg-gray-900 font-mono text-sm"
+              className="h-full overflow-y-auto overflow-x-hidden p-4 bg-gray-900 font-mono text-sm"
+              style={{ maxHeight: `${height - 60}px` }}
             >
               {outputMessages.length === 0 ? (
                 <div className="text-gray-500 italic">No script output yet...</div>
@@ -363,7 +365,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
                       [{message.timestamp}]
                     </span>
                     {getSourceBadge(message.source)}
-                    <pre className={cn('flex-1 whitespace-pre-wrap', getMessageColor(message.type))}>
+                    <pre className={cn('flex-1 whitespace-pre-wrap break-words text-xs', getMessageColor(message.type))}>
                       {message.message}
                     </pre>
                   </div>

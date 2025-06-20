@@ -71,8 +71,9 @@ export class ScriptCompiler {
     this.functions.clear();
     
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const line = lines[i].replace(/;$/, '').trim();
       
+      // Handle legacy format: FUNC name
       if (line.startsWith('FUNC ')) {
         const funcName = line.substring(5).trim();
         const startLine = i;
@@ -105,16 +106,83 @@ export class ScriptCompiler {
           endLine: i
         });
       }
+      
+      // Handle MSL format: FUNC(name) {
+      else if (line.startsWith('FUNC(')) {
+        const match = line.match(/FUNC\(([^)]+)\)\s*\{?/);
+        if (!match) {
+          throw new Error(`Invalid MSL function definition: ${line}`);
+        }
+        
+        const funcName = match[1];
+        const startLine = i;
+        const commands: Command[] = [];
+        
+        i++; // Move to first command in function
+        while (i < lines.length && !lines[i].trim().startsWith('}')) {
+          const funcLine = lines[i];
+          if (!funcLine.startsWith('//') && !funcLine.startsWith('#') && funcLine.trim() !== '') {
+            try {
+              const command = this.parseLine(funcLine, i + 1);
+              if (command) {
+                commands.push(command);
+              }
+            } catch (error: unknown) {
+              throw new Error(`Function ${funcName}, Line ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }
+          i++;
+        }
+        
+        if (i >= lines.length) {
+          throw new Error(`Function ${funcName} is missing closing '}'`);
+        }
+        
+        this.functions.set(funcName, {
+          name: funcName,
+          commands,
+          startLine,
+          endLine: i
+        });
+      }
     }
   }
 
   private parseLine(line: string, lineNumber: number): Command | null {
     if (!line || line.length === 0) return null;
     
+    // Remove semicolon if present
+    line = line.replace(/;$/, '').trim()
+    
     // Handle variable assignments
     if (line.includes('=')) {
       this.parseVariableAssignment(line);
       return null;
+    }
+    
+    // Handle MSL format with parentheses: X(100), Y(50,d1000), etc.
+    if (/^[XYZTG]\(/.test(line)) {
+      return this.parseMSLAxisMove(line, lineNumber);
+    }
+    
+    // Handle MSL GROUP format: GROUP(X(100), Y(50), Z(10))
+    if (line.startsWith('GROUP(')) {
+      return this.parseMSLGroupMove(line, lineNumber);
+    }
+    
+    // Handle MSL FUNC format: FUNC(name)
+    if (line.startsWith('FUNC(')) {
+      return null; // Functions are handled in extraction phase
+    }
+    
+    // Handle MSL CALL format: CALL(name)
+    if (line.startsWith('CALL(')) {
+      return this.parseMSLFunctionCall(line, lineNumber);
+    }
+    
+    // Handle MSL SPEED format: SPEED;1000; or SPEED;x;500;
+    if (line.startsWith('SPEED;')) {
+      return this.parseMSLSpeedCommand(line, lineNumber);
     }
     
     const parts = line.split(' ');
@@ -132,6 +200,7 @@ export class ScriptCompiler {
         return this.parseGroupMove(line, lineNumber);
         
       case 'SYNC':
+      case 'WAIT':
         return { type: 'SYNC', line: lineNumber };
         
       case 'CALL':
@@ -152,6 +221,20 @@ export class ScriptCompiler {
       case 'ACCEL':
         return this.parseAccelCommand(line, lineNumber);
         
+      case 'SET':
+        // Handle SET(1) or SET(0)
+        if (line.includes('(')) {
+          const match = line.match(/SET\((\d+)\)/)
+          if (match) {
+            return {
+              type: 'SYNC',
+              data: { pin: parseInt(match[1]) },
+              line: lineNumber
+            }
+          }
+        }
+        break;
+        
       default:
         // Try to parse as axis command with different format
         if (this.isAxisCommand(line)) {
@@ -159,6 +242,8 @@ export class ScriptCompiler {
         }
         throw new Error(`Unknown command: ${cmd}`);
     }
+    
+    return null;
   }
 
   private parseAxisMove(line: string, lineNumber: number): Command {
@@ -393,5 +478,153 @@ export class ScriptCompiler {
       i++;
     }
     return i;
+  }
+
+  // New MSL parsing methods
+  private parseMSLAxisMove(line: string, lineNumber: number): Command {
+    // Parse X(100), Y(50,d1000), Z(10,d500,200), etc.
+    const axis = line.charAt(0).toUpperCase();
+    const match = line.match(/^[XYZTG]\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid MSL axis command format: ${line}`);
+    }
+    
+    const paramStr = match[1];
+    const params = paramStr.split(',').map(p => p.trim());
+    
+    const data: Record<string, unknown> = { [axis]: null };
+    let position: number | undefined;
+    let endPosition: number | undefined;
+    let delay: number | undefined;
+    
+    params.forEach(param => {
+      if (param.startsWith('d')) {
+        // Delay parameter: d1000
+        delay = parseInt(param.substring(1));
+      } else {
+        // Position parameter: 100
+        const pos = parseInt(param);
+        if (position === undefined) {
+          position = pos;
+        } else {
+          endPosition = pos;
+        }
+      }
+    });
+    
+    if (position !== undefined) {
+      data[axis] = position;
+    }
+    if (endPosition !== undefined) {
+      data[`${axis}_end`] = endPosition;
+    }
+    if (delay !== undefined) {
+      data.delay = delay;
+    }
+    
+    return {
+      type: 'MOVE',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseMSLGroupMove(line: string, lineNumber: number): Command {
+    // Parse GROUP(X(100), Y(50,d500), Z(10))
+    const match = line.match(/GROUP\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid MSL GROUP command format: ${line}`);
+    }
+    
+    const movementsStr = match[1];
+    const movements = movementsStr.split(',').map(m => m.trim());
+    const data: Record<string, unknown> = {};
+    
+    movements.forEach(movement => {
+      const axisMatch = movement.match(/([XYZTG])\(([^)]+)\)/);
+      if (axisMatch) {
+        const axis = axisMatch[1].toUpperCase();
+        const paramStr = axisMatch[2];
+        const params = paramStr.split(',').map(p => p.trim());
+        
+        let position: number | undefined;
+        let endPosition: number | undefined;
+        let delay: number | undefined;
+        
+        params.forEach(param => {
+          if (param.startsWith('d')) {
+            delay = parseInt(param.substring(1));
+          } else {
+            const pos = parseInt(param);
+            if (position === undefined) {
+              position = pos;
+            } else {
+              endPosition = pos;
+            }
+          }
+        });
+        
+        if (position !== undefined) {
+          data[axis] = position;
+        }
+        if (endPosition !== undefined) {
+          data[`${axis}_end`] = endPosition;
+        }
+        if (delay !== undefined) {
+          data[`${axis}_delay`] = delay;
+        }
+      }
+    });
+    
+    return {
+      type: 'GROUP',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseMSLFunctionCall(line: string, lineNumber: number): Command {
+    // Parse CALL(functionName)
+    const match = line.match(/CALL\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid MSL CALL command format: ${line}`);
+    }
+    
+    const funcName = match[1];
+    if (!this.functions.has(funcName)) {
+      throw new Error(`Function '${funcName}' not found`);
+    }
+    
+    return {
+      type: 'CALL',
+      data: { functionName: funcName },
+      line: lineNumber
+    };
+  }
+
+  private parseMSLSpeedCommand(line: string, lineNumber: number): Command {
+    // Parse SPEED;1000; or SPEED;x;500;
+    const parts = line.split(';').filter(p => p.trim());
+    const data: Record<string, unknown> = {};
+    
+    if (parts.length === 2) {
+      // SPEED;1000; - set all axes
+      data.ALL = parseInt(parts[1]);
+    } else if (parts.length === 3) {
+      // SPEED;x;500; - set specific axis
+      const axis = parts[1].toUpperCase();
+      data[axis] = parseInt(parts[2]);
+    } else {
+      throw new Error(`Invalid MSL SPEED command format: ${line}`);
+    }
+    
+    return {
+      type: 'SET_SPEED',
+      data,
+      line: lineNumber
+    };
   }
 }

@@ -4,6 +4,8 @@ interface ServerResponse {
   data?: unknown;
   message?: string;
   commandCount?: number;
+  scriptId?: string;
+  compiledData?: unknown;
 }
 
 interface SystemStatus {
@@ -26,7 +28,7 @@ class PalletizerAPI {
     this.baseUrl = baseUrl;
   }
 
-  async saveScript(script: string, format: 'hybrid' | 'msl' = 'hybrid'): Promise<ServerResponse> {
+  async saveScript(script: string, format: 'hybrid' | 'msl' = 'msl'): Promise<ServerResponse> {
     const response = await fetch(`${this.baseUrl}/api/script/save`, {
       method: 'POST',
       headers: {

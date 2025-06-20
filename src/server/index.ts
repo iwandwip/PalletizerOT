@@ -99,12 +99,37 @@ app.post('/api/script/save', (req, res) => {
     
     console.log(`✅ Script compiled: ${compiledScript.commands.length} commands`)
     
-    res.json({ 
+    // Return the compiled data for debug output
+    let compiledData: any
+    
+    if (format === 'msl') {
+      // For MSL format, return the raw commands from the compiler
+      const rawCommands = scriptCompiler.compileScript(script)
+      compiledData = {
+        format: 'msl',
+        scriptId: compiledScript.id,
+        commands: rawCommands.map((cmd, index) => ({
+          index,
+          type: cmd.type,
+          data: cmd.data || {},
+          line: cmd.line
+        }))
+      }
+    } else {
+      // For hybrid format, return the hybrid data
+      compiledData = compiledScript.hybridFormat
+    }
+    
+    const response = { 
       success: true, 
       scriptId: compiledScript.id,
       commandCount: compiledScript.commands.length,
-      message: `Script compiled and saved (${format})`
-    })
+      message: `Script compiled and saved (${format})`,
+      compiledData
+    }
+    
+    console.log('Server response:', JSON.stringify(response, null, 2))
+    res.json(response)
   } catch (error) {
     console.error('Script compilation error:', error)
     res.status(400).json({ 

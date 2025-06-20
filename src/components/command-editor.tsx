@@ -3,12 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Zap, Code2, FileSpreadsheet } from "lucide-react"
+import { Upload, Download, FileText, Play, Cpu, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
-import { TextEditor, SpreadsheetEditor } from "./editors"
-import { ScriptEngine } from "@/lib/script-engine"
+import { TextEditor } from "./editors"
 import { cn } from "@/lib/utils"
 
 interface CompilationResult {
@@ -24,18 +22,13 @@ interface CommandEditorProps {
 }
 
 export function CommandEditor({ onNotification, onCompileOutput }: CommandEditorProps) {
-  const [activeTab, setActiveTab] = useState("editor")
-  const [editorMode, setEditorMode] = useState<'text' | 'spreadsheet'>('text')
   const [commandText, setCommandText] = useState('')
   const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
-  const [autoCompile, setAutoCompile] = useState(true)
+  const [autoCompile, setAutoCompile] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting')
   
-  // Initialize Script Engine
-  const scriptEngine = ScriptEngine.getInstance()
-
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const checkConnectionStatus = async () => {
@@ -52,8 +45,15 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   }
 
   const handleCompile = useCallback(async (scriptText?: string) => {
-    const textToCompile = (scriptText || commandText || '').toString()
-    console.log('handleCompile called with:', { scriptText, commandText, textToCompile, type: typeof textToCompile })
+    // Ensure we're working with a string
+    let textToCompile = ''
+    if (scriptText !== undefined) {
+      textToCompile = typeof scriptText === 'string' ? scriptText : String(scriptText)
+    } else {
+      textToCompile = typeof commandText === 'string' ? commandText : String(commandText)
+    }
+    
+    console.log('Compile debug:', { scriptText, commandText, textToCompile, type: typeof commandText })
     
     if (!textToCompile.trim()) {
       setCompilationResult(null)
@@ -63,6 +63,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     setIsCompiling(true)
     try {
       const result = await api.saveScript(textToCompile)
+      console.log('API response:', result)
+      
       setCompilationResult({
         success: result.success,
         commands: [],
@@ -72,9 +74,35 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       
       // Send compile output to debug overlay
       const scriptForOutput = typeof textToCompile === 'string' ? textToCompile : JSON.stringify(textToCompile)
-      const output = result.success 
-        ? `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nCompiled script:\n${scriptForOutput}`
-        : `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${scriptForOutput}`
+      let output = ''
+      
+      if (result.success) {
+        // Format the compiled data more concisely
+        let jsonOutput = ''
+        if (result.compiledData) {
+          try {
+            // Create a more compact representation
+            const data = result.compiledData as any
+            jsonOutput = `📋 Generated JSON:\n{\n  "format": "${data.format}",\n  "scriptId": "${data.scriptId}",\n  "commands": [`
+            
+            if (data.commands && Array.isArray(data.commands)) {
+              data.commands.forEach((cmd: any, index: number) => {
+                jsonOutput += `\n    {\n      "index": ${cmd.index},\n      "type": "${cmd.type}",\n      "data": ${JSON.stringify(cmd.data)}`
+                if (cmd.line) jsonOutput += `,\n      "line": ${cmd.line}`
+                jsonOutput += `\n    }${index < data.commands.length - 1 ? ',' : ''}`
+              })
+            }
+            
+            jsonOutput += '\n  ]\n}'
+          } catch (e) {
+            jsonOutput = `📋 Generated JSON:\n${JSON.stringify(result.compiledData, null, 2)}`
+          }
+        }
+        
+        output = `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${jsonOutput}`
+      } else {
+        output = `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${scriptForOutput}`
+      }
       
       onCompileOutput?.(output)
       
@@ -221,96 +249,37 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
 
   return (
     <div className="space-y-6">
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 bg-muted/50">
-          <TabsTrigger value="editor" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Code2 className="w-4 h-4 mr-2" />
-            Script Editor
-          </TabsTrigger>
-          <TabsTrigger value="actions" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Zap className="w-4 h-4 mr-2" />
-            Actions
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="editor" className="space-y-6 mt-6">
-          {/* Editor Controls */}
+          {/* Text Editor */}
           <Card className="border-0 bg-card/50 backdrop-blur">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Modern Script Language</CardTitle>
-                <div className="flex items-center gap-4">
-                  {/* Editor Mode Toggle */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Editor Mode</span>
-                    <div className="flex bg-muted rounded-lg p-1">
-                      <Button
-                        size="sm"
-                        variant={editorMode === 'text' ? "default" : "ghost"}
-                        onClick={() => setEditorMode('text')}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <FileText className="w-3 h-3 mr-1" />
-                        Text
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={editorMode === 'spreadsheet' ? "default" : "ghost"}
-                        onClick={() => setEditorMode('spreadsheet')}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <FileSpreadsheet className="w-3 h-3 mr-1" />
-                        Table
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {/* Auto-compile toggle (only for text mode) */}
-                  {editorMode === 'text' && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Auto-compile</span>
-                      <Button
-                        size="sm"
-                        variant={autoCompile ? "default" : "outline"}
-                        onClick={() => setAutoCompile(!autoCompile)}
-                        className="h-7 px-3 text-xs"
-                      >
-                        {autoCompile ? "ON" : "OFF"}
-                      </Button>
-                    </div>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Auto-compile</span>
+                  <Button
+                    size="sm"
+                    variant={autoCompile ? "default" : "outline"}
+                    onClick={() => setAutoCompile(!autoCompile)}
+                    className="h-7 px-3 text-xs"
+                  >
+                    {autoCompile ? "ON" : "OFF"}
+                  </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              {editorMode === 'text' && (
-                <TextEditor
-                  value={commandText}
-                  onChange={setCommandText}
-                />
-              )}
-              
-              {editorMode === 'spreadsheet' && (
-                <SpreadsheetEditor
-                  onScriptGenerated={(script) => {
-                    console.log('Received script from SpreadsheetEditor:', script, typeof script)
-                    const scriptString = typeof script === 'string' ? script : JSON.stringify(script)
-                    setCommandText(scriptString)
-                    handleCompile(scriptString)
-                    // Send compile output to debug overlay
-                    onCompileOutput?.(scriptString)
-                  }}
-                />
-              )}
+              <TextEditor
+                value={commandText}
+                onChange={setCommandText}
+              />
             </CardContent>
           </Card>
 
           {/* Quick Actions */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Button
-              onClick={handleCompile}
-              disabled={isCompiling || !commandText.trim()}
+              onClick={() => handleCompile()}
+              disabled={isCompiling || !(commandText && commandText.toString().trim())}
               variant="outline"
               className="h-12 flex-col gap-1 hover:bg-primary/5 hover:border-primary/30"
             >
@@ -353,171 +322,6 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
               <span className="text-xs">Save</span>
             </Button>
           </div>
-        </TabsContent>
-
-        <TabsContent value="actions" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* File Operations */}
-            <Card className="border-0 bg-card/50 backdrop-blur">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  File Operations
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Load from File
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleSaveToFile}
-                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Save to File
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={handleSaveToMemory}
-                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Save to Memory
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={handleLoadFromMemory}
-                  className="w-full justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Load from Memory
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Script Operations */}
-            <Card className="border-0 bg-card/50 backdrop-blur">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-primary" />
-                  Script Operations
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button
-                  onClick={handleCompile}
-                  disabled={isCompiling || !commandText.trim()}
-                  className="w-full justify-start bg-primary hover:bg-primary/90"
-                >
-                  {isCompiling ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Cpu className="w-4 h-4 mr-2" />
-                  )}
-                  Compile Script
-                </Button>
-
-                <Button
-                  onClick={handleExecuteScript}
-                  disabled={isExecuting || !compilationResult?.success || connectionStatus !== 'connected'}
-                  variant="outline"
-                  className="w-full justify-start hover:bg-green-50 hover:border-green-300 hover:text-green-700"
-                >
-                  {isExecuting ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-2" />
-                  )}
-                  Execute Script
-                </Button>
-
-                <Button
-                  onClick={handleCompileAndExecute}
-                  disabled={isCompiling || isExecuting || !commandText.trim() || connectionStatus !== 'connected'}
-                  variant="outline"
-                  className="w-full justify-start hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
-                >
-                  {isCompiling || isExecuting ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Play className="w-4 h-4 mr-2" />
-                  )}
-                  Compile & Execute
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Script Examples */}
-          <Card className="border-0 bg-card/50 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-lg">Quick Examples</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('X(100);\nY(50);\nZ(10);\nG(600);')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  Basic Commands
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('X(100,d1000);\nY(50,d500);\nGROUP(X(0), Y(0));')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  With Speed & Sync
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('GROUP(X(100), Y(50), Z(10));\nGROUP(X(0), Y(0), Z(0));')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  Group Movements
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('FUNC(pickup) {\n  Z(100);\n  G(400);\n  Z(50);\n}\n\nCALL(pickup);')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  Function Example
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('ZERO;\nSPEED;1000;\nSET(1);\nWAIT;\nSET(0);')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  System Commands
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC(place_item) {\n  X(100,d1000,200);\n  Y(50,d500,100);\n  Z(50,d2000);\n  G(400);\n}\n\nFUNC(next_position) {\n  X(300);\n  Y(150);\n}\n\nCALL(place_item);\nCALL(next_position);\nCALL(place_item);')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  Palletizing Pattern
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCommandText('// Advanced Sequence\nFUNC(home_all) {\n  GROUP(X(0), Y(0), Z(0), T(0), G(0));\n}\n\nFUNC(safety_check) {\n  X(1);\n  Y(1);\n  Z(1);\n  GROUP(X(0), Y(0), Z(0));\n}\n\nCALL(safety_check);\nCALL(home_all);')}
-                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
-                >
-                  Safety & Homing
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
 
       <input
         ref={fileInputRef}
