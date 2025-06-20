@@ -15,6 +15,7 @@ interface CompiledScript {
   commands: string[]
   timestamp: number
   executed: boolean
+  hybridFormat?: any  // New hybrid JSON format
 }
 
 interface SystemState {
@@ -63,16 +64,32 @@ app.get('/api/status', (req, res) => {
 
 app.post('/api/script/save', (req, res) => {
   try {
-    const { script } = req.body
-    console.log('Compiling script:', script.substring(0, 100) + '...')
+    const { script, format = 'hybrid' } = req.body
+    console.log(`Compiling script (${format}):`, script.substring(0, 100) + '...')
     
-    const commands = scriptCompiler.compileScript(script)
+    let compiledScript: CompiledScript
     
-    const compiledScript: CompiledScript = {
-      id: Date.now().toString(),
-      commands: commands.map(cmd => `${cmd.type} ${JSON.stringify(cmd.data || {})}`),
-      timestamp: Date.now(),
-      executed: false
+    if (format === 'hybrid') {
+      // New hybrid JSON format - script is already compiled JSON
+      const hybridData = typeof script === 'string' ? JSON.parse(script) : script
+      
+      compiledScript = {
+        id: hybridData.scriptId || Date.now().toString(),
+        commands: hybridData.steps?.map((step: any) => step.serial_cmd).filter(Boolean) || [],
+        timestamp: Date.now(),
+        executed: false,
+        hybridFormat: hybridData
+      }
+    } else {
+      // Legacy MSL format compilation
+      const commands = scriptCompiler.compileScript(script)
+      
+      compiledScript = {
+        id: Date.now().toString(),
+        commands: commands.map(cmd => `${cmd.type} ${JSON.stringify(cmd.data || {})}`),
+        timestamp: Date.now(),
+        executed: false
+      }
     }
     
     systemState.currentScript = compiledScript
@@ -80,13 +97,13 @@ app.post('/api/script/save', (req, res) => {
     systemState.isRunning = false
     systemState.isPaused = false
     
-    console.log(`✅ Script compiled: ${commands.length} commands`)
+    console.log(`✅ Script compiled: ${compiledScript.commands.length} commands`)
     
     res.json({ 
       success: true, 
       scriptId: compiledScript.id,
-      commandCount: commands.length,
-      message: 'Script compiled and saved'
+      commandCount: compiledScript.commands.length,
+      message: `Script compiled and saved (${format})`
     })
   } catch (error) {
     console.error('Script compilation error:', error)
@@ -105,6 +122,7 @@ app.get('/api/script/poll', (req, res) => {
     hasNewScript: false,
     scriptId: null as string | null,
     commands: [] as string[],
+    hybridScript: null as any,
     shouldStart: systemState.isRunning,
     currentIndex: systemState.currentCommandIndex
   }
@@ -112,9 +130,18 @@ app.get('/api/script/poll', (req, res) => {
   if (systemState.currentScript && !systemState.currentScript.executed) {
     result.hasNewScript = true
     result.scriptId = systemState.currentScript.id
-    result.commands = systemState.currentScript.commands
+    
+    if (systemState.currentScript.hybridFormat) {
+      // Send new hybrid JSON format
+      result.hybridScript = systemState.currentScript.hybridFormat
+      console.log(`📤 ESP32 downloaded hybrid script: ${systemState.currentScript.hybridFormat.steps?.length} steps`)
+    } else {
+      // Send legacy commands
+      result.commands = systemState.currentScript.commands
+      console.log(`📤 ESP32 downloaded legacy script: ${result.commands.length} commands`)
+    }
+    
     systemState.currentScript.executed = true
-    console.log(`📤 ESP32 downloaded script: ${result.commands.length} commands`)
   }
   
   res.json(result)

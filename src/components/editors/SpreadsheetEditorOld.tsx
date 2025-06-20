@@ -5,6 +5,7 @@ import { DndContext, DragEndEvent, closestCenter, DragOverlay, MouseSensor, useS
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { 
@@ -72,37 +73,30 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
     })
   )
 
-  const generateSummary = (action: string, data: StepCommandData): string => {
-    switch (action) {
-      case 'MOVE':
-        return `${data.axis} → ${data.position} (${data.speed})`
-      case 'GROUP_MOVE':
-        const axesCount = data.axes?.length || 0
-        return `${axesCount} axes → positions`
-      case 'SYSTEM':
-        return data.systemCommand || 'System Command'
-      case 'WAIT':
-        return `Wait ${data.duration}ms`
-      default:
-        return 'Unknown command'
-    }
-  }
-
   const addCommand = useCallback((actionType: 'MOVE' | 'GROUP_MOVE' | 'SYSTEM' | 'WAIT') => {
     const stepNumber = Math.max(...commands.map(c => c.step), 0) + 1
     
-    const defaultData = getDefaultData(actionType)
     const newCommand: SpreadsheetRow = {
       id: Date.now().toString(),
       step: stepNumber,
       action: actionType,
-      summary: generateSummary(actionType, defaultData),
+      summary: getDefaultSummary(actionType),
       timeout: getDefaultTimeout(actionType),
       notes: '',
-      data: defaultData
+      data: getDefaultData(actionType)
     }
     setCommands(prev => [...prev, newCommand])
   }, [commands])
+
+  const getDefaultSummary = (action: string) => {
+    switch (action) {
+      case 'MOVE': return 'X → 0 (1500)'
+      case 'GROUP_MOVE': return '1 axis → positions'
+      case 'SYSTEM': return 'GRIPPER_OPEN'
+      case 'WAIT': return 'Wait 1000ms'
+      default: return 'New command'
+    }
+  }
 
   const getDefaultTimeout = (action: string) => {
     switch (action) {
@@ -129,34 +123,11 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
     setSelectedRows(new Set())
   }, [])
 
-  const updateCommand = useCallback((id: string, data: StepCommandData, timeout: number, notes: string) => {
+  const updateCommand = useCallback((id: string, field: keyof SpreadsheetRow, value: string) => {
     setCommands(prev => prev.map(cmd => 
-      cmd.id === id ? { 
-        ...cmd, 
-        summary: generateSummary(cmd.action, data),
-        timeout,
-        notes,
-        data 
-      } : cmd
+      cmd.id === id ? { ...cmd, [field]: value } : cmd
     ))
   }, [])
-
-  const openEditModal = (row: SpreadsheetRow) => {
-    setEditingRow(row)
-    setModalType(row.action)
-  }
-
-  const closeModal = () => {
-    setEditingRow(null)
-    setModalType(null)
-  }
-
-  const handleModalSave = (data: StepCommandData, timeout: number, notes: string) => {
-    if (editingRow) {
-      updateCommand(editingRow.id, data, timeout, notes)
-    }
-    closeModal()
-  }
 
   const generateScript = useCallback(() => {
     try {
@@ -187,13 +158,7 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
       setCommands(prev => {
         const oldIndex = prev.findIndex(cmd => cmd.id === active.id)
         const newIndex = prev.findIndex(cmd => cmd.id === over.id)
-        const reordered = arrayMove(prev, oldIndex, newIndex)
-        
-        // Update step numbers
-        return reordered.map((cmd, index) => ({
-          ...cmd,
-          step: index + 1
-        }))
+        return arrayMove(prev, oldIndex, newIndex)
       })
     }
     
@@ -203,19 +168,36 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
   const copyToClipboard = useCallback(() => {
     const selectedCommands = commands.filter(cmd => selectedRows.has(cmd.id))
     const text = selectedCommands.map(cmd => 
-      `${cmd.step}\t${cmd.action}\t${cmd.summary}\t${cmd.timeout}\t${cmd.notes}`
+      `${cmd.command}\t${cmd.axis || ''}\t${cmd.position || ''}\t${cmd.speed || ''}\t${cmd.notes || ''}`
     ).join('\n')
     navigator.clipboard.writeText(text)
   }, [commands, selectedRows])
 
+  const pasteFromClipboard = useCallback(async () => {
+    const text = await navigator.clipboard.readText()
+    const lines = text.split('\n').filter(line => line.trim())
+    const newCommands: SpreadsheetRow[] = lines.map(line => {
+      const [command, axis, position, speed, notes] = line.split('\t')
+      return {
+        id: Date.now().toString() + Math.random(),
+        command: command as SpreadsheetRow['command'],
+        axis,
+        position,
+        speed,
+        notes
+      }
+    })
+    setCommands(prev => [...prev, ...newCommands])
+  }, [])
+
   const exportCSV = useCallback(() => {
-    const headers = ['Step', 'Action', 'Summary', 'Timeout', 'Notes']
+    const headers = ['Command', 'Axis', 'Position', 'Speed', 'Notes']
     const rows = commands.map(cmd => [
-      cmd.step.toString(),
-      cmd.action,
-      cmd.summary,
-      cmd.timeout.toString(),
-      cmd.notes
+      cmd.command,
+      cmd.axis || '',
+      cmd.position || '',
+      cmd.speed || '',
+      cmd.notes || ''
     ])
     
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
@@ -228,26 +210,6 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
     URL.revokeObjectURL(url)
   }, [commands])
 
-  const getActionIcon = (action: string) => {
-    switch (action) {
-      case 'MOVE': return <Move className="w-4 h-4" />
-      case 'GROUP_MOVE': return <Users className="w-4 h-4" />
-      case 'SYSTEM': return <Settings className="w-4 h-4" />
-      case 'WAIT': return <Clock className="w-4 h-4" />
-      default: return <Move className="w-4 h-4" />
-    }
-  }
-
-  const getActionColor = (action: string) => {
-    switch (action) {
-      case 'MOVE': return 'bg-blue-100 text-blue-800'
-      case 'GROUP_MOVE': return 'bg-green-100 text-green-800'
-      case 'SYSTEM': return 'bg-orange-100 text-orange-800'
-      case 'WAIT': return 'bg-purple-100 text-purple-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Toolbar */}
@@ -255,11 +217,11 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-4 h-4 text-primary" />
-            <span className="font-medium">Command Table</span>
+            <span className="font-medium">Spreadsheet Editor</span>
           </div>
           
           <Badge variant="outline" className="text-xs">
-            {commands.length} steps
+            {commands.length} rows
           </Badge>
           
           {selectedRows.size > 0 && (
@@ -270,41 +232,15 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Add Command Dropdown */}
-          <Select onValueChange={(value: any) => addCommand(value)}>
-            <SelectTrigger className="w-32 h-8">
-              <div className="flex items-center gap-1">
-                <Plus className="w-3 h-3" />
-                <span className="text-sm">Add Step</span>
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="MOVE">
-                <div className="flex items-center gap-2">
-                  <Move className="w-4 h-4" />
-                  Single Movement
-                </div>
-              </SelectItem>
-              <SelectItem value="GROUP_MOVE">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Group Movement
-                </div>
-              </SelectItem>
-              <SelectItem value="SYSTEM">
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  System Command
-                </div>
-              </SelectItem>
-              <SelectItem value="WAIT">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Wait/Delay
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={addCommand}
+            className="h-8"
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            Add Row
+          </Button>
           
           <Button
             variant="outline"
@@ -315,6 +251,16 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
           >
             <Copy className="w-3 h-3 mr-1" />
             Copy
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={pasteFromClipboard}
+            className="h-8"
+          >
+            <Clipboard className="w-3 h-3 mr-1" />
+            Paste
           </Button>
           
           <Button
@@ -350,7 +296,7 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
         </div>
       </div>
 
-      {/* Table */}
+      {/* Spreadsheet Table */}
       <div className="flex-1 overflow-auto">
         <DndContext
           sensors={sensors}
@@ -362,19 +308,21 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead className="w-10"></TableHead>
-                <TableHead className="w-16">Step</TableHead>
-                <TableHead className="w-32">Action</TableHead>
-                <TableHead>Summary</TableHead>
+                <TableHead className="w-10">#</TableHead>
+                <TableHead className="w-32">Command</TableHead>
+                <TableHead className="w-24">Axis</TableHead>
+                <TableHead className="w-32">Position</TableHead>
+                <TableHead className="w-32">Speed</TableHead>
                 <TableHead>Notes</TableHead>
-                <TableHead className="w-16">Edit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <SortableContext items={commands.map(cmd => cmd.id)} strategy={verticalListSortingStrategy}>
-                {commands.map((command) => (
+                {commands.map((command, index) => (
                   <SortableRow
                     key={command.id}
                     command={command}
+                    index={index}
                     isSelected={selectedRows.has(command.id)}
                     onSelect={(id) => {
                       const newSelected = new Set(selectedRows)
@@ -385,9 +333,9 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
                       }
                       setSelectedRows(newSelected)
                     }}
-                    onEdit={() => openEditModal(command)}
-                    getActionIcon={getActionIcon}
-                    getActionColor={getActionColor}
+                    onUpdate={updateCommand}
+                    editingCell={editingCell}
+                    onEditCell={setEditingCell}
                   />
                 ))}
               </SortableContext>
@@ -397,67 +345,32 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
           <DragOverlay>
             {activeId ? (
               <div className="bg-background border rounded p-2 shadow-lg opacity-80">
-                Step #{commands.findIndex(cmd => cmd.id === activeId) + 1}
+                Row #{commands.findIndex(cmd => cmd.id === activeId) + 1}
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
       </div>
-
-      {/* Modals */}
-      <MoveCommandModal
-        open={modalType === 'MOVE'}
-        onOpenChange={closeModal}
-        onSave={handleModalSave}
-        initialData={editingRow?.data}
-        initialTimeout={editingRow?.timeout}
-        initialNotes={editingRow?.notes}
-      />
-
-      <GroupMoveModal
-        open={modalType === 'GROUP_MOVE'}
-        onOpenChange={closeModal}
-        onSave={handleModalSave}
-        initialData={editingRow?.data}
-        initialTimeout={editingRow?.timeout}
-        initialNotes={editingRow?.notes}
-      />
-
-      <SystemCommandModal
-        open={modalType === 'SYSTEM'}
-        onOpenChange={closeModal}
-        onSave={handleModalSave}
-        initialData={editingRow?.data}
-        initialTimeout={editingRow?.timeout}
-        initialNotes={editingRow?.notes}
-      />
-
-      <WaitCommandModal
-        open={modalType === 'WAIT'}
-        onOpenChange={closeModal}
-        onSave={handleModalSave}
-        initialData={editingRow?.data}
-        initialTimeout={editingRow?.timeout}
-        initialNotes={editingRow?.notes}
-      />
     </div>
   )
 }
 
 function SortableRow({
   command,
+  index,
   isSelected,
   onSelect,
-  onEdit,
-  getActionIcon,
-  getActionColor
+  onUpdate,
+  editingCell,
+  onEditCell
 }: {
   command: SpreadsheetRow
+  index: number
   isSelected: boolean
   onSelect: (id: string) => void
-  onEdit: () => void
-  getActionIcon: (action: string) => React.ReactNode
-  getActionColor: (action: string) => string
+  onUpdate: (id: string, field: keyof SpreadsheetRow, value: string) => void
+  editingCell: { row: string; column: string } | null
+  onEditCell: (cell: { row: string; column: string } | null) => void
 }) {
   const {
     attributes,
@@ -472,17 +385,27 @@ function SortableRow({
     transition,
   }
 
+  const isEditing = (column: string) => 
+    editingCell?.row === command.id && editingCell?.column === column
+
+  const handleCellClick = (column: string) => {
+    onEditCell({ row: command.id, column })
+  }
+
+  const handleCellBlur = () => {
+    onEditCell(null)
+  }
+
   return (
     <TableRow 
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "hover:bg-muted/50 cursor-pointer",
+        "hover:bg-muted/50",
         isSelected && "bg-primary/10"
       )}
-      onClick={onEdit}
     >
-      <TableCell className="p-1" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="p-1">
         <div 
           {...attributes} 
           {...listeners} 
@@ -494,40 +417,122 @@ function SortableRow({
       
       <TableCell 
         className="cursor-pointer"
-        onClick={(e) => {
-          e.stopPropagation()
-          onSelect(command.id)
-        }}
+        onClick={() => onSelect(command.id)}
       >
         <Badge variant="outline" className="text-xs">
-          {command.step}
+          {index + 1}
         </Badge>
       </TableCell>
       
       <TableCell>
-        <Badge className={cn("text-xs", getActionColor(command.action))}>
-          <span className="mr-1">{getActionIcon(command.action)}</span>
-          {command.action}
-        </Badge>
+        {isEditing('command') ? (
+          <Select
+            value={command.command}
+            onValueChange={(value) => {
+              onUpdate(command.id, 'command', value)
+              onEditCell(null)
+            }}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="MOVE">MOVE</SelectItem>
+              <SelectItem value="GROUP">GROUP</SelectItem>
+              <SelectItem value="HOME">HOME</SelectItem>
+              <SelectItem value="ZERO">ZERO</SelectItem>
+              <SelectItem value="GRIPPER">GRIPPER</SelectItem>
+              <SelectItem value="WAIT">WAIT</SelectItem>
+              <SelectItem value="SPEED">SPEED</SelectItem>
+              <SelectItem value="FUNC">FUNC</SelectItem>
+              <SelectItem value="CALL">CALL</SelectItem>
+              <SelectItem value="LOOP">LOOP</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <div 
+            className="px-2 py-1 cursor-pointer hover:bg-muted rounded"
+            onClick={() => handleCellClick('command')}
+          >
+            {command.command}
+          </div>
+        )}
       </TableCell>
       
-      <TableCell className="font-mono text-sm">
-        {command.summary}
+      <TableCell>
+        {isEditing('axis') ? (
+          <Input
+            value={command.axis || ''}
+            onChange={(e) => onUpdate(command.id, 'axis', e.target.value)}
+            onBlur={handleCellBlur}
+            className="h-8"
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="px-2 py-1 cursor-pointer hover:bg-muted rounded min-h-[32px]"
+            onClick={() => handleCellClick('axis')}
+          >
+            {command.axis || '-'}
+          </div>
+        )}
       </TableCell>
       
-      <TableCell className="text-sm">
-        {command.notes}
+      <TableCell>
+        {isEditing('position') ? (
+          <Input
+            value={command.position || ''}
+            onChange={(e) => onUpdate(command.id, 'position', e.target.value)}
+            onBlur={handleCellBlur}
+            className="h-8"
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="px-2 py-1 cursor-pointer hover:bg-muted rounded min-h-[32px]"
+            onClick={() => handleCellClick('position')}
+          >
+            {command.position || '-'}
+          </div>
+        )}
       </TableCell>
       
-      <TableCell onClick={(e) => e.stopPropagation()}>
-        <Button 
-          size="sm" 
-          variant="ghost"
-          onClick={onEdit}
-          className="h-6 w-6 p-0"
-        >
-          <Edit3 className="w-3 h-3" />
-        </Button>
+      <TableCell>
+        {isEditing('speed') ? (
+          <Input
+            value={command.speed || ''}
+            onChange={(e) => onUpdate(command.id, 'speed', e.target.value)}
+            onBlur={handleCellBlur}
+            className="h-8"
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="px-2 py-1 cursor-pointer hover:bg-muted rounded min-h-[32px]"
+            onClick={() => handleCellClick('speed')}
+          >
+            {command.speed || '-'}
+          </div>
+        )}
+      </TableCell>
+      
+      <TableCell>
+        {isEditing('notes') ? (
+          <Input
+            value={command.notes || ''}
+            onChange={(e) => onUpdate(command.id, 'notes', e.target.value)}
+            onBlur={handleCellBlur}
+            className="h-8"
+            autoFocus
+          />
+        ) : (
+          <div 
+            className="px-2 py-1 cursor-pointer hover:bg-muted rounded min-h-[32px]"
+            onClick={() => handleCellClick('notes')}
+          >
+            {command.notes || ''}
+          </div>
+        )}
       </TableCell>
     </TableRow>
   )

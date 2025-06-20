@@ -26,13 +26,13 @@ class PalletizerAPI {
     this.baseUrl = baseUrl;
   }
 
-  async saveScript(script: string): Promise<ServerResponse> {
+  async saveScript(script: string, format: 'hybrid' | 'msl' = 'hybrid'): Promise<ServerResponse> {
     const response = await fetch(`${this.baseUrl}/api/script/save`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ script }),
+      body: JSON.stringify({ script, format }),
     });
     
     return response.json();

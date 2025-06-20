@@ -27,6 +27,14 @@ void CommandProcessor::processCommand(const String& command) {
   String cmd = command;
   cmd.trim();
   if (cmd.length() == 0) return;
+  
+  // Handle new hybrid format: "axis;direction;position;speed;"
+  if (cmd.indexOf(';') != -1) {
+    handleHybridCommand(cmd);
+    return;
+  }
+  
+  // Legacy command handling
   char cmdType = cmd[0];
   switch (cmdType) {
     case 'M':
@@ -139,6 +147,87 @@ long CommandProcessor::parseAxisValue(const String& cmd, char axis) {
   int nextSpace = cmd.indexOf(' ', pos);
   if (nextSpace == -1) nextSpace = cmd.length();
   return cmd.substring(pos + 1, nextSpace).toInt();
+}
+
+void CommandProcessor::handleHybridCommand(const String& cmd) {
+  // Parse format: "axis;direction;position;speed;"
+  // Example: "x;1;100;1500;" or "g;0;1;" (gripper open)
+  
+  int firstSemi = cmd.indexOf(';');
+  int secondSemi = cmd.indexOf(';', firstSemi + 1);
+  int thirdSemi = cmd.indexOf(';', secondSemi + 1);
+  
+  if (firstSemi == -1 || secondSemi == -1 || thirdSemi == -1) {
+    sendError("Invalid hybrid command format");
+    return;
+  }
+  
+  String axis = cmd.substring(0, firstSemi);
+  int direction = cmd.substring(firstSemi + 1, secondSemi).toInt();
+  int position = cmd.substring(secondSemi + 1, thirdSemi).toInt();
+  
+  // Optional speed parameter
+  int speed = 1500; // default
+  int fourthSemi = cmd.indexOf(';', thirdSemi + 1);
+  if (fourthSemi != -1 && thirdSemi + 1 < fourthSemi) {
+    speed = cmd.substring(thirdSemi + 1, fourthSemi).toInt();
+  }
+  
+  // Handle special commands
+  if (axis == "home") {
+    handleHome();
+    return;
+  } else if (axis == "zero") {
+    handleZero();
+    return;
+  } else if (axis == "wait") {
+    delay(position); // position = duration in ms
+    Serial.println("DONE");
+    return;
+  }
+  
+  // Convert axis to uppercase
+  char axisChar = axis.charAt(0);
+  if (axisChar >= 'a' && axisChar <= 'z') {
+    axisChar = axisChar - 'a' + 'A';
+  }
+  
+  // Handle gripper commands
+  if (axisChar == 'G') {
+    if (direction == 0) {
+      // Gripper open
+      motorController.gripperOpen();
+    } else {
+      // Gripper close
+      motorController.gripperClose();
+    }
+    Serial.println("DONE");
+    return;
+  }
+  
+  // Handle movement commands
+  if (axisChar == 'X' || axisChar == 'Y' || axisChar == 'Z' || axisChar == 'T') {
+    // Set speed if specified
+    if (speed != 1500) {
+      motorController.setSpeed(axisChar, speed);
+    }
+    
+    // Calculate final position based on direction
+    long finalPosition = direction == 1 ? position : -position;
+    
+    // Execute movement
+    motorController.moveTo(axisChar, finalPosition);
+    
+    // Wait for movement to complete (simplified)
+    delay(100); // Small delay to start movement
+    while (motorController.isMoving(axisChar)) {
+      delay(10);
+    }
+    
+    Serial.println("DONE");
+  } else {
+    sendError("Unknown axis: " + String(axisChar));
+  }
 }
 
 int CommandProcessor::parseParameter(const String& cmd, char param) {

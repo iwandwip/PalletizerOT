@@ -102,9 +102,60 @@ export interface EditorState {
 
 export interface SpreadsheetRow {
   id: string
-  command: CommandType
+  step: number
+  action: 'MOVE' | 'GROUP_MOVE' | 'SYSTEM' | 'WAIT'
+  summary: string
+  timeout: number
+  notes: string
+  data: StepCommandData
+}
+
+export interface StepCommandData {
+  // For MOVE commands
   axis?: string
-  position?: string
-  speed?: string
-  notes?: string
+  position?: number
+  speed?: number
+  
+  // For GROUP_MOVE commands
+  axes?: Array<{
+    axis: string
+    position: number
+    speed?: number
+  }>
+  
+  // For SYSTEM commands
+  systemCommand?: 'GRIPPER_OPEN' | 'GRIPPER_CLOSE' | 'HOME' | 'ZERO'
+  
+  // For WAIT commands
+  duration?: number
+}
+
+export interface CompiledStep {
+  id: number
+  action: string
+  axis?: string
+  position?: number
+  speed?: number
+  serial_cmd?: string
+  expect_response?: string
+  timeout: number
+  parallel?: boolean
+  commands?: Array<{
+    axis: string
+    position: number
+    serial_cmd: string
+  }>
+  expect_responses?: string[]
+  command?: string
+  duration?: number
+}
+
+export interface CompiledScript {
+  scriptId: string
+  metadata: {
+    totalSteps: number
+    estimatedTime: number
+    axes: string[]
+  }
+  steps: CompiledStep[]
 }

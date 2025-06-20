@@ -1,5 +1,9 @@
 #include "HttpClient.h"
 #include "CommandStorage.h"
+#include "HybridExecutor.h"
+#include <LittleFS.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
 
 const char* WIFI_SSID = "silenceAndSleep";
 const char* WIFI_PASSWORD = "11111111";
@@ -8,12 +12,13 @@ const int SERVER_PORT = 3006;
 
 HttpClient* httpClient;
 CommandStorage* commandStorage;
+HybridExecutor* hybridExecutor;
 
 bool isRunning = false;
 unsigned long lastPollTime = 0;
 const unsigned long POLL_INTERVAL = 2000;
 unsigned long lastCommandTime = 0;
-const unsigned long COMMAND_INTERVAL = 1000;
+const unsigned long COMMAND_INTERVAL = 100; // Faster processing for hybrid executor
 
 void setup() {
   Serial.begin(115200);
@@ -33,8 +38,9 @@ void setup() {
 
   httpClient = new HttpClient(SERVER_HOST, SERVER_PORT);
   commandStorage = new CommandStorage();
+  hybridExecutor = new HybridExecutor();
 
-  Serial.println("ESP32 Master ready");
+  Serial.println("ESP32 Master ready (Hybrid Mode)");
 }
 
 void loop() {
@@ -46,7 +52,7 @@ void loop() {
   }
 
   if (isRunning && (currentTime - lastCommandTime >= COMMAND_INTERVAL)) {
-    processNextCommand();
+    hybridExecutor->processExecution();
     lastCommandTime = currentTime;
   }
 
@@ -57,19 +63,42 @@ void loop() {
 void pollForScript() {
   String response = httpClient->get("/api/script/poll");
   if (response.length() > 0) {
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(8192);
     deserializeJson(doc, response);
 
     if (doc["hasNewScript"].as<bool>()) {
       String scriptId = doc["scriptId"].as<String>();
-      JsonArray commands = doc["commands"];
-
-      Serial.println("New script received: " + scriptId);
-      commandStorage->saveScript(scriptId, commands);
-      Serial.println("Script saved to LittleFS");
+      
+      // Check for new hybrid format
+      if (doc.containsKey("hybridScript") && !doc["hybridScript"].isNull()) {
+        String hybridJson;
+        serializeJson(doc["hybridScript"], hybridJson);
+        
+        Serial.println("New hybrid script received: " + scriptId);
+        if (hybridExecutor->loadScript(hybridJson)) {
+          Serial.println("Hybrid script loaded successfully");
+        } else {
+          Serial.println("Failed to load hybrid script");
+        }
+      } else if (doc.containsKey("commands")) {
+        // Legacy format fallback
+        JsonArray commands = doc["commands"];
+        Serial.println("Legacy script received: " + scriptId);
+        commandStorage->saveScript(scriptId, commands);
+        Serial.println("Legacy script saved to LittleFS");
+      }
     }
 
-    isRunning = doc["shouldStart"].as<bool>();
+    bool shouldStart = doc["shouldStart"].as<bool>();
+    if (shouldStart && !isRunning) {
+      isRunning = true;
+      hybridExecutor->startExecution();
+      Serial.println("Starting script execution");
+    } else if (!shouldStart && isRunning) {
+      isRunning = false;
+      hybridExecutor->pauseExecution();
+      Serial.println("Pausing script execution");
+    }
   }
 }
 

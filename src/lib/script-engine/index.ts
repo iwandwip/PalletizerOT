@@ -7,6 +7,7 @@ export * from './types/ScriptTypes'
 export * from './core/BaseScriptGenerator'
 export * from './core/ScriptGeneratorFactory'
 export * from './generators/MSLScriptGenerator'
+export * from './generators/HybridJSONGenerator'
 export * from './adapters/EditorAdapters'
 
 // Main Script Engine Class - Facade Pattern
@@ -57,7 +58,7 @@ export class ScriptEngine {
   ): string {
     const commands = this.adapters.spreadsheet.convertToCommands(rows)
     const generator = this.factory.getGenerator(
-      options?.generatorType || 'MSL', 
+      options?.generatorType || 'HYBRID', 
       options?.generatorOptions
     )
     return generator.generateScript(commands)

@@ -5,9 +5,10 @@
 
 import { BaseScriptGenerator } from './BaseScriptGenerator'
 import { MSLScriptGenerator } from '../generators/MSLScriptGenerator'
+import { HybridJSONGenerator } from '../generators/HybridJSONGenerator'
 import { ScriptGenerationOptions } from '../types/ScriptTypes'
 
-export type GeneratorType = 'MSL' | 'GCODE' | 'JSON'
+export type GeneratorType = 'MSL' | 'GCODE' | 'JSON' | 'HYBRID'
 
 export class ScriptGeneratorFactory {
   private static instance: ScriptGeneratorFactory
@@ -61,6 +62,9 @@ export class ScriptGeneratorFactory {
         // Placeholder for future JSON generator
         throw new Error('JSON generator not implemented yet')
       
+      case 'HYBRID':
+        return new HybridJSONGenerator(mergedOptions)
+      
       default:
         throw new Error(`Unknown generator type: ${type}`)
     }
@@ -101,7 +105,7 @@ export class ScriptGeneratorFactory {
    * Get all available generator types
    */
   public getAvailableTypes(): GeneratorType[] {
-    return ['MSL', 'GCODE', 'JSON']
+    return ['MSL', 'GCODE', 'JSON', 'HYBRID']
   }
 
   /**

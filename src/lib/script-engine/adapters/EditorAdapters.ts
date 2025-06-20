@@ -30,63 +30,53 @@ export class SpreadsheetEditorAdapter extends BaseEditorAdapter {
   private convertRowToCommand(row: SpreadsheetRow, index: number): ScriptCommand {
     const command: ScriptCommand = {
       id: row.id,
-      type: row.command,
-      parameters: this.buildParameters(row),
+      type: this.mapActionToCommandType(row.action),
+      parameters: this.buildParametersFromData(row.data),
       metadata: {
-        order: index + 1,
-        description: row.notes || `${row.command} command`,
-        tags: ['spreadsheet-editor']
+        order: row.step,
+        description: row.notes || row.summary,
+        tags: ['spreadsheet-editor'],
+        timeout: row.timeout,
+        action: row.action
       }
     }
 
     return command
   }
 
-  private buildParameters(row: SpreadsheetRow): Record<string, unknown> {
+  private mapActionToCommandType(action: string): CommandType {
+    switch (action) {
+      case 'MOVE': return 'MOVE'
+      case 'GROUP_MOVE': return 'GROUP'
+      case 'SYSTEM': return 'GRIPPER' // Will be handled based on systemCommand
+      case 'WAIT': return 'WAIT'
+      default: return 'MOVE'
+    }
+  }
+
+  private buildParametersFromData(data: StepCommandData): Record<string, unknown> {
     const params: Record<string, unknown> = {}
 
-    switch (row.command) {
-      case 'MOVE':
-        if (row.axis) params.axis = row.axis
-        if (row.position) params.position = this.parseNumber(row.position)
-        if (row.speed) params.speed = this.parseNumber(row.speed)
-        break
+    // For MOVE commands
+    if (data.axis && data.position !== undefined) {
+      params.axis = data.axis
+      params.position = data.position
+      if (data.speed) params.speed = data.speed
+    }
 
-      case 'GROUP':
-        if (row.axis && row.position) {
-          const axes = row.axis.split(',').map(a => a.trim())
-          const positions = row.position.split(',').map(p => this.parseNumber(p.trim()))
-          params.axes = axes.map((axis, i) => ({
-            axis,
-            position: positions[i] || 0
-          }))
-        }
-        if (row.speed) params.speed = this.parseNumber(row.speed)
-        break
+    // For GROUP_MOVE commands
+    if (data.axes) {
+      params.axes = data.axes
+    }
 
-      case 'SPEED':
-        if (row.axis) params.axis = row.axis
-        if (row.speed) params.speed = this.parseNumber(row.speed)
-        break
+    // For SYSTEM commands
+    if (data.systemCommand) {
+      params.action = data.systemCommand.toLowerCase().replace('_', '')
+    }
 
-      case 'GRIPPER':
-        if (row.position) params.action = row.position.toLowerCase()
-        break
-
-      case 'FUNC':
-      case 'CALL':
-        if (row.axis) params.name = row.axis
-        break
-
-      case 'LOOP':
-        if (row.position) params.count = this.parseNumber(row.position)
-        break
-
-      default:
-        // Copy all available fields for unknown commands
-        if (row.axis) params.axis = row.axis
-        if (row.position) params.position = row.position
-        if (row.speed) params.speed = row.speed
+    // For WAIT commands
+    if (data.duration) {
+      params.duration = data.duration
     }
 
     return params

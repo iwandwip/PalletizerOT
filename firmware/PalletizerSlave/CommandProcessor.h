@@ -28,6 +28,7 @@ private:
   void handleEmergencyStop();
   void handleStatusRequest();
   void handleVelocity(const String& cmd);
+  void handleHybridCommand(const String& cmd);
 };
 
 #endif
