@@ -20,9 +20,10 @@ interface CompilationResult {
 
 interface CommandEditorProps {
   onNotification?: (message: string, type: 'error' | 'warning' | 'info' | 'success') => void
+  onCompileOutput?: (output: string) => void
 }
 
-export function CommandEditor({ onNotification }: CommandEditorProps) {
+export function CommandEditor({ onNotification, onCompileOutput }: CommandEditorProps) {
   const [activeTab, setActiveTab] = useState("editor")
   const [editorMode, setEditorMode] = useState<'text' | 'spreadsheet'>('text')
   const [commandText, setCommandText] = useState('')
@@ -62,16 +63,30 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
         error: result.error,
         commandCount: result.commandCount || 0
       })
+      
+      // Send compile output to debug overlay
+      const output = result.success 
+        ? `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nCompiled script:\n${textToCompile}`
+        : `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${textToCompile}`
+      
+      onCompileOutput?.(output)
+      
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Compilation failed'
       setCompilationResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Compilation failed',
+        error: errorMsg,
         commandCount: 0
       })
+      
+      // Send error to debug overlay
+      onCompileOutput?.(
+        `❌ Compilation error!\n\nError: ${errorMsg}\n\nInput script:\n${textToCompile}`
+      )
     } finally {
       setIsCompiling(false)
     }
-  }, [commandText])
+  }, [commandText, onCompileOutput])
 
   // Check connection status periodically
   useEffect(() => {
@@ -300,6 +315,8 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
                   onScriptGenerated={(script) => {
                     setCommandText(script)
                     handleCompile(script)
+                    // Send compile output to debug overlay
+                    onCompileOutput?.(script)
                   }}
                 />
               )}
