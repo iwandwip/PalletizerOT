@@ -20,7 +20,7 @@ import {
 import { BlockPalette } from './BlockPalette'
 import { Canvas } from './Canvas'
 import { BlockInstance, BlockDefinition, Connection } from './types'
-import { generateScriptFromBlocks } from './codeGenerator'
+import { generateScriptFromBlocks } from './ScriptGenerator'
 import { v4 as uuidv4 } from 'uuid'
 
 interface BlockEditorProps {

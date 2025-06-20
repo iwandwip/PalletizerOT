@@ -7,9 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Blocks, Zap, Code2, Clock, FileSpreadsheet } from "lucide-react"
 import { api } from "@/lib/api"
-import { BlockEditor } from "./script-builder/BlockEditor"
-import { TimelineEditor } from "./script-builder/TimelineEditor"
-import { SpreadsheetEditor } from "./script-builder/SpreadsheetEditor"
+import { TextEditor, VisualEditor, TimelineEditor, SpreadsheetEditor } from "./editors"
+import { ScriptEngine } from "@/lib/script-engine"
 import { cn } from "@/lib/utils"
 
 interface CompilationResult {
@@ -32,6 +31,9 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
   const [isExecuting, setIsExecuting] = useState(false)
   const [autoCompile, setAutoCompile] = useState(true)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting')
+  
+  // Initialize Script Engine
+  const scriptEngine = ScriptEngine.getInstance()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -303,45 +305,31 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
               </div>
             </CardHeader>
             <CardContent>
-              {editorMode === 'text' ? (
-                <Textarea
+              {editorMode === 'text' && (
+                <TextEditor
                   value={commandText}
-                  onChange={(e) => setCommandText(e.target.value)}
-                  placeholder="Enter your palletizer commands here...&#10;&#10;Example:&#10;X1000 Y2000 F1500&#10;GROUP X0 Y0 Z500&#10;SYNC&#10;&#10;FUNC pickup&#10;  Z-100&#10;  G1&#10;  Z100&#10;ENDFUNC&#10;&#10;CALL pickup"
-                  className="min-h-[400px] font-mono text-sm bg-background/50 border-0 focus:ring-2 focus:ring-primary/20"
+                  onChange={setCommandText}
                 />
-              ) : editorMode === 'visual' ? (
-                <div className="border-0 rounded-lg min-h-[400px] bg-background/30 relative">
-                  <BlockEditor
-                    onScriptGenerated={(script) => setCommandText(script)}
-                  />
-                  <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
-                    <Card className="p-6 text-center max-w-sm">
-                      <Blocks className="w-12 h-12 mx-auto mb-4 text-primary" />
-                      <h3 className="text-xl font-semibold mb-2">Visual Editor</h3>
-                      <p className="text-muted-foreground">This feature is coming soon!</p>
-                    </Card>
-                  </div>
-                </div>
-              ) : editorMode === 'timeline' ? (
-                <div className="border-0 rounded-lg min-h-[400px] bg-background/30 relative">
-                  <TimelineEditor
-                    onScriptGenerated={(script) => setCommandText(script)}
-                  />
-                  <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
-                    <Card className="p-6 text-center max-w-sm">
-                      <Clock className="w-12 h-12 mx-auto mb-4 text-primary" />
-                      <h3 className="text-xl font-semibold mb-2">Timeline Editor</h3>
-                      <p className="text-muted-foreground">This feature is coming soon!</p>
-                    </Card>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-0 rounded-lg min-h-[400px] bg-background/30">
-                  <SpreadsheetEditor
-                    onScriptGenerated={(script) => setCommandText(script)}
-                  />
-                </div>
+              )}
+              
+              {editorMode === 'visual' && (
+                <VisualEditor
+                  onScriptGenerated={(script) => setCommandText(script)}
+                  disabled={true}
+                />
+              )}
+              
+              {editorMode === 'timeline' && (
+                <TimelineEditor
+                  onScriptGenerated={(script) => setCommandText(script)}
+                  disabled={true}
+                />
+              )}
+              
+              {editorMode === 'spreadsheet' && (
+                <SpreadsheetEditor
+                  onScriptGenerated={(script) => setCommandText(script)}
+                />
               )}
             </CardContent>
           </Card>
