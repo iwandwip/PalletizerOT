@@ -1,14 +1,14 @@
 import express from 'express'
 import { createServer } from 'http'
 import cors from 'cors'
-import { ScriptCompiler } from './ScriptCompiler'
+import { MSLCompiler } from '../compiler'
 import { Bonjour } from 'bonjour-service'
 
 const app = express()
 const server = createServer(app)
 const PORT = Number(process.env.PORT) || 3006
 
-const scriptCompiler = new ScriptCompiler()
+const scriptCompiler = new MSLCompiler()
 
 interface CompiledScript {
   id: string
