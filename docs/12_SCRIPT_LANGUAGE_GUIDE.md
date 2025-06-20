@@ -538,14 +538,176 @@ LOOP(3) {
 
 ## Integration with Hardware
 
-### ESP32 Processing
-1. Script compiled on web interface
-2. Commands sent to ESP32 via HTTP
-3. ESP32 stores commands in LittleFS
-4. Commands executed one by one
-5. Arduino acknowledges each command
-6. ESP32 requests next command
+### Complete Workflow
 
-### Arduino Communication
-The ESP32 sends JSON commands to Arduino for execution. Each command contains the necessary data for the specific operation to be performed on the hardware axes.
+#### 1. Client-Side Compilation
+The web interface compiles MSL scripts into simple text commands:
+
+**Input MSL:**
+```
+HOME;
+SPEED;2000;
+X(100);
+GROUP(X(500), Y(300));
+```
+
+**Compiled Output:**
+```
+HOME
+SPEED:ALL:2000
+MOVE:X100
+GROUP:X500:Y300
+```
+
+#### 2. ESP32 Storage & Processing
+ESP32 receives and stores the compiled commands:
+
+```cpp
+// Store commands in LittleFS
+void storeCommands(String commands) {
+  File file = LittleFS.open("/script.txt", "w");
+  file.print(commands);
+  file.close();
+}
+
+// Execute commands line by line
+void executeScript() {
+  File file = LittleFS.open("/script.txt", "r");
+  while(file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    
+    if(sendToArduino(line)) {
+      String response = waitArduinoResponse();
+      if(response != "OK") {
+        Serial.println("Error: " + response);
+        break;
+      }
+    }
+  }
+  file.close();
+}
+```
+
+#### 3. ESP32 ↔ Arduino Communication Protocol
+
+**Command Format:**
+- `HOME` - Home all axes
+- `ZERO` - Zero all axes  
+- `SPEED:ALL:value` - Set speed for all axes
+- `SPEED:X:value` - Set speed for specific axis
+- `MOVE:Xvalue` - Move single axis (X100, Z-50, G1)
+- `GROUP:X500:Y300:Z0` - Move multiple axes simultaneously
+- `SET:1` or `SET:0` - Set sync pin HIGH/LOW
+- `WAIT` - Wait for sync signal
+- `DETECT` - Wait for detection sensors
+- `DELAY:500` - Wait for specified milliseconds
+
+**Communication Example:**
+```
+ESP32 → Arduino: "MOVE:X100"
+Arduino → ESP32: "OK"
+
+ESP32 → Arduino: "GROUP:X500:Y300"
+Arduino → ESP32: "OK"
+
+ESP32 → Arduino: "DELAY:1000"
+Arduino → ESP32: "OK"
+```
+
+#### 4. Arduino Implementation
+
+```cpp
+void setup() {
+  Serial.begin(115200);  // Communication with ESP32
+  // Initialize stepper motors, sensors, etc.
+}
+
+void loop() {
+  if(Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    executeCommand(cmd);
+  }
+}
+
+void executeCommand(String cmd) {
+  if(cmd == "HOME") {
+    homeAllAxes();
+    Serial.println("OK");
+  }
+  else if(cmd == "ZERO") {
+    zeroAllAxes();
+    Serial.println("OK");
+  }
+  else if(cmd.startsWith("MOVE:")) {
+    parseMove(cmd.substring(5));
+  }
+  else if(cmd.startsWith("GROUP:")) {
+    parseGroup(cmd.substring(6));
+  }
+  else if(cmd.startsWith("SPEED:")) {
+    parseSpeed(cmd.substring(6));
+  }
+  else if(cmd.startsWith("DELAY:")) {
+    int ms = cmd.substring(6).toInt();
+    delay(ms);
+    Serial.println("OK");
+  }
+  else {
+    Serial.println("ERR:UNKNOWN_COMMAND");
+  }
+}
+
+void parseMove(String params) {
+  // Parse: X100, Z-50, G1
+  char axis = params.charAt(0);
+  int value = params.substring(1).toInt();
+  
+  if(moveAxis(axis, value)) {
+    Serial.println("OK");
+  } else {
+    Serial.println("ERR:MOVE_FAILED");
+  }
+}
+
+void parseGroup(String params) {
+  // Parse: X500:Y300:Z0
+  // Split by ':' and move all axes simultaneously
+  
+  if(moveGroup(params)) {
+    Serial.println("OK");
+  } else {
+    Serial.println("ERR:GROUP_FAILED");
+  }
+}
+```
+
+### Error Handling
+
+**Arduino Error Responses:**
+- `ERR:UNKNOWN_COMMAND` - Command not recognized
+- `ERR:MOVE_FAILED` - Axis movement failed
+- `ERR:LIMIT_EXCEEDED` - Position out of bounds
+- `ERR:AXIS_FAULT` - Hardware fault detected
+- `ERR:TIMEOUT` - Operation timeout
+
+**ESP32 Error Handling:**
+```cpp
+String response = waitArduinoResponse();
+if(response.startsWith("ERR:")) {
+  // Log error and stop execution
+  Serial.println("Arduino Error: " + response);
+  stopExecution();
+}
+```
+
+### Memory Efficiency
+
+**Advantages of this approach:**
+- **ESP32**: Only stores plain text, processes one command at a time
+- **Arduino**: Minimal memory usage, no JSON parsing required
+- **Communication**: Simple string protocol, easy to debug
+- **Reliability**: Command-by-command acknowledgment ensures synchronization
+- **Scalability**: Easy to add new commands without complex parsing
 
