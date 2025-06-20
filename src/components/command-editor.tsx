@@ -77,29 +77,18 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       let output = ''
       
       if (result.success) {
-        // Format the compiled data more concisely
-        let jsonOutput = ''
+        // Format the compiled data as text commands
+        let textOutput = ''
         if (result.compiledData) {
-          try {
-            // Create a more compact representation
-            const data = result.compiledData as any
-            jsonOutput = `📋 Generated JSON:\n{\n  "format": "${data.format}",\n  "scriptId": "${data.scriptId}",\n  "commands": [`
-            
-            if (data.commands && Array.isArray(data.commands)) {
-              data.commands.forEach((cmd: any, index: number) => {
-                jsonOutput += `\n    {\n      "index": ${cmd.index},\n      "type": "${cmd.type}",\n      "data": ${JSON.stringify(cmd.data)}`
-                if (cmd.line) jsonOutput += `,\n      "line": ${cmd.line}`
-                jsonOutput += `\n    }${index < data.commands.length - 1 ? ',' : ''}`
-              })
-            }
-            
-            jsonOutput += '\n  ]\n}'
-          } catch (e) {
-            jsonOutput = `📋 Generated JSON:\n${JSON.stringify(result.compiledData, null, 2)}`
+          const data = result.compiledData as any
+          if (data.format === 'text' && data.textCommands) {
+            textOutput = `📋 Generated Text Commands:\n${data.textCommands}`
+          } else {
+            textOutput = `📋 Generated Commands:\n${JSON.stringify(result.compiledData, null, 2)}`
           }
         }
         
-        output = `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${jsonOutput}`
+        output = `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${textOutput}`
       } else {
         output = `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${scriptForOutput}`
       }

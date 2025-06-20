@@ -1,5 +1,5 @@
 interface Command {
-  type: 'MOVE' | 'GROUP' | 'SYNC' | 'CALL' | 'LOOP' | 'SET_SPEED' | 'SET_ACCEL' | 'HOME' | 'ZERO';
+  type: 'MOVE' | 'GROUP' | 'HOME' | 'ZERO' | 'SPEED' | 'SET' | 'WAIT' | 'DETECT' | 'DELAY' | 'FUNC' | 'CALL' | 'LOOP';
   data?: Record<string, unknown>;
   line?: number;
 }
@@ -154,35 +154,54 @@ export class ScriptCompiler {
     // Remove semicolon if present
     line = line.replace(/;$/, '').trim()
     
-    // Handle variable assignments
-    if (line.includes('=')) {
-      this.parseVariableAssignment(line);
-      return null;
-    }
-    
-    // Handle MSL format with parentheses: X(100), Y(50,d1000), etc.
+    // Handle MSL format with parentheses: X(100), Y(50), etc.
     if (/^[XYZTG]\(/.test(line)) {
-      return this.parseMSLAxisMove(line, lineNumber);
+      return this.parseAxisMove(line, lineNumber);
     }
     
     // Handle MSL GROUP format: GROUP(X(100), Y(50), Z(10))
     if (line.startsWith('GROUP(')) {
-      return this.parseMSLGroupMove(line, lineNumber);
+      return this.parseGroupMove(line, lineNumber);
     }
     
-    // Handle MSL FUNC format: FUNC(name)
-    if (line.startsWith('FUNC(')) {
-      return null; // Functions are handled in extraction phase
+    // Handle HOME commands: HOME() or HOME(X)
+    if (line.startsWith('HOME(')) {
+      return this.parseHomeCommand(line, lineNumber);
     }
     
-    // Handle MSL CALL format: CALL(name)
+    // Handle ZERO command: ZERO()
+    if (line === 'ZERO()') {
+      return { type: 'ZERO', data: {}, line: lineNumber };
+    }
+    
+    // Handle SPEED commands: SPEED(1000) or SPEED(X, 2000)
+    if (line.startsWith('SPEED(')) {
+      return this.parseSpeedCommand(line, lineNumber);
+    }
+    
+    // Handle SET commands: SET(1) or SET(0)
+    if (line.startsWith('SET(')) {
+      return this.parseSetCommand(line, lineNumber);
+    }
+    
+    // Handle WAIT command: WAIT()
+    if (line === 'WAIT()') {
+      return { type: 'WAIT', data: {}, line: lineNumber };
+    }
+    
+    // Handle DETECT command: DETECT()
+    if (line === 'DETECT()') {
+      return { type: 'DETECT', data: {}, line: lineNumber };
+    }
+    
+    // Handle DELAY command: DELAY(1000)
+    if (line.startsWith('DELAY(')) {
+      return this.parseDelayCommand(line, lineNumber);
+    }
+    
+    // Handle CALL format: CALL(name)
     if (line.startsWith('CALL(')) {
-      return this.parseMSLFunctionCall(line, lineNumber);
-    }
-    
-    // Handle MSL SPEED format: SPEED;1000; or SPEED;x;500;
-    if (line.startsWith('SPEED;')) {
-      return this.parseMSLSpeedCommand(line, lineNumber);
+      return this.parseFunctionCall(line, lineNumber);
     }
     
     const parts = line.split(' ');
@@ -622,9 +641,245 @@ export class ScriptCompiler {
     }
     
     return {
-      type: 'SET_SPEED',
+      type: 'SPEED',
       data,
       line: lineNumber
     };
+  }
+
+  // New parsing methods for updated MSL syntax
+  private parseAxisMove(line: string, lineNumber: number): Command {
+    // Parse X(100, 200, 300) - multiple positions
+    const axis = line.charAt(0).toUpperCase();
+    const match = line.match(/^[XYZTG]\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid axis command format: ${line}`);
+    }
+    
+    const paramStr = match[1];
+    const positions = paramStr.split(',').map(p => parseInt(p.trim()));
+    
+    // For now, take the first position (can be extended for multiple positions)
+    const data: Record<string, unknown> = { [axis]: positions[0] };
+    
+    return {
+      type: 'MOVE',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseGroupMove(line: string, lineNumber: number): Command {
+    // Parse GROUP(X(100), Y(50), Z(10))
+    const match = line.match(/GROUP\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid GROUP command format: ${line}`);
+    }
+    
+    const movementsStr = match[1];
+    const movements = this.splitGroupMovements(movementsStr);
+    const data: Record<string, unknown> = {};
+    
+    movements.forEach(movement => {
+      const axisMatch = movement.match(/([XYZTG])\(([^)]+)\)/);
+      if (axisMatch) {
+        const axis = axisMatch[1].toUpperCase();
+        const positions = axisMatch[2].split(',').map(p => parseInt(p.trim()));
+        data[axis] = positions[0]; // Take first position
+      }
+    });
+    
+    return {
+      type: 'GROUP',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseHomeCommand(line: string, lineNumber: number): Command {
+    // Parse HOME() or HOME(X)
+    const match = line.match(/HOME\(([^)]*)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid HOME command format: ${line}`);
+    }
+    
+    const param = match[1].trim();
+    const data: Record<string, unknown> = {};
+    
+    if (param) {
+      data[param.toUpperCase()] = true;
+    }
+    
+    return {
+      type: 'HOME',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseSpeedCommand(line: string, lineNumber: number): Command {
+    // Parse SPEED(1000) or SPEED(X, 2000)
+    const match = line.match(/SPEED\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid SPEED command format: ${line}`);
+    }
+    
+    const params = match[1].split(',').map(p => p.trim());
+    const data: Record<string, unknown> = {};
+    
+    if (params.length === 1) {
+      // SPEED(1000) - global speed
+      data.ALL = parseInt(params[0]);
+    } else if (params.length === 2) {
+      // SPEED(X, 2000) - axis specific
+      const axis = params[0].toUpperCase();
+      data[axis] = parseInt(params[1]);
+    } else {
+      throw new Error(`Invalid SPEED command parameters: ${line}`);
+    }
+    
+    return {
+      type: 'SPEED',
+      data,
+      line: lineNumber
+    };
+  }
+
+  private parseSetCommand(line: string, lineNumber: number): Command {
+    // Parse SET(1) or SET(0)
+    const match = line.match(/SET\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid SET command format: ${line}`);
+    }
+    
+    const pin = parseInt(match[1]);
+    
+    return {
+      type: 'SET',
+      data: { pin },
+      line: lineNumber
+    };
+  }
+
+  private parseDelayCommand(line: string, lineNumber: number): Command {
+    // Parse DELAY(1000)
+    const match = line.match(/DELAY\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid DELAY command format: ${line}`);
+    }
+    
+    const milliseconds = parseInt(match[1]);
+    
+    return {
+      type: 'DELAY',
+      data: { milliseconds },
+      line: lineNumber
+    };
+  }
+
+  private parseFunctionCall(line: string, lineNumber: number): Command {
+    // Parse CALL(functionName)
+    const match = line.match(/CALL\(([^)]+)\)/);
+    
+    if (!match) {
+      throw new Error(`Invalid CALL command format: ${line}`);
+    }
+    
+    const functionName = match[1].trim();
+    
+    return {
+      type: 'CALL',
+      data: { functionName },
+      line: lineNumber
+    };
+  }
+
+  private splitGroupMovements(movementsStr: string): string[] {
+    // Split GROUP movements while respecting parentheses
+    const movements: string[] = [];
+    let current = '';
+    let parenCount = 0;
+    
+    for (const char of movementsStr) {
+      if (char === '(') {
+        parenCount++;
+      } else if (char === ')') {
+        parenCount--;
+      }
+      
+      if (char === ',' && parenCount === 0) {
+        movements.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.trim()) {
+      movements.push(current.trim());
+    }
+    
+    return movements;
+  }
+
+  public compileToText(script: string): string {
+    const commands = this.compileScript(script);
+    return commands.map(cmd => this.commandToText(cmd)).join('\n');
+  }
+
+  private commandToText(command: Command): string {
+    switch (command.type) {
+      case 'HOME':
+        if (command.data && Object.keys(command.data).length > 0) {
+          const axis = Object.keys(command.data)[0];
+          return `HOME:${axis}`;
+        }
+        return 'HOME';
+        
+      case 'ZERO':
+        return 'ZERO';
+        
+      case 'SPEED':
+        if (command.data?.ALL) {
+          return `SPEED:ALL:${command.data.ALL}`;
+        } else {
+          const axis = Object.keys(command.data || {})[0];
+          const value = command.data?.[axis];
+          return `SPEED:${axis}:${value}`;
+        }
+        
+      case 'MOVE':
+        const axis = Object.keys(command.data || {})[0];
+        const position = command.data?.[axis];
+        return `MOVE:${axis}${position}`;
+        
+      case 'GROUP':
+        const axes = Object.keys(command.data || {})
+          .filter(key => !key.includes('_'))
+          .map(axis => `${axis}${command.data?.[axis]}`)
+          .join(':');
+        return `GROUP:${axes}`;
+        
+      case 'SET':
+        return `SET:${command.data?.pin}`;
+        
+      case 'WAIT':
+        return 'WAIT';
+        
+      case 'DETECT':
+        return 'DETECT';
+        
+      case 'DELAY':
+        return `DELAY:${command.data?.milliseconds}`;
+        
+      default:
+        return `UNKNOWN:${command.type}`;
+    }
   }
 }

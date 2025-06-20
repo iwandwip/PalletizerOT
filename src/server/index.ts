@@ -81,12 +81,13 @@ app.post('/api/script/save', (req, res) => {
         hybridFormat: hybridData
       }
     } else {
-      // Legacy MSL format compilation
-      const commands = scriptCompiler.compileScript(script)
+      // MSL format compilation to text commands
+      const textCommands = scriptCompiler.compileToText(script)
+      const commandLines = textCommands.split('\n').filter(line => line.trim())
       
       compiledScript = {
         id: Date.now().toString(),
-        commands: commands.map(cmd => `${cmd.type} ${JSON.stringify(cmd.data || {})}`),
+        commands: commandLines,
         timestamp: Date.now(),
         executed: false
       }
@@ -103,17 +104,13 @@ app.post('/api/script/save', (req, res) => {
     let compiledData: any
     
     if (format === 'msl') {
-      // For MSL format, return the raw commands from the compiler
-      const rawCommands = scriptCompiler.compileScript(script)
+      // For MSL format, return the text commands
+      const textCommands = scriptCompiler.compileToText(script)
       compiledData = {
-        format: 'msl',
+        format: 'text',
         scriptId: compiledScript.id,
-        commands: rawCommands.map((cmd, index) => ({
-          index,
-          type: cmd.type,
-          data: cmd.data || {},
-          line: cmd.line
-        }))
+        textCommands: textCommands,
+        commandLines: compiledScript.commands
       }
     } else {
       // For hybrid format, return the hybrid data
