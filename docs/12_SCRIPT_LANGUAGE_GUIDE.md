@@ -4,6 +4,33 @@
 
 The Palletizer Control System uses a Modern Script Language (MSL) for defining automated sequences of movements and operations. This language is compiled client-side and sent to the ESP32 for execution.
 
+## Command Reference
+
+### Movement Commands
+- `X(position)`, `Y(position)`, `Z(position)`, `T(position)`, `G(position)` - Single axis movement
+- `GROUP(axis1, axis2, ...)` - Multi-axis simultaneous movement
+
+### System Commands
+- `HOME;` - Home all axes to origin position
+- `ZERO;` - Set current position as zero for all axes
+- `SPEED;value;` - Set speed for all axes
+- `SPEED;axis;value;` - Set speed for specific axis
+
+### Synchronization Commands
+- `SYNC;` - Wait for all movements to complete
+- `SET(1);` - Set sync pin HIGH
+- `SET(0);` - Set sync pin LOW
+- `WAIT;` - Wait for sync signal
+- `DETECT;` - Wait for detection sensors
+
+### Program Flow Commands
+- `FUNC(name) { ... }` - Define a function
+- `CALL(name);` - Call a function
+- `LOOP(count) { ... }` - Repeat commands n times
+
+### Comments
+- `#` or `//` - Single line comment
+
 ## Basic Syntax
 
 ### Single Axis Movement
