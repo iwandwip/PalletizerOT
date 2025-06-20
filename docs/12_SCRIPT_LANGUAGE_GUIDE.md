@@ -261,7 +261,7 @@ HOME;
 
 ## Command Output Format
 
-The compiler generates commands in JSON format:
+The compiler generates commands in JSON format from the Basic Pick and Place example:
 ```json
 {
   "format": "msl",
@@ -269,28 +269,94 @@ The compiler generates commands in JSON format:
   "commands": [
     {
       "index": 0,
-      "type": "MOVE",
-      "data": {
-        "X": 1000
-      },
+      "type": "HOME",
+      "data": {},
       "line": 1
     },
     {
       "index": 1,
-      "type": "GROUP",
+      "type": "SET_SPEED",
       "data": {
-        "X": 500,
-        "Y": 300
+        "ALL": 2000
       },
       "line": 2
     },
     {
       "index": 2,
-      "type": "DELAY",
+      "type": "GROUP",
       "data": {
-        "milliseconds": 500
+        "X": 500,
+        "Y": 300,
+        "Z": 0
       },
-      "line": 3
+      "line": 4
+    },
+    {
+      "index": 3,
+      "type": "MOVE",
+      "data": {
+        "Z": -100
+      },
+      "line": 5
+    },
+    {
+      "index": 4,
+      "type": "MOVE",
+      "data": {
+        "G": 1
+      },
+      "line": 6
+    },
+    {
+      "index": 5,
+      "type": "MOVE",
+      "data": {
+        "Z": 100
+      },
+      "line": 7
+    },
+    {
+      "index": 6,
+      "type": "GROUP",
+      "data": {
+        "X": 1000,
+        "Y": 800
+      },
+      "line": 9
+    },
+    {
+      "index": 7,
+      "type": "MOVE",
+      "data": {
+        "Z": -50
+      },
+      "line": 10
+    },
+    {
+      "index": 8,
+      "type": "MOVE",
+      "data": {
+        "G": 0
+      },
+      "line": 11
+    },
+    {
+      "index": 9,
+      "type": "MOVE",
+      "data": {
+        "Z": 100
+      },
+      "line": 12
+    },
+    {
+      "index": 10,
+      "type": "GROUP",
+      "data": {
+        "X": 0,
+        "Y": 0,
+        "Z": 0
+      },
+      "line": 14
     }
   ]
 }
