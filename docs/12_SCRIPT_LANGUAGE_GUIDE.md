@@ -165,20 +165,30 @@ CALL(place_pattern);
 - **X**: Horizontal movement (left/right)
 - **Y**: Horizontal movement (forward/backward) 
 - **Z**: Vertical movement (up/down)
-- **T**: Rotation axis (degrees)
-- **G**: Gripper axis (0=open, 1=closed)
+- **T**: Rotation axis 
+- **G**: Gripper axis
+
+All axes use position parameters. For example:
+- `X(100, 200);` moves X axis to position 100, then to position 200
+- `G(0, 600);` moves gripper to position 0, then to position 600
+- `T(90, 180, 270);` moves rotation axis to 90°, then 180°, then 270°
 
 ### Units
-- **Position**: Steps or encoder counts
+- **Position**: Steps or encoder counts for all axes
 - **Speed**: Steps per second
-- **Rotation**: Degrees (for T axis)
+- **Time**: Milliseconds for DELAY commands
 
-### Coordinate Modes
+### Position Parameters
+All axes accept position values as parameters:
+
 ```
-X1000
+X(1000);
+G(0);
+T(180);
 
-X+500
-Y-200
+X(100, 200, 300);
+G(0, 600, 0);
+T(90, 180, 270, 0);
 ```
 
 ## Example Scripts
