@@ -99,60 +99,6 @@ export interface EditorState {
   lastModified: Date
 }
 
-export interface BlockDefinition {
-  id: string
-  type: 'movement' | 'control' | 'function' | 'sensor'
-  category: string
-  label: string
-  icon: React.ReactNode
-  parameters: ParameterDefinition[]
-  color: string
-  inputs: number
-  outputs: number
-  description?: string
-}
-
-export interface ParameterDefinition {
-  name: string
-  label: string
-  type: 'number' | 'select' | 'boolean' | 'text'
-  default: unknown
-  options?: string[]
-  min?: number
-  max?: number
-  required?: boolean
-  validation?: (value: unknown) => boolean
-}
-
-export interface BlockInstance {
-  id: string
-  definitionId: string
-  position: { x: number; y: number }
-  parameters: Record<string, unknown>
-  connections: {
-    inputs: string[]
-    outputs: string[]
-  }
-  role?: 'start' | 'end' | 'normal'
-  executionOrder?: number
-}
-
-export interface Connection {
-  id: string
-  fromBlockId: string
-  toBlockId: string
-  fromPort: number
-  toPort: number
-}
-
-export interface TimelineCommandData {
-  id: string
-  type: CommandType
-  label: string
-  parameters: Record<string, unknown>
-  estimatedDuration: number
-  color: string
-}
 
 export interface SpreadsheetRow {
   id: string

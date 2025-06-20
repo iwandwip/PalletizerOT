@@ -12,16 +12,12 @@ export * from './adapters/EditorAdapters'
 // Main Script Engine Class - Facade Pattern
 import { ScriptGeneratorFactory, GeneratorType } from './core/ScriptGeneratorFactory'
 import { 
-  BlockEditorAdapter, 
-  TimelineEditorAdapter, 
   SpreadsheetEditorAdapter, 
   TextEditorAdapter 
 } from './adapters/EditorAdapters'
 import { 
   ScriptCommand, 
   ScriptGenerationOptions, 
-  BlockInstance, 
-  TimelineCommandData, 
   SpreadsheetRow 
 } from './types/ScriptTypes'
 
@@ -29,8 +25,6 @@ export class ScriptEngine {
   private static instance: ScriptEngine
   private factory: ScriptGeneratorFactory
   private adapters: {
-    block: BlockEditorAdapter
-    timeline: TimelineEditorAdapter
     spreadsheet: SpreadsheetEditorAdapter
     text: TextEditorAdapter
   }
@@ -38,8 +32,6 @@ export class ScriptEngine {
   private constructor() {
     this.factory = ScriptGeneratorFactory.getInstance()
     this.adapters = {
-      block: new BlockEditorAdapter(),
-      timeline: new TimelineEditorAdapter(),
       spreadsheet: new SpreadsheetEditorAdapter(),
       text: new TextEditorAdapter()
     }
@@ -52,41 +44,6 @@ export class ScriptEngine {
     return ScriptEngine.instance
   }
 
-  /**
-   * Generate script from Block Editor data
-   */
-  public generateFromBlocks(
-    blocks: BlockInstance[], 
-    options?: {
-      generatorType?: GeneratorType
-      generatorOptions?: Partial<ScriptGenerationOptions>
-    }
-  ): string {
-    const commands = this.adapters.block.convertToCommands(blocks)
-    const generator = this.factory.getGenerator(
-      options?.generatorType || 'MSL', 
-      options?.generatorOptions
-    )
-    return generator.generateScript(commands)
-  }
-
-  /**
-   * Generate script from Timeline Editor data
-   */
-  public generateFromTimeline(
-    timelineData: TimelineCommandData[], 
-    options?: {
-      generatorType?: GeneratorType
-      generatorOptions?: Partial<ScriptGenerationOptions>
-    }
-  ): string {
-    const commands = this.adapters.timeline.convertToCommands(timelineData)
-    const generator = this.factory.getGenerator(
-      options?.generatorType || 'MSL', 
-      options?.generatorOptions
-    )
-    return generator.generateScript(commands)
-  }
 
   /**
    * Generate script from Spreadsheet Editor data
@@ -148,19 +105,6 @@ export class ScriptEngine {
     return this.adapters.text.convertToCommands(scriptText)
   }
 
-  /**
-   * Convert blocks to unified commands
-   */
-  public convertBlocks(blocks: BlockInstance[]): ScriptCommand[] {
-    return this.adapters.block.convertToCommands(blocks)
-  }
-
-  /**
-   * Convert timeline data to unified commands
-   */
-  public convertTimeline(timelineData: TimelineCommandData[]): ScriptCommand[] {
-    return this.adapters.timeline.convertToCommands(timelineData)
-  }
 
   /**
    * Convert spreadsheet rows to unified commands

@@ -5,8 +5,6 @@
 
 import { 
   ScriptCommand, 
-  BlockInstance, 
-  TimelineCommandData, 
   SpreadsheetRow,
   MovementCommand,
   GroupCommand,
@@ -18,84 +16,6 @@ export abstract class BaseEditorAdapter {
   
   protected generateCommandId(): string {
     return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-  }
-}
-
-/**
- * Adapter for Visual Block Editor
- */
-export class BlockEditorAdapter extends BaseEditorAdapter {
-  convertToCommands(blocks: BlockInstance[]): ScriptCommand[] {
-    // Sort blocks by execution order
-    const sortedBlocks = this.sortBlocksByOrder(blocks)
-    
-    return sortedBlocks.map(block => this.convertBlockToCommand(block))
-  }
-
-  private sortBlocksByOrder(blocks: BlockInstance[]): BlockInstance[] {
-    // Find start blocks
-    const startBlocks = blocks.filter(block => block.role === 'start')
-    const normalBlocks = blocks.filter(block => block.role === 'normal' || !block.role)
-    const endBlocks = blocks.filter(block => block.role === 'end')
-    
-    // Simple ordering - can be enhanced with connection traversal
-    return [
-      ...startBlocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0)),
-      ...normalBlocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0)),
-      ...endBlocks.sort((a, b) => (a.executionOrder || 0) - (b.executionOrder || 0))
-    ]
-  }
-
-  private convertBlockToCommand(block: BlockInstance): ScriptCommand {
-    const command: ScriptCommand = {
-      id: block.id,
-      type: this.mapBlockTypeToCommandType(block.definitionId),
-      parameters: { ...block.parameters },
-      metadata: {
-        order: block.executionOrder,
-        description: `Block: ${block.definitionId}`,
-        tags: ['visual-editor']
-      }
-    }
-
-    return command
-  }
-
-  private mapBlockTypeToCommandType(blockType: string): ScriptCommand['type'] {
-    const mapping: Record<string, ScriptCommand['type']> = {
-      'move-x': 'MOVE',
-      'move-y': 'MOVE', 
-      'move-z': 'MOVE',
-      'group-move': 'GROUP',
-      'home': 'HOME',
-      'zero': 'ZERO',
-      'gripper': 'GRIPPER',
-      'wait': 'WAIT',
-      'set-speed': 'SPEED',
-      'function': 'FUNC',
-      'call-function': 'CALL',
-      'loop': 'LOOP'
-    }
-
-    return mapping[blockType] || 'MOVE'
-  }
-}
-
-/**
- * Adapter for Timeline Editor
- */
-export class TimelineEditorAdapter extends BaseEditorAdapter {
-  convertToCommands(timelineData: TimelineCommandData[]): ScriptCommand[] {
-    return timelineData.map((item, index) => ({
-      id: item.id,
-      type: item.type,
-      parameters: { ...item.parameters },
-      metadata: {
-        order: index + 1,
-        description: item.label,
-        tags: ['timeline-editor']
-      }
-    }))
   }
 }
 

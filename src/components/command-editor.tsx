@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Blocks, Zap, Code2, Clock, FileSpreadsheet } from "lucide-react"
+import { Upload, Download, FileText, Play, Cpu, CheckCircle, AlertCircle, Loader2, Zap, Code2, FileSpreadsheet } from "lucide-react"
 import { api } from "@/lib/api"
-import { TextEditor, VisualEditor, TimelineEditor, SpreadsheetEditor } from "./editors"
+import { TextEditor, SpreadsheetEditor } from "./editors"
 import { ScriptEngine } from "@/lib/script-engine"
 import { cn } from "@/lib/utils"
 
@@ -24,7 +24,7 @@ interface CommandEditorProps {
 
 export function CommandEditor({ onNotification }: CommandEditorProps) {
   const [activeTab, setActiveTab] = useState("editor")
-  const [editorMode, setEditorMode] = useState<'text' | 'visual' | 'timeline' | 'spreadsheet'>('text')
+  const [editorMode, setEditorMode] = useState<'text' | 'spreadsheet'>('text')
   const [commandText, setCommandText] = useState('')
   const [compilationResult, setCompilationResult] = useState<CompilationResult | null>(null)
   const [isCompiling, setIsCompiling] = useState(false)
@@ -259,24 +259,6 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
                       </Button>
                       <Button
                         size="sm"
-                        variant={editorMode === 'visual' ? "default" : "ghost"}
-                        onClick={() => setEditorMode('visual')}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <Blocks className="w-3 h-3 mr-1" />
-                        Visual
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={editorMode === 'timeline' ? "default" : "ghost"}
-                        onClick={() => setEditorMode('timeline')}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <Clock className="w-3 h-3 mr-1" />
-                        Timeline
-                      </Button>
-                      <Button
-                        size="sm"
                         variant={editorMode === 'spreadsheet' ? "default" : "ghost"}
                         onClick={() => setEditorMode('spreadsheet')}
                         className="h-7 px-2 text-xs"
@@ -309,20 +291,6 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
                 <TextEditor
                   value={commandText}
                   onChange={setCommandText}
-                />
-              )}
-              
-              {editorMode === 'visual' && (
-                <VisualEditor
-                  onScriptGenerated={(script) => setCommandText(script)}
-                  disabled={true}
-                />
-              )}
-              
-              {editorMode === 'timeline' && (
-                <TimelineEditor
-                  onScriptGenerated={(script) => setCommandText(script)}
-                  disabled={true}
                 />
               )}
               
