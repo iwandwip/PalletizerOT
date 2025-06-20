@@ -21,6 +21,7 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 - `SET(0);` - Set sync pin LOW
 - `WAIT;` - Wait for sync signal
 - `DETECT;` - Wait for detection sensors
+- `DELAY(milliseconds);` - Wait for specified time in milliseconds
 
 ### Program Flow Commands
 - `FUNC(name) { ... }` - Define a function
@@ -30,7 +31,7 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 ## Basic Syntax
 
 ### Single Axis Movement
-Move individual axes with flexible parameter positioning (up to 5 parameters max):
+Move individual axes with multiple position parameters (up to 5 parameters max):
 
 ```
 X(100);
@@ -39,20 +40,13 @@ Z(10);
 T(9900);
 G(600);
 
-X(100,d1000);
-X(d1000,100);
-Y(50,d500);
+X(100, 200);
+Y(50, 150);
+Z(10, 100);
 
-X(100,d1000,200);
-X(d1000,100,200);
-X(100,200,d1000);
-
-X(100,d500,200,d1000,300);
-Y(50,d300,100,d800);
-Z(10,d600,50,d1200,100);
-
-X(d500,100,d1000,200,d1500);
-Y(50,d300,d700,100);
+X(100, 200, 300);
+X(50, 100, 200, 300);
+X(10, 50, 100, 200, 300);
 ```
 
 ### Multi-Axis Movement (GROUP)
@@ -61,10 +55,10 @@ Move multiple axes simultaneously (1-5 axes, each with 1-5 parameters):
 ```
 GROUP(X(1250), T(9900), T(-2500));
 
-GROUP(X(100,d500), Y(50,d300), Z(10,d600));
+GROUP(X(100), Y(50), Z(10));
 
-GROUP(X(100,d500,200), Y(50,d300,100,d800), Z(10));
-GROUP(X(d1000,100,200,d500,300), T(9900,d2000), G(600));
+GROUP(X(100, 200), Y(50, 100), Z(10));
+GROUP(X(100, 200, 300), T(9900), G(600));
 
 DETECT;
 GROUP(X(1250), T(9900));
@@ -91,6 +85,7 @@ SET(1);
 SET(0);
 WAIT;
 DETECT;
+DELAY(1000);
 ```
 
 ### Home and Zero Commands
@@ -135,8 +130,10 @@ LOOP(5) {
 
 LOOP(3) {
   LOOP(4) {
-    X(100,d500);
-    Y(50,d300);
+    X(100);
+    DELAY(500);
+    Y(50);
+    DELAY(300);
   }
   Z(10);
 }
@@ -375,11 +372,17 @@ The compiler generates commands in JSON format:
       "type": "GROUP",
       "data": {
         "X": 500,
-        "Y": 300,
-        "X_delay": 500,
-        "Y_delay": 300
+        "Y": 300
       },
       "line": 2
+    },
+    {
+      "index": 2,
+      "type": "DELAY",
+      "data": {
+        "milliseconds": 500
+      },
+      "line": 3
     }
   ]
 }
@@ -437,7 +440,8 @@ The debug terminal shows:
 ```
 GROUP(X(1000), Y(2000), Z(500));
 
-GROUP(X(1000,d500), Y(2000,d500), Z(500,d500));
+GROUP(X(1000), Y(2000), Z(500));
+DELAY(500);
 
 X(1000);
 Y(2000);
