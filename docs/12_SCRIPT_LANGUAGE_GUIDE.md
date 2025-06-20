@@ -270,16 +270,14 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
     {
       "index": 0,
       "type": "HOME",
-      "data": {},
-      "line": 1
+      "data": {}
     },
     {
       "index": 1,
       "type": "SET_SPEED",
       "data": {
         "ALL": 2000
-      },
-      "line": 2
+      }
     },
     {
       "index": 2,
@@ -288,32 +286,28 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
         "X": 500,
         "Y": 300,
         "Z": 0
-      },
-      "line": 4
+      }
     },
     {
       "index": 3,
       "type": "MOVE",
       "data": {
         "Z": -100
-      },
-      "line": 5
+      }
     },
     {
       "index": 4,
       "type": "MOVE",
       "data": {
         "G": 1
-      },
-      "line": 6
+      }
     },
     {
       "index": 5,
       "type": "MOVE",
       "data": {
         "Z": 100
-      },
-      "line": 7
+      }
     },
     {
       "index": 6,
@@ -321,32 +315,28 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
       "data": {
         "X": 1000,
         "Y": 800
-      },
-      "line": 9
+      }
     },
     {
       "index": 7,
       "type": "MOVE",
       "data": {
         "Z": -50
-      },
-      "line": 10
+      }
     },
     {
       "index": 8,
       "type": "MOVE",
       "data": {
         "G": 0
-      },
-      "line": 11
+      }
     },
     {
       "index": 9,
       "type": "MOVE",
       "data": {
         "Z": 100
-      },
-      "line": 12
+      }
     },
     {
       "index": 10,
@@ -355,8 +345,7 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
         "X": 0,
         "Y": 0,
         "Z": 0
-      },
-      "line": 14
+      }
     }
   ]
 }
