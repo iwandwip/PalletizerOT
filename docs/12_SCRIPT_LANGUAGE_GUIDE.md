@@ -351,6 +351,191 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
 }
 ```
 
+### All Commands Example
+
+This example shows how all command types are compiled to JSON:
+
+**Input Script:**
+```
+HOME;
+ZERO;
+SPEED;1500;
+SPEED;x;2000;
+
+X(100, 200);
+Y(50);
+GROUP(X(300), Y(150), Z(75));
+
+SET(1);
+SET(0);
+WAIT;
+DETECT;
+DELAY(500);
+
+FUNC(test_move) {
+  X(400);
+  DELAY(200);
+}
+
+CALL(test_move);
+
+LOOP(3) {
+  Y(100);
+  Z(50);
+}
+```
+
+**Compiled JSON Output:**
+```json
+{
+  "format": "msl",
+  "scriptId": "1750400000000",
+  "commands": [
+    {
+      "index": 0,
+      "type": "HOME",
+      "data": {}
+    },
+    {
+      "index": 1,
+      "type": "ZERO",
+      "data": {}
+    },
+    {
+      "index": 2,
+      "type": "SET_SPEED",
+      "data": {
+        "ALL": 1500
+      }
+    },
+    {
+      "index": 3,
+      "type": "SET_SPEED",
+      "data": {
+        "X": 2000
+      }
+    },
+    {
+      "index": 4,
+      "type": "MOVE",
+      "data": {
+        "X": 100
+      }
+    },
+    {
+      "index": 5,
+      "type": "MOVE",
+      "data": {
+        "X": 200
+      }
+    },
+    {
+      "index": 6,
+      "type": "MOVE",
+      "data": {
+        "Y": 50
+      }
+    },
+    {
+      "index": 7,
+      "type": "GROUP",
+      "data": {
+        "X": 300,
+        "Y": 150,
+        "Z": 75
+      }
+    },
+    {
+      "index": 8,
+      "type": "SET",
+      "data": {
+        "pin": 1
+      }
+    },
+    {
+      "index": 9,
+      "type": "SET",
+      "data": {
+        "pin": 0
+      }
+    },
+    {
+      "index": 10,
+      "type": "WAIT",
+      "data": {}
+    },
+    {
+      "index": 11,
+      "type": "DETECT",
+      "data": {}
+    },
+    {
+      "index": 12,
+      "type": "DELAY",
+      "data": {
+        "milliseconds": 500
+      }
+    },
+    {
+      "index": 13,
+      "type": "MOVE",
+      "data": {
+        "X": 400
+      }
+    },
+    {
+      "index": 14,
+      "type": "DELAY",
+      "data": {
+        "milliseconds": 200
+      }
+    },
+    {
+      "index": 15,
+      "type": "MOVE",
+      "data": {
+        "Y": 100
+      }
+    },
+    {
+      "index": 16,
+      "type": "MOVE",
+      "data": {
+        "Z": 50
+      }
+    },
+    {
+      "index": 17,
+      "type": "MOVE",
+      "data": {
+        "Y": 100
+      }
+    },
+    {
+      "index": 18,
+      "type": "MOVE",
+      "data": {
+        "Z": 50
+      }
+    },
+    {
+      "index": 19,
+      "type": "MOVE",
+      "data": {
+        "Y": 100
+      }
+    },
+    {
+      "index": 20,
+      "type": "MOVE",
+      "data": {
+        "Z": 50
+      }
+    }
+  ]
+}
+```
+
 ## Integration with Hardware
 
 ### ESP32 Processing
