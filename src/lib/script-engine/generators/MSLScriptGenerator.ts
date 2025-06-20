@@ -58,16 +58,16 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
         return this.formatGroupCommand(command as GroupCommand)
       
       case 'HOME':
-        return 'HOME'
+        return 'HOME;'
       
       case 'ZERO':
-        return 'ZERO'
+        return 'ZERO;'
       
       case 'GRIPPER':
-        return command.parameters.action === 'open' ? 'G0' : 'G1'
+        return command.parameters.action === 'open' ? 'G0;' : 'G1;'
       
       case 'WAIT':
-        return 'SYNC'
+        return 'WAIT;'
       
       case 'SPEED':
         return this.formatSpeedCommand(command as SpeedCommand)
@@ -76,16 +76,16 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
         return this.formatFunctionCommand(command as FunctionCommand)
       
       case 'CALL':
-        return `CALL ${command.parameters.name}`
+        return `CALL(${command.parameters.name});`
       
       case 'LOOP':
         return this.formatLoopCommand(command as LoopCommand)
       
       case 'ENDLOOP':
-        return 'ENDLOOP'
+        return '}'
       
       case 'ENDFUNC':
-        return 'ENDFUNC'
+        return '}'
       
       default:
         return this.generateComment(`Unknown command: ${command.type}`)
@@ -94,15 +94,26 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
 
   private formatMovementCommand(command: MovementCommand): string {
     const { axis, position, speed } = command.parameters
-    const speedPart = speed && speed !== 1500 ? ` F${speed}` : ''
-    return `${axis}${position}${speedPart}`
+    
+    // Old MSL format: X(100,d1000) or X(100) 
+    if (speed && speed !== 1500) {
+      return `${axis}(${position},d${speed});`
+    }
+    return `${axis}(${position});`
   }
 
   private formatGroupCommand(command: GroupCommand): string {
     const { axes, speed } = command.parameters
-    const axesPart = axes.map(a => `${a.axis}${a.position}`).join(' ')
-    const speedPart = speed && speed !== 1500 ? ` F${speed}` : ''
-    return `GROUP ${axesPart}${speedPart}`
+    
+    // Old MSL format: GROUP(X(100), Y(50), Z(10));
+    const axesPart = axes.map(a => {
+      if (speed && speed !== 1500) {
+        return `${a.axis}(${a.position},d${speed})`
+      }
+      return `${a.axis}(${a.position})`
+    }).join(', ')
+    
+    return `GROUP(${axesPart});`
   }
 
   private formatSpeedCommand(command: SpeedCommand): string {
@@ -112,36 +123,40 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
 
   private formatFunctionCommand(command: FunctionCommand): string {
     const { name, body } = command.parameters
-    const lines = [`FUNC ${name}`]
+    
+    // Old MSL format: FUNC(name) { ... }
+    let result = `FUNC(${name}) {`
     
     if (Array.isArray(body)) {
       body.forEach(cmd => {
         const cmdLine = this.formatCommand(cmd)
         if (cmdLine) {
-          lines.push(this.addIndentation(cmdLine))
+          result += cmdLine
         }
       })
     }
     
-    lines.push('ENDFUNC')
-    return lines.join(this.options.lineEndings)
+    result += '}'
+    return result
   }
 
   private formatLoopCommand(command: LoopCommand): string {
     const { count, body } = command.parameters
-    const lines = [`LOOP ${count}`]
+    
+    // Old MSL format: LOOP(count) { ... }
+    let result = `LOOP(${count}) {`
     
     if (Array.isArray(body)) {
       body.forEach(cmd => {
         const cmdLine = this.formatCommand(cmd)
         if (cmdLine) {
-          lines.push(this.addIndentation(cmdLine))
+          result += cmdLine
         }
       })
     }
     
-    lines.push('ENDLOOP')
-    return lines.join(this.options.lineEndings)
+    result += '}'
+    return result
   }
 
   protected validateSingleCommand(command: ScriptCommand): { commandId: string; message: string; severity: 'error' | 'warning' } | null {

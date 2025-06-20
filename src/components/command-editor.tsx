@@ -46,15 +46,16 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
     }
   }
 
-  const handleCompile = useCallback(async () => {
-    if (!commandText.trim()) {
+  const handleCompile = useCallback(async (scriptText?: string) => {
+    const textToCompile = scriptText || commandText
+    if (!textToCompile.trim()) {
       setCompilationResult(null)
       return
     }
 
     setIsCompiling(true)
     try {
-      const result = await api.saveScript(commandText)
+      const result = await api.saveScript(textToCompile)
       setCompilationResult({
         success: result.success,
         commands: [],
@@ -296,7 +297,10 @@ export function CommandEditor({ onNotification }: CommandEditorProps) {
               
               {editorMode === 'spreadsheet' && (
                 <SpreadsheetEditor
-                  onScriptGenerated={(script) => setCommandText(script)}
+                  onScriptGenerated={(script) => {
+                    setCommandText(script)
+                    handleCompile(script)
+                  }}
                 />
               )}
             </CardContent>

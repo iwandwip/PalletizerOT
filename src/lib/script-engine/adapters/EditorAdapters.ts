@@ -129,7 +129,12 @@ export class TextEditorAdapter extends BaseEditorAdapter {
   }
 
   private mapTextToCommandType(command: string): ScriptCommand['type'] {
-    // Handle axis movements (X100, Y200, etc.)
+    // Handle old MSL axis movements X(100), Y(200), etc.
+    if (/^[XYZTG]\(/.test(command)) {
+      return 'MOVE'
+    }
+
+    // Handle new format axis movements (X100, Y200, etc.)
     if (/^[XYZTG]-?\d+/.test(command)) {
       return 'MOVE'
     }
@@ -140,6 +145,7 @@ export class TextEditorAdapter extends BaseEditorAdapter {
       'ZERO': 'ZERO',
       'G0': 'GRIPPER',
       'G1': 'GRIPPER',
+      'WAIT': 'WAIT',
       'SYNC': 'WAIT',
       'SPEED': 'SPEED',
       'FUNC': 'FUNC',
@@ -155,7 +161,21 @@ export class TextEditorAdapter extends BaseEditorAdapter {
   private parseLineParameters(line: string, command: string): Record<string, unknown> {
     const params: Record<string, unknown> = {}
 
-    // Handle movement commands (X100 F1500)
+    // Handle old MSL movement commands X(100,d1500) or X(100)
+    if (/^[XYZTG]\(/.test(command)) {
+      const axis = command.charAt(0)
+      const match = command.match(/^[XYZTG]\((-?\d+)(?:,d(\d+))?\)/)
+      if (match) {
+        params.axis = axis
+        params.position = parseInt(match[1])
+        if (match[2]) {
+          params.speed = parseInt(match[2])
+        }
+      }
+      return params
+    }
+
+    // Handle new format movement commands (X100 F1500)
     if (/^[XYZTG]-?\d+/.test(command)) {
       const axis = command.charAt(0)
       const position = parseInt(command.slice(1))
@@ -175,16 +195,36 @@ export class TextEditorAdapter extends BaseEditorAdapter {
     
     switch (command) {
       case 'GROUP':
-        // Parse "GROUP X100 Y200 Z50 F1500"
-        const movements = parts.slice(1).filter(p => /^[XYZTG]-?\d+/.test(p))
-        params.axes = movements.map(m => ({
-          axis: m.charAt(0),
-          position: parseInt(m.slice(1))
-        }))
-        
-        const speedMatch = line.match(/F(\d+)/)
-        if (speedMatch) {
-          params.speed = parseInt(speedMatch[1])
+        // Parse old MSL "GROUP(X(100), Y(200), Z(50));" or new "GROUP X100 Y200 Z50 F1500"
+        if (line.includes('(') && line.includes(',')) {
+          // Old MSL format: GROUP(X(100), Y(200), Z(50));
+          const groupMatch = line.match(/GROUP\(([^)]+)\)/)
+          if (groupMatch) {
+            const movementsStr = groupMatch[1]
+            const movements = movementsStr.split(',').map(m => m.trim())
+            params.axes = movements.map(m => {
+              const match = m.match(/([XYZTG])\((-?\d+)(?:,d(\d+))?\)/)
+              if (match) {
+                return {
+                  axis: match[1],
+                  position: parseInt(match[2])
+                }
+              }
+              return null
+            }).filter(Boolean)
+          }
+        } else {
+          // New format: "GROUP X100 Y200 Z50 F1500"
+          const movements = parts.slice(1).filter(p => /^[XYZTG]-?\d+/.test(p))
+          params.axes = movements.map(m => ({
+            axis: m.charAt(0),
+            position: parseInt(m.slice(1))
+          }))
+          
+          const speedMatch = line.match(/F(\d+)/)
+          if (speedMatch) {
+            params.speed = parseInt(speedMatch[1])
+          }
         }
         break
 
@@ -198,15 +238,29 @@ export class TextEditorAdapter extends BaseEditorAdapter {
 
       case 'FUNC':
       case 'CALL':
-        // Parse "FUNC pickup" or "CALL pickup"
-        if (parts.length >= 2) {
+        // Parse old MSL "FUNC(pickup)" or "CALL(pickup)" and new "FUNC pickup" or "CALL pickup"
+        if (line.includes('(')) {
+          // Old MSL format: FUNC(name) or CALL(name)
+          const match = line.match(/(?:FUNC|CALL)\(([^)]+)\)/)
+          if (match) {
+            params.name = match[1]
+          }
+        } else if (parts.length >= 2) {
+          // New format: "FUNC pickup" or "CALL pickup"
           params.name = parts[1]
         }
         break
 
       case 'LOOP':
-        // Parse "LOOP 5"
-        if (parts.length >= 2) {
+        // Parse old MSL "LOOP(5)" or new "LOOP 5"
+        if (line.includes('(')) {
+          // Old MSL format: LOOP(count)
+          const match = line.match(/LOOP\((\d+)\)/)
+          if (match) {
+            params.count = parseInt(match[1])
+          }
+        } else if (parts.length >= 2) {
+          // New format: "LOOP 5"
           params.count = parseInt(parts[1])
         }
         break
