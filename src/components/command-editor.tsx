@@ -42,8 +42,12 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     try {
       const status = await api.getStatus()
       setConnectionStatus(status.esp32Connected ? 'connected' : 'disconnected')
-    } catch {
+    } catch (error) {
       setConnectionStatus('disconnected')
+      // Show notification only once when server goes offline
+      if (connectionStatus !== 'disconnected') {
+        onNotification?.('🔌 Control system disconnected', 'warning')
+      }
     }
   }
 
@@ -72,7 +76,14 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       onCompileOutput?.(output)
       
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Compilation failed'
+      let errorMsg = error instanceof Error ? error.message : 'Compilation failed'
+      
+      // Check if it's a network error (server not running)
+      if (errorMsg.includes('fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('Failed to fetch')) {
+        errorMsg = 'Control system is not running - Please check the system connection'
+        onNotification?.('⚠️ Control system is not running. Please check your connection.', 'warning')
+      }
+      
       setCompilationResult({
         success: false,
         error: errorMsg,
@@ -81,7 +92,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       
       // Send error to debug overlay
       onCompileOutput?.(
-        `❌ Compilation error!\n\nError: ${errorMsg}\n\nInput script:\n${textToCompile}`
+        `❌ Compilation error!\n\nError: ${errorMsg}\n\nInput script:\n${textToCompile}\n\n💡 Solution: Check system connection and try again`
       )
     } finally {
       setIsCompiling(false)
@@ -194,8 +205,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
 
   const getConnectionStatusText = () => {
     switch (connectionStatus) {
-      case 'connected': return 'ESP32 Connected'
-      case 'disconnected': return 'ESP32 Disconnected'
+      case 'connected': return 'Device Connected'
+      case 'disconnected': return 'Control System Offline'
       case 'connecting': return 'Connecting...'
     }
   }
@@ -210,7 +221,9 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
               <div className={cn("w-3 h-3 rounded-full animate-pulse", getConnectionStatusColor())} />
               <div>
                 <p className="text-sm font-medium">{getConnectionStatusText()}</p>
-                <p className="text-xs text-muted-foreground">ESP32 Connection Status</p>
+                <p className="text-xs text-muted-foreground">
+                  {connectionStatus === 'disconnected' ? 'Control System Status' : 'Device Connection Status'}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -483,10 +496,17 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Button
                   variant="outline"
+                  onClick={() => setCommandText('X1000\nY2000\nZ500')}
+                  className="justify-start hover:bg-primary/5 hover:border-primary/30"
+                >
+                  Basic Commands
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setCommandText('X1000 Y2000 F1500\nSYNC\nX0 Y0 F3000')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
-                  Simple Movement
+                  With Speed & Sync
                 </Button>
                 <Button
                   variant="outline"

@@ -74,35 +74,77 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
     }
   }, [compileOutput])
 
-  // Simulate ESP32 messages (replace with real SSE connection)
+  // Real ESP32 SSE connection
   useEffect(() => {
     if (!isOpen) return
 
-    const interval = setInterval(() => {
-      const messages = [
-        'ESP32 connected to WiFi',
-        'Polling for new scripts...',
-        'Script received: 1734567890',
-        'Executing step 1: MOVE X → 100',
-        'Command sent to slave: x;1;100;1500;',
-        'Slave response: DONE',
-        'Step completed successfully'
-      ]
+    let eventSource: EventSource | null = null
+    
+    try {
+      eventSource = new EventSource('http://localhost:3006/api/events')
       
-      const randomMessage = messages[Math.floor(Math.random() * messages.length)]
-      
-      const newMessage: DebugMessage = {
-        id: Date.now().toString(),
-        timestamp: new Date().toLocaleTimeString(),
-        type: 'info',
-        source: 'esp32',
-        message: randomMessage
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          const newMessage: DebugMessage = {
+            id: Date.now().toString(),
+            timestamp: new Date().toLocaleTimeString(),
+            type: data.type || 'info',
+            source: 'esp32',
+            message: data.message || event.data
+          }
+          setTerminalMessages(prev => [...prev.slice(-50), newMessage])
+        } catch {
+          // If not JSON, treat as plain text
+          const newMessage: DebugMessage = {
+            id: Date.now().toString(),
+            timestamp: new Date().toLocaleTimeString(),
+            type: 'info',
+            source: 'esp32',
+            message: event.data
+          }
+          setTerminalMessages(prev => [...prev.slice(-50), newMessage])
+        }
       }
       
-      setTerminalMessages(prev => [...prev.slice(-50), newMessage]) // Keep last 50 messages
-    }, 3000)
+      eventSource.onerror = () => {
+        const errorMessage: DebugMessage = {
+          id: Date.now().toString(),
+          timestamp: new Date().toLocaleTimeString(),
+          type: 'error',
+          source: 'system',
+          message: 'Device connection lost - Check if control system is running'
+        }
+        setTerminalMessages(prev => [...prev.slice(-50), errorMessage])
+      }
+      
+      eventSource.onopen = () => {
+        const connectMessage: DebugMessage = {
+          id: Date.now().toString(),
+          timestamp: new Date().toLocaleTimeString(),
+          type: 'success',
+          source: 'system',
+          message: 'Connected to device monitoring'
+        }
+        setTerminalMessages(prev => [...prev.slice(-50), connectMessage])
+      }
+      
+    } catch (error) {
+      const errorMessage: DebugMessage = {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleTimeString(),
+        type: 'error',
+        source: 'system',
+        message: 'Failed to connect to device - Control system may be offline'
+      }
+      setTerminalMessages(prev => [...prev.slice(-50), errorMessage])
+    }
 
-    return () => clearInterval(interval)
+    return () => {
+      if (eventSource) {
+        eventSource.close()
+      }
+    }
   }, [isOpen])
 
   // Handle resize
@@ -171,9 +213,14 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
       compiler: 'bg-purple-500',
       system: 'bg-gray-500'
     }
+    const sourceNames = {
+      esp32: 'DEVICE',
+      compiler: 'COMPILER',
+      system: 'SYSTEM'
+    }
     return (
       <Badge className={cn('text-xs px-1 py-0 text-white', colors[source])}>
-        {source.toUpperCase()}
+        {sourceNames[source] || source.toUpperCase()}
       </Badge>
     )
   }
@@ -197,14 +244,14 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-primary" />
-            <span className="font-medium text-white">Debug Console</span>
+            <span className="font-medium text-white">System Monitor</span>
           </div>
           
           <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)} className="w-auto">
             <TabsList className="bg-gray-700 border-gray-600">
               <TabsTrigger value="terminal" className="text-xs data-[state=active]:bg-gray-600">
                 <Terminal className="w-3 h-3 mr-1" />
-                ESP32 Terminal
+                Device Monitor
                 {terminalMessages.length > 0 && (
                   <Badge variant="secondary" className="ml-1 px-1 text-xs">
                     {terminalMessages.length}
@@ -213,7 +260,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
               </TabsTrigger>
               <TabsTrigger value="output" className="text-xs data-[state=active]:bg-gray-600">
                 <FileOutput className="w-3 h-3 mr-1" />
-                Compile Output
+                Script Output
                 {outputMessages.length > 0 && (
                   <Badge variant="secondary" className="ml-1 px-1 text-xs">
                     {outputMessages.length}
@@ -285,7 +332,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
               className="h-full overflow-y-auto p-4 bg-gray-900 font-mono text-sm"
             >
               {terminalMessages.length === 0 ? (
-                <div className="text-gray-500 italic">No ESP32 messages yet...</div>
+                <div className="text-gray-500 italic">No device messages yet...</div>
               ) : (
                 terminalMessages.map((message) => (
                   <div key={message.id} className="flex items-start gap-2 mb-1">
@@ -308,7 +355,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
               className="h-full overflow-y-auto p-4 bg-gray-900 font-mono text-sm"
             >
               {outputMessages.length === 0 ? (
-                <div className="text-gray-500 italic">No compile output yet...</div>
+                <div className="text-gray-500 italic">No script output yet...</div>
               ) : (
                 outputMessages.map((message) => (
                   <div key={message.id} className="flex items-start gap-2 mb-1">

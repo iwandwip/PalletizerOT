@@ -55,9 +55,9 @@ export default function StatusDisplay({
 
   const getConnectionStatus = () => {
     if (esp32Connected) {
-      return { icon: Wifi, color: 'text-green-500', text: 'ESP32 Connected' }
+      return { icon: Wifi, color: 'text-green-500', text: 'Device Connected' }
     } else {
-      return { icon: WifiOff, color: 'text-red-500', text: 'ESP32 Disconnected' }
+      return { icon: WifiOff, color: 'text-red-500', text: 'Device Disconnected' }
     }
   }
 
@@ -106,7 +106,7 @@ export default function StatusDisplay({
           <span className={getStatusColor()}>{systemStatus.replace('_', ' ')}</span>
         </div>
         <div className="flex justify-between">
-          <span>ESP32 Connection:</span>
+          <span>Device Connection:</span>
           <span className={esp32Connected ? 'text-green-600' : 'text-red-600'}>
             {esp32Connected ? 'Connected' : 'Disconnected'}
           </span>
