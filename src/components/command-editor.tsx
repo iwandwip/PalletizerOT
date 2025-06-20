@@ -456,49 +456,49 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('X1000\nY2000\nZ500')}
+                  onClick={() => setCommandText('X(100);\nY(50);\nZ(10);\nG(600);')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Basic Commands
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('X1000 Y2000 F1500\nSYNC\nX0 Y0 F3000')}
+                  onClick={() => setCommandText('X(100,d1000);\nY(50,d500);\nGROUP(X(0), Y(0));')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   With Speed & Sync
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('GROUP X1000 Y2000 Z500\nSYNC\nGROUP X0 Y0 Z0')}
+                  onClick={() => setCommandText('GROUP(X(100), Y(50), Z(10));\nGROUP(X(0), Y(0), Z(0));')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Group Movements
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('FUNC pickup\n  Z-100\n  G1\n  Z100\nENDFUNC\n\nCALL pickup')}
+                  onClick={() => setCommandText('FUNC(pickup) {\n  Z(100);\n  G(400);\n  Z(50);\n}\n\nCALL(pickup);')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Function Example
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('LOOP 5\n  X100\n  Y100\n  X0\n  Y0\nENDLOOP')}
+                  onClick={() => setCommandText('ZERO;\nSPEED;1000;\nSET(1);\nWAIT;\nSET(0);')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
-                  Loop Example
+                  System Commands
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC place_item\n  X1000 Y1500 F2000\n  Z-50\n  G0  // Release gripper\n  Z50\nENDFUNC\n\nLOOP 3\n  LOOP 4\n    CALL place_item\n    X1200  // Move 200mm\n  ENDLOOP\n  X0\n  Y1650  // Next row\nENDLOOP')}
+                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC(place_item) {\n  X(100,d1000,200);\n  Y(50,d500,100);\n  Z(50,d2000);\n  G(400);\n}\n\nFUNC(next_position) {\n  X(300);\n  Y(150);\n}\n\nCALL(place_item);\nCALL(next_position);\nCALL(place_item);')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Palletizing Pattern
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('// Advanced Sequence\nFUNC home_all\n  GROUP X0 Y0 Z0 T0 G0\n  SYNC\nENDFUNC\n\nFUNC safety_check\n  // Check all axes\n  X1 Y1 Z1  // Test movement\n  X0 Y0 Z0  // Return home\nENDFUNC\n\nCALL safety_check\nCALL home_all')}
+                  onClick={() => setCommandText('// Advanced Sequence\nFUNC(home_all) {\n  GROUP(X(0), Y(0), Z(0), T(0), G(0));\n}\n\nFUNC(safety_check) {\n  X(1);\n  Y(1);\n  Z(1);\n  GROUP(X(0), Y(0), Z(0));\n}\n\nCALL(safety_check);\nCALL(home_all);')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Safety & Homing
