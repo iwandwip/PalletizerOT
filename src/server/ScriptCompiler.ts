@@ -38,23 +38,29 @@ export class ScriptCompiler {
         continue;
       }
       
-      if (line.startsWith('FUNC')) {
+      if (line.startsWith('FUNC(') || line.startsWith('FUNC ')) {
         // Skip function definitions in main parsing
         i = this.skipToFunctionEnd(lines, i);
+        continue;
+      }
+      
+      if (line.startsWith('LOOP(')) {
+        // Handle MSL loop format: LOOP(2) { ... }
+        try {
+          const loopCommands = this.parseLoop(lines, i);
+          commands.push(...loopCommands);
+          i = this.skipToLoopEnd(lines, i);
+        } catch (error: unknown) {
+          throw new Error(`Line ${lineNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+        i++;
         continue;
       }
       
       try {
         const command = this.parseLine(line, lineNumber);
         if (command) {
-          if (command.type === 'LOOP') {
-            // Handle loop expansion
-            const loopCommands = this.parseLoop(lines, i);
-            commands.push(...loopCommands);
-            i = this.skipToLoopEnd(lines, i);
-          } else {
-            commands.push(command);
-          }
+          commands.push(command);
         }
       } catch (error: unknown) {
         throw new Error(`Line ${lineNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -445,15 +451,27 @@ export class ScriptCompiler {
   private parseLoop(lines: string[], startIndex: number): Command[] {
     const commands: Command[] = [];
     const loopLine = lines[startIndex];
-    const count = this.parseValue(loopLine.split(' ')[1]);
+    
+    // Parse LOOP(2) format
+    const match = loopLine.match(/LOOP\((\d+)\)/);
+    if (!match) {
+      throw new Error(`Invalid LOOP format: ${loopLine}`);
+    }
+    
+    const count = parseInt(match[1]);
     
     // Get commands inside loop
     const loopCommands: Command[] = [];
     let i = startIndex + 1;
     
-    while (i < lines.length && !lines[i].startsWith('ENDLOOP')) {
+    // Skip opening brace if present
+    if (lines[i] && lines[i].trim() === '{') {
+      i++;
+    }
+    
+    while (i < lines.length && !lines[i].trim().startsWith('}')) {
       const line = lines[i];
-      if (!line.startsWith('//') && !line.startsWith('#')) {
+      if (!line.startsWith('//') && !line.startsWith('#') && line.trim() !== '') {
         const command = this.parseLine(line, i + 1);
         if (command) {
           loopCommands.push(command);
@@ -464,7 +482,7 @@ export class ScriptCompiler {
     
     // Expand loop
     for (let j = 0; j < count; j++) {
-      commands.push(...loopCommands);
+      commands.push(...this.expandFunctionCalls(loopCommands));
     }
     
     return commands;
@@ -490,15 +508,61 @@ export class ScriptCompiler {
 
   private skipToFunctionEnd(lines: string[], startIndex: number): number {
     let i = startIndex + 1;
-    while (i < lines.length && !lines[i].startsWith('ENDFUNC')) {
-      i++;
+    let braceCount = 0;
+    
+    // Check if it's MSL format FUNC(name) { or legacy FUNC name
+    const isLegacy = lines[startIndex].startsWith('FUNC ');
+    
+    if (isLegacy) {
+      // Legacy format: skip until ENDFUNC
+      while (i < lines.length && !lines[i].startsWith('ENDFUNC')) {
+        i++;
+      }
+    } else {
+      // MSL format: skip until closing brace
+      // Skip opening brace if present
+      if (lines[i] && lines[i].trim() === '{') {
+        braceCount++;
+        i++;
+      }
+      
+      while (i < lines.length) {
+        const line = lines[i].trim();
+        if (line === '{') {
+          braceCount++;
+        } else if (line === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            break;
+          }
+        }
+        i++;
+      }
     }
+    
     return i;
   }
 
   private skipToLoopEnd(lines: string[], startIndex: number): number {
     let i = startIndex + 1;
-    while (i < lines.length && !lines[i].startsWith('ENDLOOP')) {
+    let braceCount = 0;
+    
+    // Skip opening brace if present
+    if (lines[i] && lines[i].trim() === '{') {
+      braceCount++;
+      i++;
+    }
+    
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (line === '{') {
+        braceCount++;
+      } else if (line === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          break;
+        }
+      }
       i++;
     }
     return i;
@@ -678,7 +742,9 @@ export class ScriptCompiler {
   private parseGroupMove(line: string, lineNumber: number): Command {
     // Parse GROUP(X(100, 200), Y(50), Z(10, 20, 30)) and GROUPSYNC(...)
     const isGroupSync = line.startsWith('GROUPSYNC');
-    const match = line.match(/(GROUP|GROUPSYNC)\(([^)]+)\)/);
+    
+    // Fix regex to handle nested parentheses properly
+    const match = line.match(/(GROUP|GROUPSYNC)\((.+)\)$/);
     
     if (!match) {
       throw new Error(`Invalid ${isGroupSync ? 'GROUPSYNC' : 'GROUP'} command format: ${line}`);
@@ -799,6 +865,10 @@ export class ScriptCompiler {
     
     const functionName = match[1].trim();
     
+    if (!this.functions.has(functionName)) {
+      throw new Error(`Function '${functionName}' not found`);
+    }
+    
     return {
       type: 'CALL',
       data: { functionName },
@@ -807,28 +877,25 @@ export class ScriptCompiler {
   }
 
   private splitGroupMovements(movementsStr: string): string[] {
-    // Split GROUP movements while respecting parentheses
+    // Simple approach: split by ), then add back the closing parenthesis
+    // INPUT: "X(100, 200, 300, 400, 500), Y(100, 200, 300, 400, 500), Z(100, 200, 300, 400, 500)"
+    const parts = movementsStr.split('),');
     const movements: string[] = [];
-    let current = '';
-    let parenCount = 0;
     
-    for (const char of movementsStr) {
-      if (char === '(') {
-        parenCount++;
-      } else if (char === ')') {
-        parenCount--;
+    for (let i = 0; i < parts.length; i++) {
+      let part = parts[i].trim();
+      
+      // Add back closing parenthesis except for the last part
+      if (i < parts.length - 1) {
+        part += ')';
       }
       
-      if (char === ',' && parenCount === 0) {
-        movements.push(current.trim());
-        current = '';
-      } else {
-        current += char;
+      // Remove any leading comma
+      part = part.replace(/^,\s*/, '');
+      
+      if (part.length > 0) {
+        movements.push(part);
       }
-    }
-    
-    if (current.trim()) {
-      movements.push(current.trim());
     }
     
     return movements;
@@ -869,7 +936,11 @@ export class ScriptCompiler {
         return `MOVE:${axis}${positions}`;
         
       case 'GROUP':
-        const groupAxes = Object.keys(command.data || {})
+        if (!command.data || Object.keys(command.data).length === 0) {
+          console.error('GROUP command has no data:', command);
+          return 'GROUP:';
+        }
+        const groupAxes = Object.keys(command.data)
           .filter(key => !key.includes('_'))
           .map(axis => {
             const positions = command.data?.[axis];
@@ -882,7 +953,11 @@ export class ScriptCompiler {
         return `GROUP:${groupAxes}`;
         
       case 'GROUPSYNC':
-        const syncAxes = Object.keys(command.data || {})
+        if (!command.data || Object.keys(command.data).length === 0) {
+          console.error('GROUPSYNC command has no data:', command);
+          return 'GROUPSYNC:';
+        }
+        const syncAxes = Object.keys(command.data)
           .filter(key => !key.includes('_'))
           .map(axis => {
             const positions = command.data?.[axis];
