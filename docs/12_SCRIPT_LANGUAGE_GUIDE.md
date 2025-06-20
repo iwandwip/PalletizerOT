@@ -11,16 +11,17 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 - `GROUP(axis1, axis2, ...);` - Multi-axis simultaneous movement
 
 ### System Commands
-- `HOME;` - Home all axes to origin position
-- `ZERO;` - Set current position as zero for all axes
-- `SPEED;value;` - Set speed for all axes
-- `SPEED;axis;value;` - Set speed for specific axis
+- `HOMING();` - Home all axes to origin position
+- `HOMING(axis);` - Home specific axis (X, Y, Z, T, G)
+- `ZERO();` - Set current position as zero for all axes
+- `SPEED(value);` - Set speed for all axes
+- `SPEED(axis, value);` - Set speed for specific axis
 
 ### Synchronization Commands
 - `SET(1);` - Set sync pin HIGH
 - `SET(0);` - Set sync pin LOW
-- `WAIT;` - Wait for sync signal
-- `DETECT;` - Wait for detection sensors
+- `WAIT();` - Wait for sync signal
+- `DETECT();` - Wait for detection sensors
 - `DELAY(milliseconds);` - Wait for specified time in milliseconds
 
 ### Program Flow Commands
@@ -60,7 +61,7 @@ GROUP(X(100), Y(50), Z(10));
 GROUP(X(100, 200), Y(50, 100), Z(10));
 GROUP(X(100, 200, 300), T(9900), G(600));
 
-DETECT;
+DETECT();
 GROUP(X(1250), T(9900));
 Z(6800);
 G(400);
@@ -68,13 +69,13 @@ GROUP(Z(6000), X(0), T(0));
 ```
 
 ### Speed Control
-Set speed for axes using semicolon format:
+Set speed for axes using parentheses format:
 
 ```
-SPEED;1000;
-SPEED;x;2000;
-SPEED;y;1500;
-SPEED;xyz;3000;
+SPEED(1000);
+SPEED(X, 2000);
+SPEED(Y, 1500);
+SPEED(Z, 3000);
 ```
 
 ### Synchronization and Detection
@@ -83,16 +84,18 @@ Control synchronization and sensor detection:
 ```
 SET(1);
 SET(0);
-WAIT;
-DETECT;
+WAIT();
+DETECT();
 DELAY(1000);
 ```
 
 ### Home and Zero Commands
 
 ```
-HOME;
-ZERO;
+HOMING();
+HOMING(X);
+HOMING(Y);
+ZERO();
 ```
 
 ## Advanced Features
@@ -164,8 +167,8 @@ CALL(place_pattern);
 
 ### Basic Pick and Place
 ```
-HOME;
-SPEED;2000;
+HOMING();
+SPEED(2000);
 
 GROUP(X(500), Y(300), Z(0));
 Z(-100);
@@ -200,7 +203,7 @@ FUNC(place_on_pallet) {
   Z(20, 100);
 }
 
-SPEED;1500;
+SPEED(1500);
 
 LOOP(12) {
   CALL(pickup_from_conveyor);
@@ -213,7 +216,7 @@ LOOP(12) {
   DELAY(300);
 }
 
-HOME;
+HOMING();
 ```
 
 ### Multi-Layer Palletizing
@@ -236,7 +239,7 @@ FUNC(place) {
   Z(0, 50, 100);
 }
 
-SPEED;2000;
+SPEED(2000);
 
 LOOP(6) {
   CALL(pickup);
@@ -256,7 +259,7 @@ LOOP(6) {
   DELAY(350);
 }
 
-HOME;
+HOMING();
 ```
 
 ## Command Output Format
@@ -265,15 +268,15 @@ The compiler converts MSL scripts directly into simple text commands:
 
 **Input MSL:**
 ```
-HOME;
-SPEED;2000;
+HOMING();
+SPEED(2000);
 X(100);
 GROUP(X(500), Y(300));
 ```
 
 **Compiled Output:**
 ```
-HOME
+HOMING
 SPEED:ALL:2000
 MOVE:X100
 GROUP:X500:Y300
@@ -283,10 +286,10 @@ GROUP:X500:Y300
 
 **Input Script:**
 ```
-HOME;
-ZERO;
-SPEED;1500;
-SPEED;x;2000;
+HOMING();
+ZERO();
+SPEED(1500);
+SPEED(X, 2000);
 
 X(100, 200);
 Y(50);
@@ -294,8 +297,8 @@ GROUP(X(300), Y(150), Z(75));
 
 SET(1);
 SET(0);
-WAIT;
-DETECT;
+WAIT();
+DETECT();
 DELAY(500);
 
 FUNC(test_move) {
@@ -313,7 +316,7 @@ LOOP(3) {
 
 **Compiled Text Output:**
 ```
-HOME
+HOMING
 ZERO
 SPEED:ALL:1500
 SPEED:X:2000
@@ -345,15 +348,15 @@ The web interface compiles MSL scripts into simple text commands:
 
 **Input MSL:**
 ```
-HOME;
-SPEED;2000;
+HOMING();
+SPEED(2000);
 X(100);
 GROUP(X(500), Y(300));
 ```
 
 **Compiled Output:**
 ```
-HOME
+HOMING
 SPEED:ALL:2000
 MOVE:X100
 GROUP:X500:Y300
@@ -392,7 +395,8 @@ void executeScript() {
 #### 3. ESP32 ↔ Arduino Communication Protocol
 
 **Command Format:**
-- `HOME` - Home all axes
+- `HOMING` - Home all axes
+- `HOMING:X` - Home specific axis
 - `ZERO` - Zero all axes  
 - `SPEED:ALL:value` - Set speed for all axes
 - `SPEED:X:value` - Set speed for specific axis
@@ -432,8 +436,13 @@ void loop() {
 }
 
 void executeCommand(String cmd) {
-  if(cmd == "HOME") {
+  if(cmd == "HOMING") {
     homeAllAxes();
+    Serial.println("OK");
+  }
+  else if(cmd.startsWith("HOMING:")) {
+    char axis = cmd.charAt(7);
+    homeAxis(axis);
     Serial.println("OK");
   }
   else if(cmd == "ZERO") {
