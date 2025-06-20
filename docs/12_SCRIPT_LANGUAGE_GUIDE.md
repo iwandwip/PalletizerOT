@@ -261,7 +261,8 @@ HOME;
 
 ## Command Output Format
 
-The compiler generates commands in JSON format from the Basic Pick and Place example:
+### JSON Format (Internal Processing)
+The compiler first generates commands in JSON format for internal processing:
 ```json
 {
   "format": "msl",
@@ -349,6 +350,24 @@ The compiler generates commands in JSON format from the Basic Pick and Place exa
     }
   ]
 }
+```
+
+### Simple Text Format (ESP32 Storage)
+The JSON commands are then converted to simple text format for ESP32 storage and Arduino communication:
+
+**From Basic Pick and Place example:**
+```
+HOME
+SPEED:ALL:2000
+GROUP:X500:Y300:Z0
+MOVE:Z-100
+MOVE:G1
+MOVE:Z100
+GROUP:X1000:Y800
+MOVE:Z-50
+MOVE:G0
+MOVE:Z100
+GROUP:X0:Y0:Z0
 ```
 
 ### All Commands Example
@@ -649,6 +668,19 @@ void executeCommand(String cmd) {
   else if(cmd.startsWith("SPEED:")) {
     parseSpeed(cmd.substring(6));
   }
+  else if(cmd.startsWith("SET:")) {
+    int pin = cmd.substring(4).toInt();
+    setPin(pin);
+    Serial.println("OK");
+  }
+  else if(cmd == "WAIT") {
+    waitForSync();
+    Serial.println("OK");
+  }
+  else if(cmd == "DETECT") {
+    waitForDetection();
+    Serial.println("OK");
+  }
   else if(cmd.startsWith("DELAY:")) {
     int ms = cmd.substring(6).toInt();
     delay(ms);
@@ -681,6 +713,23 @@ void parseGroup(String params) {
     Serial.println("ERR:GROUP_FAILED");
   }
 }
+
+void parseSpeed(String params) {
+  // Parse: ALL:2000 or X:1500
+  int colonIndex = params.indexOf(':');
+  if(colonIndex > 0) {
+    String axis = params.substring(0, colonIndex);
+    int speed = params.substring(colonIndex + 1).toInt();
+    
+    if(setSpeed(axis, speed)) {
+      Serial.println("OK");
+    } else {
+      Serial.println("ERR:SPEED_FAILED");
+    }
+  } else {
+    Serial.println("ERR:INVALID_SPEED_FORMAT");
+  }
+}
 ```
 
 ### Error Handling
@@ -688,6 +737,9 @@ void parseGroup(String params) {
 **Arduino Error Responses:**
 - `ERR:UNKNOWN_COMMAND` - Command not recognized
 - `ERR:MOVE_FAILED` - Axis movement failed
+- `ERR:GROUP_FAILED` - Group movement failed
+- `ERR:SPEED_FAILED` - Speed setting failed
+- `ERR:INVALID_SPEED_FORMAT` - Invalid speed command format
 - `ERR:LIMIT_EXCEEDED` - Position out of bounds
 - `ERR:AXIS_FAULT` - Hardware fault detected
 - `ERR:TIMEOUT` - Operation timeout
