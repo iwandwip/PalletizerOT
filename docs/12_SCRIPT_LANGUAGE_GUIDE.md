@@ -11,8 +11,8 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 - `GROUP(axis1, axis2, ...);` - Multi-axis simultaneous movement
 
 ### System Commands
-- `HOMING();` - Home all axes to origin position
-- `HOMING(axis);` - Home specific axis (X, Y, Z, T, G)
+- `HOME();` - Home all axes to origin position
+- `HOME(axis);` - Home specific axis (X, Y, Z, T, G)
 - `ZERO();` - Set current position as zero for all axes
 - `SPEED(value);` - Set speed for all axes
 - `SPEED(axis, value);` - Set speed for specific axis
@@ -92,9 +92,9 @@ DELAY(1000);
 ### Home and Zero Commands
 
 ```
-HOMING();
-HOMING(X);
-HOMING(Y);
+HOME();
+HOME(X);
+HOME(Y);
 ZERO();
 ```
 
@@ -167,7 +167,7 @@ CALL(place_pattern);
 
 ### Basic Pick and Place
 ```
-HOMING();
+HOME();
 SPEED(2000);
 
 GROUP(X(500), Y(300), Z(0));
@@ -216,7 +216,7 @@ LOOP(12) {
   DELAY(300);
 }
 
-HOMING();
+HOME();
 ```
 
 ### Multi-Layer Palletizing
@@ -259,7 +259,7 @@ LOOP(6) {
   DELAY(350);
 }
 
-HOMING();
+HOME();
 ```
 
 ## Command Output Format
@@ -268,7 +268,7 @@ The compiler converts MSL scripts directly into simple text commands:
 
 **Input MSL:**
 ```
-HOMING();
+HOME();
 SPEED(2000);
 X(100);
 GROUP(X(500), Y(300));
@@ -276,7 +276,7 @@ GROUP(X(500), Y(300));
 
 **Compiled Output:**
 ```
-HOMING
+HOME
 SPEED:ALL:2000
 MOVE:X100
 GROUP:X500:Y300
@@ -286,7 +286,7 @@ GROUP:X500:Y300
 
 **Input Script:**
 ```
-HOMING();
+HOME();
 ZERO();
 SPEED(1500);
 SPEED(X, 2000);
@@ -316,7 +316,7 @@ LOOP(3) {
 
 **Compiled Text Output:**
 ```
-HOMING
+HOME
 ZERO
 SPEED:ALL:1500
 SPEED:X:2000
@@ -348,7 +348,7 @@ The web interface compiles MSL scripts into simple text commands:
 
 **Input MSL:**
 ```
-HOMING();
+HOME();
 SPEED(2000);
 X(100);
 GROUP(X(500), Y(300));
@@ -356,7 +356,7 @@ GROUP(X(500), Y(300));
 
 **Compiled Output:**
 ```
-HOMING
+HOME
 SPEED:ALL:2000
 MOVE:X100
 GROUP:X500:Y300
@@ -395,8 +395,8 @@ void executeScript() {
 #### 3. ESP32 ↔ Arduino Communication Protocol
 
 **Command Format:**
-- `HOMING` - Home all axes
-- `HOMING:X` - Home specific axis
+- `HOME` - Home all axes
+- `HOME:X` - Home specific axis
 - `ZERO` - Zero all axes  
 - `SPEED:ALL:value` - Set speed for all axes
 - `SPEED:X:value` - Set speed for specific axis
@@ -436,11 +436,11 @@ void loop() {
 }
 
 void executeCommand(String cmd) {
-  if(cmd == "HOMING") {
+  if(cmd == "HOME") {
     homeAllAxes();
     Serial.println("OK");
   }
-  else if(cmd.startsWith("HOMING:")) {
+  else if(cmd.startsWith("HOME:")) {
     char axis = cmd.charAt(7);
     homeAxis(axis);
     Serial.println("OK");
