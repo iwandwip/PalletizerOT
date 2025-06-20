@@ -366,7 +366,7 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
                 <TableHead className="w-32">Action</TableHead>
                 <TableHead>Summary</TableHead>
                 <TableHead>Notes</TableHead>
-                <TableHead className="w-16">Edit</TableHead>
+                <TableHead className="w-20">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -386,6 +386,7 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
                       setSelectedRows(newSelected)
                     }}
                     onEdit={() => openEditModal(command)}
+                    onDelete={(id) => deleteCommands(new Set([id]))}
                     getActionIcon={getActionIcon}
                     getActionColor={getActionColor}
                   />
@@ -449,6 +450,7 @@ function SortableRow({
   isSelected,
   onSelect,
   onEdit,
+  onDelete,
   getActionIcon,
   getActionColor
 }: {
@@ -456,6 +458,7 @@ function SortableRow({
   isSelected: boolean
   onSelect: (id: string) => void
   onEdit: () => void
+  onDelete: (id: string) => void
   getActionIcon: (action: string) => React.ReactNode
   getActionColor: (action: string) => string
 }) {
@@ -520,14 +523,26 @@ function SortableRow({
       </TableCell>
       
       <TableCell onClick={(e) => e.stopPropagation()}>
-        <Button 
-          size="sm" 
-          variant="ghost"
-          onClick={onEdit}
-          className="h-6 w-6 p-0"
-        >
-          <Edit3 className="w-3 h-3" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button 
+            size="sm" 
+            variant="ghost"
+            onClick={onEdit}
+            className="h-6 w-6 p-0 hover:bg-blue-50 hover:text-blue-600"
+            title="Edit command"
+          >
+            <Edit3 className="w-3 h-3" />
+          </Button>
+          <Button 
+            size="sm" 
+            variant="ghost"
+            onClick={() => onDelete(command.id)}
+            className="h-6 w-6 p-0 hover:bg-red-50 hover:text-red-600"
+            title="Delete command"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   )

@@ -213,46 +213,6 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
 
   return (
     <div className="space-y-6">
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="border-0 bg-gradient-to-r from-primary/5 to-primary/10">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className={cn("w-3 h-3 rounded-full animate-pulse", getConnectionStatusColor())} />
-              <div>
-                <p className="text-sm font-medium">{getConnectionStatusText()}</p>
-                <p className="text-xs text-muted-foreground">
-                  {connectionStatus === 'disconnected' ? 'Control System Status' : 'Device Connection Status'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {compilationResult && (
-          <Card className={cn("border-0", 
-            compilationResult.success ? "bg-gradient-to-r from-green-50 to-green-100" : "bg-gradient-to-r from-red-50 to-red-100"
-          )}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                {compilationResult.success ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                )}
-                <div>
-                  <p className="text-sm font-medium">
-                    {compilationResult.success ? `${compilationResult.commandCount} Commands` : 'Compilation Error'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {compilationResult.success ? 'Script compiled successfully' : 'Check script syntax'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-muted/50">
@@ -531,7 +491,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC place_item\n  X{pos_x} Y{pos_y} F2000\n  Z-50\n  G0  // Release gripper\n  Z50\nENDFUNC\n\nLOOP 3\n  LOOP 4\n    CALL place_item\n    X+200\n  ENDLOOP\n  X0\n  Y+150\nENDLOOP')}
+                  onClick={() => setCommandText('// Palletizing Pattern\nFUNC place_item\n  X1000 Y1500 F2000\n  Z-50\n  G0  // Release gripper\n  Z50\nENDFUNC\n\nLOOP 3\n  LOOP 4\n    CALL place_item\n    X1200  // Move 200mm\n  ENDLOOP\n  X0\n  Y1650  // Next row\nENDLOOP')}
                   className="justify-start hover:bg-primary/5 hover:border-primary/30"
                 >
                   Palletizing Pattern
