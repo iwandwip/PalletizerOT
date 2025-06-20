@@ -52,7 +52,9 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   }
 
   const handleCompile = useCallback(async (scriptText?: string) => {
-    const textToCompile = scriptText || commandText
+    const textToCompile = (scriptText || commandText || '').toString()
+    console.log('handleCompile called with:', { scriptText, commandText, textToCompile, type: typeof textToCompile })
+    
     if (!textToCompile.trim()) {
       setCompilationResult(null)
       return
@@ -69,9 +71,10 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       })
       
       // Send compile output to debug overlay
+      const scriptForOutput = typeof textToCompile === 'string' ? textToCompile : JSON.stringify(textToCompile)
       const output = result.success 
-        ? `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nCompiled script:\n${textToCompile}`
-        : `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${textToCompile}`
+        ? `✅ Compilation successful!\n\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nCompiled script:\n${scriptForOutput}`
+        : `❌ Compilation failed!\n\nError: ${result.error}\n\nInput script:\n${scriptForOutput}`
       
       onCompileOutput?.(output)
       
@@ -91,8 +94,9 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       })
       
       // Send error to debug overlay
+      const scriptForError = typeof textToCompile === 'string' ? textToCompile : JSON.stringify(textToCompile)
       onCompileOutput?.(
-        `❌ Compilation error!\n\nError: ${errorMsg}\n\nInput script:\n${textToCompile}\n\n💡 Solution: Check system connection and try again`
+        `❌ Compilation error!\n\nError: ${errorMsg}\n\nInput script:\n${scriptForError}\n\n💡 Solution: Check system connection and try again`
       )
     } finally {
       setIsCompiling(false)
@@ -108,7 +112,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
 
   // Auto-compile when text changes
   useEffect(() => {
-    if (autoCompile && commandText.trim()) {
+    const textToCheck = (commandText || '').toString()
+    if (autoCompile && textToCheck.trim()) {
       const timeoutId = setTimeout(() => {
         handleCompile()
       }, 1000)
@@ -117,14 +122,15 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   }, [commandText, autoCompile, handleCompile])
 
   const handleExecuteScript = async () => {
-    if (!commandText.trim()) {
+    const scriptToExecute = (commandText || '').toString()
+    if (!scriptToExecute.trim()) {
       onNotification?.('No script to execute', 'warning')
       return
     }
 
     setIsExecuting(true)
     try {
-      const result = await api.executeScript(commandText)
+      const result = await api.executeScript(scriptToExecute)
       
       if (result.success) {
         onNotification?.('Script executed successfully', 'success')
@@ -164,7 +170,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   }
 
   const handleSaveToFile = () => {
-    const blob = new Blob([commandText], { type: 'text/plain' })
+    const scriptToSave = (commandText || '').toString()
+    const blob = new Blob([scriptToSave], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -178,7 +185,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
 
   const handleSaveToMemory = async () => {
     try {
-      await api.saveCommands(commandText)
+      const scriptToSave = (commandText || '').toString()
+      await api.saveCommands(scriptToSave)
       onNotification?.('Script saved to memory', 'success')
     } catch {
       onNotification?.('Failed to save script', 'error')
@@ -286,10 +294,12 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
               {editorMode === 'spreadsheet' && (
                 <SpreadsheetEditor
                   onScriptGenerated={(script) => {
-                    setCommandText(script)
-                    handleCompile(script)
+                    console.log('Received script from SpreadsheetEditor:', script, typeof script)
+                    const scriptString = typeof script === 'string' ? script : JSON.stringify(script)
+                    setCommandText(scriptString)
+                    handleCompile(scriptString)
                     // Send compile output to debug overlay
-                    onCompileOutput?.(script)
+                    onCompileOutput?.(scriptString)
                   }}
                 />
               )}

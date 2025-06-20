@@ -93,24 +93,46 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
   }
 
   private formatMovementCommand(command: MovementCommand): string {
-    const { axis, position, speed } = command.parameters
+    const { axis, position, endPosition, delay } = command.parameters
     
-    // Old MSL format: X(100,d1000) or X(100) 
-    if (speed && speed !== 1500) {
-      return `${axis}(${position},d${speed});`
+    // MSL format: X(100); X(100,d1000); X(100,d500,200);
+    const params = []
+    
+    if (position !== undefined) {
+      params.push(position.toString())
     }
-    return `${axis}(${position});`
+    
+    if (delay) {
+      params.push(`d${delay}`)
+    }
+    
+    if (endPosition !== undefined && endPosition !== position) {
+      params.push(endPosition.toString())
+    }
+    
+    return `${axis}(${params.join(',')});`
   }
 
   private formatGroupCommand(command: GroupCommand): string {
-    const { axes, speed } = command.parameters
+    const { axes } = command.parameters
     
-    // Old MSL format: GROUP(X(100), Y(50), Z(10));
+    // MSL format: GROUP(X(100), Y(50,d500), Z(10));
     const axesPart = axes.map(a => {
-      if (speed && speed !== 1500) {
-        return `${a.axis}(${a.position},d${speed})`
+      const params = []
+      
+      if (a.position !== undefined) {
+        params.push(a.position.toString())
       }
-      return `${a.axis}(${a.position})`
+      
+      if (a.delay) {
+        params.push(`d${a.delay}`)
+      }
+      
+      if (a.endPosition !== undefined && a.endPosition !== a.position) {
+        params.push(a.endPosition.toString())
+      }
+      
+      return `${a.axis}(${params.join(',')})`
     }).join(', ')
     
     return `GROUP(${axesPart});`
@@ -118,7 +140,13 @@ export class MSLScriptGenerator extends BaseScriptGenerator {
 
   private formatSpeedCommand(command: SpeedCommand): string {
     const { axis, speed } = command.parameters
-    return `SPEED ${axis} ${speed}`
+    
+    // MSL format: SPEED;1000; or SPEED;x;500;
+    if (axis === 'ALL') {
+      return `SPEED;${speed};`
+    } else {
+      return `SPEED;${axis.toLowerCase()};${speed};`
+    }
   }
 
   private formatFunctionCommand(command: FunctionCommand): string {

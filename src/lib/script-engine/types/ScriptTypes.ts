@@ -32,7 +32,9 @@ export interface MovementCommand extends ScriptCommand {
   parameters: {
     axis: 'X' | 'Y' | 'Z' | 'T' | 'G'
     position: number
-    speed?: number
+    endPosition?: number  // For range movement: X(100,d500,200)
+    delay?: number        // For delay: d1000 = 1000ms
+    speed?: number        // Legacy support
   }
 }
 
@@ -42,8 +44,10 @@ export interface GroupCommand extends ScriptCommand {
     axes: Array<{
       axis: 'X' | 'Y' | 'Z' | 'T' | 'G'
       position: number
+      endPosition?: number  // For range movement in group
+      delay?: number        // For individual delays in group
     }>
-    speed?: number
+    speed?: number  // Legacy support
   }
 }
 

@@ -166,8 +166,10 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
           indentation: '  '
         }
       })
-      onScriptGenerated?.(script)
-      return script
+      console.log('Generated script:', script, typeof script)
+      const scriptString = typeof script === 'string' ? script : JSON.stringify(script)
+      onScriptGenerated?.(scriptString)
+      return scriptString
     } catch (error) {
       console.error('Script generation failed:', error)
       const errorScript = '// Error generating script: ' + (error as Error).message

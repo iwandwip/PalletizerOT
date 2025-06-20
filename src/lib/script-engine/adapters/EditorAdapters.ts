@@ -151,15 +151,39 @@ export class TextEditorAdapter extends BaseEditorAdapter {
   private parseLineParameters(line: string, command: string): Record<string, unknown> {
     const params: Record<string, unknown> = {}
 
-    // Handle old MSL movement commands X(100,d1500) or X(100)
+    // Handle MSL movement commands: X(100); X(100,d1000); X(100,d500,200); 
     if (/^[XYZTG]\(/.test(command)) {
       const axis = command.charAt(0)
-      const match = command.match(/^[XYZTG]\((-?\d+)(?:,d(\d+))?\)/)
+      // Parse up to 5 parameters as per MSL spec
+      const match = command.match(/^[XYZTG]\(([^)]+)\)/)
       if (match) {
         params.axis = axis
-        params.position = parseInt(match[1])
-        if (match[2]) {
-          params.speed = parseInt(match[2])
+        const paramStr = match[1]
+        const paramList = paramStr.split(',').map(p => p.trim())
+        
+        // Extract positions and delays from parameters
+        const positions: number[] = []
+        const delays: number[] = []
+        
+        paramList.forEach(param => {
+          if (param.startsWith('d')) {
+            // Delay parameter: d1000
+            delays.push(parseInt(param.substring(1)))
+          } else {
+            // Position parameter: 100
+            positions.push(parseInt(param))
+          }
+        })
+        
+        if (positions.length > 0) {
+          params.position = positions[0] // Primary position
+          if (positions.length > 1) {
+            params.endPosition = positions[positions.length - 1] // Range movement
+          }
+        }
+        
+        if (delays.length > 0) {
+          params.delay = delays[0] // Primary delay
         }
       }
       return params
@@ -185,44 +209,58 @@ export class TextEditorAdapter extends BaseEditorAdapter {
     
     switch (command) {
       case 'GROUP':
-        // Parse old MSL "GROUP(X(100), Y(200), Z(50));" or new "GROUP X100 Y200 Z50 F1500"
-        if (line.includes('(') && line.includes(',')) {
-          // Old MSL format: GROUP(X(100), Y(200), Z(50));
-          const groupMatch = line.match(/GROUP\(([^)]+)\)/)
-          if (groupMatch) {
-            const movementsStr = groupMatch[1]
-            const movements = movementsStr.split(',').map(m => m.trim())
-            params.axes = movements.map(m => {
-              const match = m.match(/([XYZTG])\((-?\d+)(?:,d(\d+))?\)/)
-              if (match) {
-                return {
-                  axis: match[1],
-                  position: parseInt(match[2])
+        // Parse MSL format: GROUP(X(100), Y(200,d500), Z(50));
+        const groupMatch = line.match(/GROUP\(([^)]+)\)/)
+        if (groupMatch) {
+          const movementsStr = groupMatch[1]
+          const movements = movementsStr.split(',').map(m => m.trim())
+          params.axes = movements.map(m => {
+            // Parse each movement: X(100) or Y(200,d500) etc.
+            const match = m.match(/([XYZTG])\(([^)]+)\)/)
+            if (match) {
+              const axis = match[1]
+              const paramStr = match[2]
+              const paramList = paramStr.split(',').map(p => p.trim())
+              
+              const positions: number[] = []
+              const delays: number[] = []
+              
+              paramList.forEach(param => {
+                if (param.startsWith('d')) {
+                  delays.push(parseInt(param.substring(1)))
+                } else {
+                  positions.push(parseInt(param))
                 }
+              })
+              
+              const axisCmd: any = { axis, position: positions[0] }
+              if (positions.length > 1) {
+                axisCmd.endPosition = positions[positions.length - 1]
               }
-              return null
-            }).filter(Boolean)
-          }
-        } else {
-          // New format: "GROUP X100 Y200 Z50 F1500"
-          const movements = parts.slice(1).filter(p => /^[XYZTG]-?\d+/.test(p))
-          params.axes = movements.map(m => ({
-            axis: m.charAt(0),
-            position: parseInt(m.slice(1))
-          }))
-          
-          const speedMatch = line.match(/F(\d+)/)
-          if (speedMatch) {
-            params.speed = parseInt(speedMatch[1])
-          }
+              if (delays.length > 0) {
+                axisCmd.delay = delays[0]
+              }
+              
+              return axisCmd
+            }
+            return null
+          }).filter(Boolean)
         }
         break
 
       case 'SPEED':
-        // Parse "SPEED X 1500" or "SPEED ALL 2000"
-        if (parts.length >= 3) {
-          params.axis = parts[1]
-          params.speed = parseInt(parts[2])
+        // Parse MSL format: "SPEED;1000;" or "SPEED;x;500;"
+        if (line.includes(';')) {
+          const speedParts = line.split(';').filter(p => p.trim())
+          if (speedParts.length === 2) {
+            // SPEED;1000; - set all axes
+            params.axis = 'ALL'
+            params.speed = parseInt(speedParts[1])
+          } else if (speedParts.length === 3) {
+            // SPEED;x;500; - set specific axis
+            params.axis = speedParts[1].toUpperCase()
+            params.speed = parseInt(speedParts[2])
+          }
         }
         break
 
