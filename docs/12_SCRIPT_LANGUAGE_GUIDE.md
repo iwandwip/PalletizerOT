@@ -261,118 +261,25 @@ HOME;
 
 ## Command Output Format
 
-### JSON Format (Internal Processing)
-The compiler first generates commands in JSON format for internal processing:
-```json
-{
-  "format": "msl",
-  "scriptId": "1750396338241",
-  "commands": [
-    {
-      "index": 0,
-      "type": "HOME",
-      "data": {}
-    },
-    {
-      "index": 1,
-      "type": "SET_SPEED",
-      "data": {
-        "ALL": 2000
-      }
-    },
-    {
-      "index": 2,
-      "type": "GROUP",
-      "data": {
-        "X": 500,
-        "Y": 300,
-        "Z": 0
-      }
-    },
-    {
-      "index": 3,
-      "type": "MOVE",
-      "data": {
-        "Z": -100
-      }
-    },
-    {
-      "index": 4,
-      "type": "MOVE",
-      "data": {
-        "G": 1
-      }
-    },
-    {
-      "index": 5,
-      "type": "MOVE",
-      "data": {
-        "Z": 100
-      }
-    },
-    {
-      "index": 6,
-      "type": "GROUP",
-      "data": {
-        "X": 1000,
-        "Y": 800
-      }
-    },
-    {
-      "index": 7,
-      "type": "MOVE",
-      "data": {
-        "Z": -50
-      }
-    },
-    {
-      "index": 8,
-      "type": "MOVE",
-      "data": {
-        "G": 0
-      }
-    },
-    {
-      "index": 9,
-      "type": "MOVE",
-      "data": {
-        "Z": 100
-      }
-    },
-    {
-      "index": 10,
-      "type": "GROUP",
-      "data": {
-        "X": 0,
-        "Y": 0,
-        "Z": 0
-      }
-    }
-  ]
-}
+The compiler converts MSL scripts directly into simple text commands:
+
+**Input MSL:**
+```
+HOME;
+SPEED;2000;
+X(100);
+GROUP(X(500), Y(300));
 ```
 
-### Simple Text Format (ESP32 Storage)
-The JSON commands are then converted to simple text format for ESP32 storage and Arduino communication:
-
-**From Basic Pick and Place example:**
+**Compiled Output:**
 ```
 HOME
 SPEED:ALL:2000
-GROUP:X500:Y300:Z0
-MOVE:Z-100
-MOVE:G1
-MOVE:Z100
-GROUP:X1000:Y800
-MOVE:Z-50
-MOVE:G0
-MOVE:Z100
-GROUP:X0:Y0:Z0
+MOVE:X100
+GROUP:X500:Y300
 ```
 
-### All Commands Example
-
-This example shows how all command types are compiled to JSON:
+### Complete Example
 
 **Input Script:**
 ```
@@ -404,155 +311,29 @@ LOOP(3) {
 }
 ```
 
-**Compiled JSON Output:**
-```json
-{
-  "format": "msl",
-  "scriptId": "1750400000000",
-  "commands": [
-    {
-      "index": 0,
-      "type": "HOME",
-      "data": {}
-    },
-    {
-      "index": 1,
-      "type": "ZERO",
-      "data": {}
-    },
-    {
-      "index": 2,
-      "type": "SET_SPEED",
-      "data": {
-        "ALL": 1500
-      }
-    },
-    {
-      "index": 3,
-      "type": "SET_SPEED",
-      "data": {
-        "X": 2000
-      }
-    },
-    {
-      "index": 4,
-      "type": "MOVE",
-      "data": {
-        "X": 100
-      }
-    },
-    {
-      "index": 5,
-      "type": "MOVE",
-      "data": {
-        "X": 200
-      }
-    },
-    {
-      "index": 6,
-      "type": "MOVE",
-      "data": {
-        "Y": 50
-      }
-    },
-    {
-      "index": 7,
-      "type": "GROUP",
-      "data": {
-        "X": 300,
-        "Y": 150,
-        "Z": 75
-      }
-    },
-    {
-      "index": 8,
-      "type": "SET",
-      "data": {
-        "pin": 1
-      }
-    },
-    {
-      "index": 9,
-      "type": "SET",
-      "data": {
-        "pin": 0
-      }
-    },
-    {
-      "index": 10,
-      "type": "WAIT",
-      "data": {}
-    },
-    {
-      "index": 11,
-      "type": "DETECT",
-      "data": {}
-    },
-    {
-      "index": 12,
-      "type": "DELAY",
-      "data": {
-        "milliseconds": 500
-      }
-    },
-    {
-      "index": 13,
-      "type": "MOVE",
-      "data": {
-        "X": 400
-      }
-    },
-    {
-      "index": 14,
-      "type": "DELAY",
-      "data": {
-        "milliseconds": 200
-      }
-    },
-    {
-      "index": 15,
-      "type": "MOVE",
-      "data": {
-        "Y": 100
-      }
-    },
-    {
-      "index": 16,
-      "type": "MOVE",
-      "data": {
-        "Z": 50
-      }
-    },
-    {
-      "index": 17,
-      "type": "MOVE",
-      "data": {
-        "Y": 100
-      }
-    },
-    {
-      "index": 18,
-      "type": "MOVE",
-      "data": {
-        "Z": 50
-      }
-    },
-    {
-      "index": 19,
-      "type": "MOVE",
-      "data": {
-        "Y": 100
-      }
-    },
-    {
-      "index": 20,
-      "type": "MOVE",
-      "data": {
-        "Z": 50
-      }
-    }
-  ]
-}
+**Compiled Text Output:**
+```
+HOME
+ZERO
+SPEED:ALL:1500
+SPEED:X:2000
+MOVE:X100
+MOVE:X200
+MOVE:Y50
+GROUP:X300:Y150:Z75
+SET:1
+SET:0
+WAIT
+DETECT
+DELAY:500
+MOVE:X400
+DELAY:200
+MOVE:Y100
+MOVE:Z50
+MOVE:Y100
+MOVE:Z50
+MOVE:Y100
+MOVE:Z50
 ```
 
 ## Integration with Hardware
