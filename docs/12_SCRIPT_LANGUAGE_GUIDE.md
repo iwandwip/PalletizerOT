@@ -51,12 +51,12 @@ GROUP(X(100,d500), Y(50,d300), Z(10,d600));
 GROUP(X(100,d500,200), Y(50,d300,100,d800), Z(10));
 GROUP(X(d1000,100,200,d500,300), T(9900,d2000), G(600));
 
-# Real example
-DETECT;
-GROUP(X(1250), T(9900));
-Z(6800);
-G(400);
-GROUP(Z(6000), X(0), T(0));
+# Real example with detection
+DETECT;                        # Wait for object detection
+GROUP(X(1250), T(9900));      # Move to detected position
+Z(6800);                      # Lower to object
+G(400);                       # Grip object
+GROUP(Z(6000), X(0), T(0));   # Return to home with object
 ```
 
 ### Speed Control
@@ -69,18 +69,21 @@ SPEED;y;1500;                  # Set Y axis speed to 1500
 SPEED;xyz;3000;                # Set X, Y, Z axes speed to 3000
 ```
 
-### Synchronization
-Wait for all movements to complete:
+### Synchronization and Detection
+Control synchronization and sensor detection:
 
 ```
+# Movement synchronization
 X(1000);
 Y(2000);
 SYNC;                          # Wait for both movements to finish
 Z(500);                        # This will execute after X and Y complete
 
-# With sync pins
-SET(1);                        # Set sync pin 1
+# Sync pin control
+SET(1);                        # Set sync pin HIGH
+SET(0);                        # Set sync pin LOW
 WAIT;                          # Wait for sync signal
+DETECT;                        # Wait for detection sensors
 ```
 
 ### Home and Zero Commands
