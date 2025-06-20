@@ -7,8 +7,8 @@ The Palletizer Control System uses a Modern Script Language (MSL) for defining a
 ## Command Reference
 
 ### Movement Commands
-- `X(position)`, `Y(position)`, `Z(position)`, `T(position)`, `G(position)` - Single axis movement
-- `GROUP(axis1, axis2, ...)` - Multi-axis simultaneous movement
+- `X(position);`, `Y(position);`, `Z(position);`, `T(position);`, `G(position);` - Single axis movement
+- `GROUP(axis1, axis2, ...);` - Multi-axis simultaneous movement
 
 ### System Commands
 - `HOME;` - Home all axes to origin position
@@ -53,7 +53,7 @@ X(10, 50, 100, 200, 300);
 Move multiple axes simultaneously (1-5 axes, each with 1-5 parameters):
 
 ```
-GROUP(X(1250), T(9900), T(-2500));
+GROUP(X(1250), Y(500), Z(100));
 
 GROUP(X(100), Y(50), Z(10));
 
@@ -547,12 +547,5 @@ LOOP(3) {
 6. ESP32 requests next command
 
 ### Arduino Communication
-Commands sent to Arduino in simplified format:
-```
-MX1000
-GX1000Y2000
-H
-Z
-VX2000
-```
+The ESP32 sends JSON commands to Arduino for execution. Each command contains the necessary data for the specific operation to be performed on the hardware axes.
 
