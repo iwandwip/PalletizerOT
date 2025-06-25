@@ -6,6 +6,8 @@
     "dev": "next dev -p 3005",
     "dev:server": "tsx src/server/index.ts",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
+    "dev:esp32": "tsx src/test/esp32-simulator.ts",
+    "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\" \"npm run dev:esp32\"",
     "build": "next build",
     "build:export": "next build && next export",
     "build:copy": "npm run build:export && node scripts/copy-to-esp32.mjs",

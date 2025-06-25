@@ -119,14 +119,8 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
       }
       
       eventSource.onopen = () => {
-        const connectMessage: DebugMessage = {
-          id: Date.now().toString(),
-          timestamp: new Date().toLocaleTimeString(),
-          type: 'success',
-          source: 'system',
-          message: 'Connected to device monitoring'
-        }
-        setTerminalMessages(prev => [...prev.slice(-50), connectMessage])
+        // Server will send its own connection message with ESP32 status
+        // No need to add client-side message
       }
       
     } catch (error) {

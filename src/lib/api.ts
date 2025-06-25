@@ -28,16 +28,43 @@ class PalletizerAPI {
     this.baseUrl = baseUrl;
   }
 
-  async saveScript(script: string, format: 'hybrid' | 'msl' = 'msl'): Promise<ServerResponse> {
+  async saveScript(script: string, format: 'hybrid' | 'msl' = 'msl', armId?: string): Promise<ServerResponse> {
     const response = await fetch(`${this.baseUrl}/api/script/save`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ script, format }),
+      body: JSON.stringify({ script, format, armId }),
     });
     
     return response.json();
+  }
+
+  async saveRawScript(script: string, armId?: string): Promise<ServerResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/script/raw`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ script, armId }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Raw script API error:', response.status, errorText);
+        throw new Error(`Server error: ${response.status} - ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('saveRawScript error:', error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Cannot connect to server. Please check if the server is running.');
+      }
+      throw error;
+    }
   }
 
   async start(): Promise<ServerResponse> {
@@ -96,23 +123,25 @@ class PalletizerAPI {
     }
   }
 
-  async saveCommands(commands: string): Promise<string> {
-    const result = await this.saveScript(commands);
+  async saveCommands(commands: string, armId?: string): Promise<string> {
+    const result = await this.saveScript(commands, 'msl', armId);
     
     if (result.success) {
-      localStorage.setItem('palletizer_script', commands);
+      const storageKey = armId ? `palletizer_script_${armId}` : 'palletizer_script';
+      localStorage.setItem(storageKey, commands);
       return result.message || 'Script compiled and saved';
     } else {
       throw new Error(result.error || 'Save failed');
     }
   }
 
-  async loadCommands(): Promise<string> {
-    return localStorage.getItem('palletizer_script') || '';
+  async loadCommands(armId?: string): Promise<string> {
+    const storageKey = armId ? `palletizer_script_${armId}` : 'palletizer_script';
+    return localStorage.getItem(storageKey) || '';
   }
 
-  async executeScript(script: string): Promise<ServerResponse> {
-    return this.saveScript(script);
+  async executeScript(script: string, armId?: string): Promise<ServerResponse> {
+    return this.saveScript(script, 'msl', armId);
   }
 
   async uploadFile(file: File): Promise<string> {

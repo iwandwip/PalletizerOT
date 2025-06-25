@@ -2,16 +2,18 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, Download, Play, Cpu, Loader2 } from "lucide-react"
+import { Upload, Download, FileText, Play, Cpu, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { TextEditor } from "./editors"
+import { cn } from "@/lib/utils"
 
 interface CompilationResult {
-  success: boolean
-  commands?: unknown[]
-  error?: string
-  commandCount?: number
+  success: boolean;
+  commands?: unknown[];
+  error?: string;
+  commandCount?: number;
 }
 
 interface CommandEditorProps {
@@ -36,10 +38,9 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   const [autoCompile2, setAutoCompile2] = useState(false)
   const [processingMode1, setProcessingMode1] = useState<'MSL' | 'RAW'>('MSL')
   const [processingMode2, setProcessingMode2] = useState<'MSL' | 'RAW'>('MSL')
+  
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting')
   
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   // Helper functions to get current arm state
   const getCurrentCommandText = () => activeArm === 1 ? commandText1 : commandText2
   const setCurrentCommandText = (text: string) => activeArm === 1 ? setCommandText1(text) : setCommandText2(text)
@@ -58,6 +59,8 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   const getCurrentProcessingMode = () => activeArm === 1 ? processingMode1 : processingMode2
   const setCurrentProcessingMode = (mode: 'MSL' | 'RAW') => 
     activeArm === 1 ? setProcessingMode1(mode) : setProcessingMode2(mode)
+  
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const checkConnectionStatus = async () => {
     try {
@@ -65,6 +68,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       setConnectionStatus(status.esp32Connected ? 'connected' : 'disconnected')
     } catch (error) {
       setConnectionStatus('disconnected')
+      // Show notification only once when server goes offline
       if (connectionStatus !== 'disconnected') {
         onNotification?.('🔌 Control system disconnected', 'warning')
       }
@@ -75,12 +79,15 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     const currentCommandText = getCurrentCommandText()
     const currentProcessingMode = getCurrentProcessingMode()
     
+    // Ensure we're working with a string
     let textToProcess = ''
     if (scriptText !== undefined) {
       textToProcess = typeof scriptText === 'string' ? scriptText : String(scriptText)
     } else {
       textToProcess = typeof currentCommandText === 'string' ? currentCommandText : String(currentCommandText)
     }
+    
+    console.log('Process debug:', { activeArm, scriptText, currentCommandText, textToProcess, currentProcessingMode, type: typeof currentCommandText })
     
     if (!textToProcess.trim()) {
       setCurrentCompilationResult(null)
@@ -92,10 +99,14 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       let result
       
       if (currentProcessingMode === 'RAW') {
+        // Raw mode: send script directly without compilation
         result = await api.saveRawScript(textToProcess, `arm${activeArm}`)
       } else {
+        // MSL mode: compile the script first
         result = await api.saveScript(textToProcess, 'msl', `arm${activeArm}`)
       }
+      
+      console.log('API response:', result)
       
       setCurrentCompilationResult({
         success: result.success,
@@ -104,13 +115,15 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
         commandCount: result.commandCount || 0
       })
       
+      // Send process output to debug overlay
       const scriptForOutput = typeof textToProcess === 'string' ? textToProcess : JSON.stringify(textToProcess)
       let output = ''
       
       if (result.success) {
         if (currentProcessingMode === 'RAW') {
-          output = `✅ Raw script sent successfully!\n\nArm: ${activeArm}\nMode: RAW\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}`
+          output = `✅ Raw script sent successfully!\n\nArm: ${activeArm}\nMode: RAW (No compilation)\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}`
         } else {
+          // Format the compiled data as text commands
           let textOutput = ''
           if (result.compiledData) {
             const data = result.compiledData as any
@@ -121,7 +134,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
             }
           }
           
-          output = `✅ Script processed successfully!\n\nArm: ${activeArm}\nMode: MSL\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${textOutput}`
+          output = `✅ Script processed successfully!\n\nArm: ${activeArm}\nMode: MSL (Compiled)\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${textOutput}`
         }
       } else {
         const modeText = currentProcessingMode === 'RAW' ? 'Raw script processing' : 'Script compilation'
@@ -133,6 +146,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     } catch (error) {
       let errorMsg = error instanceof Error ? error.message : 'Script processing failed'
       
+      // Check if it's a network error (server not running)
       if (errorMsg.includes('fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('Failed to fetch')) {
         errorMsg = 'Control system is not running - Please check the system connection'
         onNotification?.('⚠️ Control system is not running. Please check your connection.', 'warning')
@@ -144,6 +158,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
         commandCount: 0
       })
       
+      // Send error to debug overlay
       const scriptForError = typeof textToProcess === 'string' ? textToProcess : JSON.stringify(textToProcess)
       const modeText = currentProcessingMode === 'RAW' ? 'Raw script processing' : 'Script compilation'
       onCompileOutput?.(
@@ -153,6 +168,24 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       setCurrentIsProcessing(false)
     }
   }, [activeArm, commandText1, commandText2, processingMode1, processingMode2, onCompileOutput])
+
+  // Check connection status periodically
+  useEffect(() => {
+    checkConnectionStatus()
+    const interval = setInterval(checkConnectionStatus, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-process when text changes
+  useEffect(() => {
+    const textToCheck = (getCurrentCommandText() || '').toString()
+    if (getCurrentAutoCompile() && textToCheck.trim()) {
+      const timeoutId = setTimeout(() => {
+        handleProcessScript()
+      }, 1000)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [activeArm, commandText1, commandText2, autoCompile1, autoCompile2, handleProcessScript])
 
   const handleExecuteScript = async () => {
     const scriptToExecute = (getCurrentCommandText() || '').toString()
@@ -176,6 +209,17 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     } finally {
       setCurrentIsExecuting(false)
     }
+  }
+
+  const handleProcessAndExecute = async () => {
+    await handleProcessScript()
+    
+    // Wait a bit for compilation to complete, then execute if successful
+    setTimeout(() => {
+      if (getCurrentCompilationResult()?.success) {
+        handleExecuteScript()
+      }
+    }, 500)
   }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,26 +249,50 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     onNotification?.(`Arm ${activeArm} script saved to file`, 'success')
   }
 
-  useEffect(() => {
-    checkConnectionStatus()
-    const interval = setInterval(checkConnectionStatus, 3000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    const textToCheck = (getCurrentCommandText() || '').toString()
-    if (getCurrentAutoCompile() && textToCheck.trim()) {
-      const timeoutId = setTimeout(() => {
-        handleProcessScript()
-      }, 1000)
-      return () => clearTimeout(timeoutId)
+  const handleSaveToMemory = async () => {
+    try {
+      const scriptToSave = (getCurrentCommandText() || '').toString()
+      await api.saveCommands(scriptToSave, `arm${activeArm}`)
+      onNotification?.(`Arm ${activeArm} script saved to memory`, 'success')
+    } catch {
+      onNotification?.(`Failed to save Arm ${activeArm} script`, 'error')
     }
-  }, [activeArm, commandText1, commandText2, autoCompile1, autoCompile2, handleProcessScript])
+  }
+
+  const handleLoadFromMemory = async () => {
+    try {
+      const commands = await api.loadCommands(`arm${activeArm}`)
+      setCurrentCommandText(commands)
+      onNotification?.(`Arm ${activeArm} script loaded from memory`, 'success')
+    } catch {
+      onNotification?.(`Failed to load Arm ${activeArm} script`, 'error')
+    }
+  }
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'bg-green-500'
+      case 'disconnected': return 'bg-red-500'
+      case 'connecting': return 'bg-yellow-500'
+      default: return 'bg-gray-500'
+    }
+  }
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'Device Connected'
+      case 'disconnected': return 'Control System Offline'
+      case 'connecting': return 'Connecting...'
+      default: return 'Unknown'
+    }
+  }
 
   return (
     <div className="space-y-6">
+      {/* Text Editor */}
       <Card className="border-0 bg-card/50 backdrop-blur">
         <CardHeader className="pb-3">
+          {/* Arm Tabs */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">Palletizer Arms:</span>
@@ -253,6 +321,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
                 </Button>
               </div>
             </div>
+            
             <div className="text-xs text-muted-foreground">
               Active: <span className="font-medium text-foreground">Arm {activeArm}</span>
             </div>
@@ -261,6 +330,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Script Editor - Arm {activeArm}</CardTitle>
             <div className="flex items-center gap-4">
+              {/* Processing Mode Selector */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Mode:</span>
                 <div className="flex rounded-md border bg-background p-1">
@@ -283,6 +353,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
                 </div>
               </div>
               
+              {/* Auto-process Toggle */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Auto-process</span>
                 <Button
@@ -302,67 +373,14 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
             value={getCurrentCommandText()}
             onChange={setCurrentCommandText}
             placeholder={getCurrentProcessingMode() === 'RAW' 
-              ? `Enter raw ESP32 commands for Arm ${activeArm}...
-
-📝 Raw Command Examples:
-X100                             // Move X to position 100
-Y50                              // Move Y to position 50
-G600                             // Move gripper to position 600
-T9900                            // Move turntable to position 9900
-HOME                             // Home all axes
-ZERO                             // Zero all axes
-SPEED 2000                       // Set speed
-DELAY 1000                       // Wait 1000ms
-GRIP 1                           // Gripper open
-GRIP 0                           // Gripper close
-
-⚠️ RAW MODE: Commands sent directly to ESP32 without compilation!
-🤖 Currently editing: ARM ${activeArm}`
-              : `Enter Modern Script Language commands for Arm ${activeArm}...
-
-🤖 Currently editing: ARM ${activeArm}
-
-📝 Basic Movement:
-X(100);                           // Move X to position 100
-Y(50, 150);                      // Move Y to 50 then 150
-Z(10, 100, 200);                 // Move Z through multiple positions
-G(600);                          // Move gripper to position 600
-T(9900);                         // Move turntable to position 9900
-
-🔄 Group Commands:
-GROUP(X(100), Y(50), Z(10));     // Asynchronous movement
-GROUP(X(500, 600), Y(300));      // Multi-parameter coordination
-GROUPSYNC(X(100, 200), Y(50));   // Synchronized matrix movement
-
-⚙️ System Commands:
-HOME();                          // Home all axes
-HOME(X);                         // Home specific axis
-ZERO();                          // Zero all axes
-SPEED(2000);                     // Set global speed
-SPEED(X, 1500);                 // Set axis speed
-
-🔧 Sync & Timing:
-SET(1);                          // Set sync pin HIGH
-WAIT();                          // Wait for sync
-DETECT();                        // Wait for detection
-DELAY(1000);                     // Wait 1000ms
-
-⚙️ Functions:
-FUNC(pickup) {
-  Z(100);
-  X(200, 300);
-  G(400);
-  DELAY(500);
-}
-
-CALL(pickup);
-
-💡 Three movement types: MOVE (trajectory), GROUP (async), GROUPSYNC (matrix)!`
+              ? `Enter raw ESP32 commands for Arm ${activeArm}...\n\n📝 Raw Command Examples:\nX100                             // Move X to position 100\nY50                              // Move Y to position 50\nG600                             // Move gripper to position 600\nT9900                            // Move turntable to position 9900\nHOME                             // Home all axes\nZERO                             // Zero all axes\nSPEED 2000                       // Set speed\nDELAY 1000                       // Wait 1000ms\nGRIP 1                           // Gripper open\nGRIP 0                           // Gripper close\n\n⚠️ RAW MODE: Commands sent directly to ESP32 without compilation!\n🤖 Currently editing: ARM ${activeArm}`
+              : `Enter Modern Script Language commands for Arm ${activeArm}...\n\n🤖 Currently editing: ARM ${activeArm}\n\n📝 Basic Movement:\nX(100);                           // Move X to position 100\nY(50, 150);                      // Move Y to 50 then 150\nZ(10, 100, 200);                 // Move Z through multiple positions\nG(600);                          // Move gripper to position 600\nT(9900);                         // Move turntable to position 9900\n\n🔄 Group Commands:\nGROUP(X(100), Y(50), Z(10));     // Asynchronous movement\nGROUP(X(500, 600), Y(300));      // Multi-parameter coordination\nGROUPSYNC(X(100, 200), Y(50));   // Synchronized matrix movement\n\n⚙️ System Commands:\nHOME();                          // Home all axes\nHOME(X);                         // Home specific axis\nZERO();                          // Zero all axes\nSPEED(2000);                     // Set global speed\nSPEED(X, 1500);                 // Set axis speed\n\n🔧 Sync & Timing:\nSET(1);                          // Set sync pin HIGH\nWAIT();                          // Wait for sync\nDETECT();                        // Wait for detection\nDELAY(1000);                     // Wait 1000ms\n\n⚙️ Functions:\nFUNC(pickup) {\n  Z(100);\n  X(200, 300);\n  G(400);\n  DELAY(500);\n}\n\nCALL(pickup);\n\n💡 Three movement types: MOVE (trajectory), GROUP (async), GROUPSYNC (matrix)!"
             }
           />
         </CardContent>
       </Card>
 
+      {/* Quick Actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Button
           onClick={() => handleProcessScript()}

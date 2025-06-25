@@ -15,11 +15,12 @@ interface CompiledScript {
   commands: string[]
   timestamp: number
   executed: boolean
-  hybridFormat?: any  // New hybrid JSON format
+  format: 'msl' | 'raw'
 }
 
 interface SystemState {
-  currentScript: CompiledScript | null
+  arm1Script: CompiledScript | null
+  arm2Script: CompiledScript | null
   isRunning: boolean
   isPaused: boolean
   currentCommandIndex: number
@@ -30,7 +31,8 @@ interface SystemState {
 }
 
 const systemState: SystemState = {
-  currentScript: null,
+  arm1Script: null,
+  arm2Script: null,
   isRunning: false,
   isPaused: false,
   currentCommandIndex: 0,
@@ -50,50 +52,57 @@ app.get('/health', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     esp32Connected: systemState.esp32Connected,
-    hasScript: !!systemState.currentScript,
+    hasScript: !!(systemState.arm1Script || systemState.arm2Script),
     isRunning: systemState.isRunning,
     isPaused: systemState.isPaused,
     currentCommandIndex: systemState.currentCommandIndex,
-    totalCommands: systemState.currentScript?.commands.length || 0,
-    scriptId: systemState.currentScript?.id || null,
+    totalCommands: Math.max(
+      systemState.arm1Script?.commands.length || 0,
+      systemState.arm2Script?.commands.length || 0
+    ),
+    scriptId: systemState.arm1Script?.id || systemState.arm2Script?.id || null,
     lastPoll: systemState.esp32LastPoll,
     connectedAxes: systemState.connectedAxes,
-    efficiency: systemState.efficiency
+    efficiency: systemState.efficiency,
+    // Dual arm status
+    arm1: {
+      hasScript: !!systemState.arm1Script,
+      scriptId: systemState.arm1Script?.id || null,
+      commands: systemState.arm1Script?.commands.length || 0
+    },
+    arm2: {
+      hasScript: !!systemState.arm2Script,
+      scriptId: systemState.arm2Script?.id || null,
+      commands: systemState.arm2Script?.commands.length || 0
+    }
   })
 })
 
 app.post('/api/script/save', (req, res) => {
   try {
-    const { script, format = 'msl' } = req.body
-    console.log(`Compiling script (${format}):`, script.substring(0, 100) + '...')
+    const { script, format = 'msl', armId } = req.body
+    console.log(`Compiling script (${format}) for ${armId || 'default'}:`, script.substring(0, 100) + '...')
     
     let compiledScript: CompiledScript
     
-    if (format === 'hybrid') {
-      // New hybrid JSON format - script is already compiled JSON
-      const hybridData = typeof script === 'string' ? JSON.parse(script) : script
-      
-      compiledScript = {
-        id: hybridData.scriptId || Date.now().toString(),
-        commands: hybridData.steps?.map((step: any) => step.serial_cmd).filter(Boolean) || [],
-        timestamp: Date.now(),
-        executed: false,
-        hybridFormat: hybridData
-      }
-    } else {
-      // MSL format compilation to text commands
-      const textCommands = scriptCompiler.compileToText(script)
-      const commandLines = textCommands.split('\n').filter(line => line.trim())
-      
-      compiledScript = {
-        id: Date.now().toString(),
-        commands: commandLines,
-        timestamp: Date.now(),
-        executed: false
-      }
+    // MSL format compilation to text commands
+    const textCommands = scriptCompiler.compileToText(script)
+    const commandLines = textCommands.split('\n').filter(line => line.trim())
+    
+    compiledScript = {
+      id: Date.now().toString(),
+      commands: commandLines,
+      timestamp: Date.now(),
+      executed: false,
+      format: 'msl'
     }
     
-    systemState.currentScript = compiledScript
+    // Store script for specific arm
+    if (armId === 'arm2') {
+      systemState.arm2Script = compiledScript
+    } else {
+      systemState.arm1Script = compiledScript
+    }
     systemState.currentCommandIndex = 0
     systemState.isRunning = false
     systemState.isPaused = false
@@ -103,26 +112,22 @@ app.post('/api/script/save', (req, res) => {
     // Return the compiled data for debug output
     let compiledData: any
     
-    if (format === 'msl') {
-      // For MSL format, return the text commands
-      const textCommands = scriptCompiler.compileToText(script)
-      compiledData = {
-        format: 'text',
-        scriptId: compiledScript.id,
-        textCommands: textCommands,
-        commandLines: compiledScript.commands
-      }
-    } else {
-      // For hybrid format, return the hybrid data
-      compiledData = compiledScript.hybridFormat
+    // For MSL format, return the text commands
+    const textCommands = scriptCompiler.compileToText(script)
+    compiledData = {
+      format: 'text',
+      scriptId: compiledScript.id,
+      textCommands: textCommands,
+      commandLines: compiledScript.commands
     }
     
     const response = { 
       success: true, 
       scriptId: compiledScript.id,
       commandCount: compiledScript.commands.length,
-      message: `Script compiled and saved (${format})`,
-      compiledData
+      message: `Script compiled and saved (${format}) for ${armId || 'default'}`,
+      compiledData,
+      armId
     }
     
     console.log('Server response:', JSON.stringify(response, null, 2))
@@ -136,44 +141,140 @@ app.post('/api/script/save', (req, res) => {
   }
 })
 
+// Raw script endpoint (no compilation)
+app.post('/api/script/raw', (req, res) => {
+  console.log('🔍 Raw script endpoint hit:', {
+    method: req.method,
+    url: req.url,
+    contentType: req.headers['content-type'],
+    body: req.body
+  })
+  
+  try {
+    const { script, armId } = req.body
+    
+    console.log('📝 Raw script data:', { script, armId, type: typeof script })
+    
+    if (!script || typeof script !== 'string') {
+      console.log('❌ Invalid script provided:', { script, type: typeof script })
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid script provided' 
+      })
+    }
+    
+    console.log(`📝 Raw script received (${script.length} characters)`)
+    
+    // Split script into lines for command counting
+    const lines = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('//'))
+    
+    // Store as raw script without compilation
+    const rawScript: CompiledScript = {
+      id: Date.now().toString(),
+      commands: lines,
+      timestamp: Date.now(),
+      executed: false,
+      format: 'raw'
+    }
+    
+    // Store raw script for specific arm
+    if (armId === 'arm2') {
+      systemState.arm2Script = rawScript
+    } else {
+      systemState.arm1Script = rawScript
+    }
+    
+    console.log(`✅ Raw script saved: ${lines.length} lines for ${armId || 'default'}`)
+    
+    const response = { 
+      success: true, 
+      scriptId: rawScript.id,
+      commandCount: lines.length,
+      message: `Raw script saved (${lines.length} lines) for ${armId || 'default'}`,
+      compiledData: {
+        format: 'raw',
+        scriptId: rawScript.id,
+        rawLines: lines,
+        armId
+      },
+      armId
+    }
+    
+    console.log('Server response:', JSON.stringify(response, null, 2))
+    res.json(response)
+  } catch (error) {
+    console.error('Raw script save error:', error)
+    res.status(400).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Raw script save error' 
+    })
+  }
+})
+
 app.get('/api/script/poll', (req, res) => {
+  const wasConnected = systemState.esp32Connected
   systemState.esp32LastPoll = Date.now()
   systemState.esp32Connected = true
+  
+  // Send connection notification if newly connected
+  if (!wasConnected) {
+    const connectMessage = {
+      timestamp: Date.now(),
+      level: 'SUCCESS',
+      source: 'ESP32',
+      message: '🔗 ESP32 Device Connected - Ready for commands'
+    }
+    broadcastDebugMessage(connectMessage)
+    console.log('🔗 ESP32 device connected')
+  }
   
   const result = {
     hasNewScript: false,
     scriptId: null as string | null,
     commands: [] as string[],
-    hybridScript: null as any,
+    rawLines: [] as string[],
+    armId: null as string | null,
+    format: null as string | null,
     shouldStart: systemState.isRunning,
     currentIndex: systemState.currentCommandIndex
   }
   
-  if (systemState.currentScript && !systemState.currentScript.executed) {
+  // Check arm1 script
+  if (systemState.arm1Script && !systemState.arm1Script.executed) {
     result.hasNewScript = true
-    result.scriptId = systemState.currentScript.id
+    result.scriptId = systemState.arm1Script.id
+    result.armId = 'arm1'
     
-    if (systemState.currentScript.hybridFormat) {
-      // Send new hybrid JSON format
-      result.hybridScript = systemState.currentScript.hybridFormat
-      console.log(`📤 ESP32 downloaded hybrid script: ${systemState.currentScript.hybridFormat.steps?.length} steps`)
-    } else {
-      // Send legacy commands
-      result.commands = systemState.currentScript.commands
-      console.log(`📤 ESP32 downloaded legacy script: ${result.commands.length} commands`)
-    }
+    result.commands = systemState.arm1Script.commands
+    result.format = systemState.arm1Script.format
+    console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
     
-    systemState.currentScript.executed = true
+    systemState.arm1Script.executed = true
+  }
+  // Check arm2 script (if arm1 script not found)
+  else if (systemState.arm2Script && !systemState.arm2Script.executed) {
+    result.hasNewScript = true
+    result.scriptId = systemState.arm2Script.id
+    result.armId = 'arm2'
+    
+    result.commands = systemState.arm2Script.commands
+    result.format = systemState.arm2Script.format
+    console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
+    
+    systemState.arm2Script.executed = true
   }
   
   res.json(result)
 })
 
 app.post('/api/control/start', (req, res) => {
-  if (!systemState.currentScript) {
+  const { armId } = req.body
+  const script = armId === 'arm2' ? systemState.arm2Script : systemState.arm1Script
+  
+  if (!script) {
     res.status(400).json({ 
       success: false, 
-      error: 'No script loaded' 
+      error: `No script loaded for ${armId || 'arm1'}` 
     })
     return
   }
@@ -212,7 +313,7 @@ app.post('/api/control/pause', (req, res) => {
 })
 
 app.post('/api/control/resume', (req, res) => {
-  if (!systemState.currentScript) {
+  if (!systemState.arm1Script && !systemState.arm2Script) {
     res.status(400).json({ 
       success: false, 
       error: 'No script loaded' 
@@ -249,28 +350,35 @@ app.get('/api/command/next', (req, res) => {
     command: null as string | null,
     isRunning: systemState.isRunning,
     commandIndex: systemState.currentCommandIndex,
-    totalCommands: systemState.currentScript?.commands.length || 0,
+    totalCommands: Math.max(
+      systemState.arm1Script?.commands.length || 0,
+      systemState.arm2Script?.commands.length || 0
+    ),
     isComplete: false
   }
   
-  if (systemState.isRunning && systemState.currentScript) {
-    if (systemState.currentCommandIndex < systemState.currentScript.commands.length) {
-      result.hasCommand = true
-      result.command = systemState.currentScript.commands[systemState.currentCommandIndex]
-      console.log(`📤 Sending command ${systemState.currentCommandIndex + 1}/${systemState.currentScript.commands.length}: ${result.command}`)
-      
-      // Auto-increment for simulation (remove this for real ESP32)
-      setTimeout(() => {
-        if (systemState.isRunning && systemState.currentCommandIndex < systemState.currentScript!.commands.length) {
-          systemState.currentCommandIndex++
-          console.log(`✅ Command ${systemState.currentCommandIndex} completed (simulated)`)
-        }
-      }, 1000)
-    } else {
-      result.isComplete = true
-      systemState.isRunning = false
-      systemState.isPaused = false
-      console.log('✅ All commands completed')
+  // This endpoint is legacy - ESP32 simulator handles execution now
+  if (systemState.isRunning) {
+    const script = systemState.arm1Script || systemState.arm2Script
+    if (script) {
+      if (systemState.currentCommandIndex < script.commands.length) {
+        result.hasCommand = true
+        result.command = script.commands[systemState.currentCommandIndex]
+        console.log(`📤 Sending legacy command ${systemState.currentCommandIndex + 1}/${script.commands.length}: ${result.command}`)
+        
+        // Auto-increment for simulation (remove this for real ESP32)
+        setTimeout(() => {
+          if (systemState.isRunning && systemState.currentCommandIndex < script.commands.length) {
+            systemState.currentCommandIndex++
+            console.log(`✅ Legacy command ${systemState.currentCommandIndex} completed (simulated)`)
+          }
+        }, 1000)
+      } else {
+        result.isComplete = true
+        systemState.isRunning = false
+        systemState.isPaused = false
+        console.log('✅ All legacy commands completed')
+      }
     }
   }
   
@@ -334,8 +442,12 @@ app.get('/debug', (req, res) => {
   // Send periodic status messages
   const debugInterval = setInterval(() => {
     if (systemState.isRunning) {
-      const progress = Math.round((systemState.currentCommandIndex / (systemState.currentScript?.commands.length || 1)) * 100)
-      sendDebugMessage('INFO', 'EXECUTOR', `🔄 [${systemState.currentCommandIndex}/${systemState.currentScript?.commands.length || 0}] Executing command ${systemState.currentCommandIndex + 1}`)
+      const totalCommands = Math.max(
+        systemState.arm1Script?.commands.length || 0,
+        systemState.arm2Script?.commands.length || 0
+      )
+      const progress = Math.round((systemState.currentCommandIndex / (totalCommands || 1)) * 100)
+      sendDebugMessage('INFO', 'EXECUTOR', `🔄 [${systemState.currentCommandIndex}/${totalCommands}] Executing command ${systemState.currentCommandIndex + 1}`)
       
       if (progress % 25 === 0 && progress > 0) {
         sendDebugMessage('INFO', 'PROGRESS', `Progress: ${progress}% complete`)
@@ -344,7 +456,8 @@ app.get('/debug', (req, res) => {
       sendDebugMessage('WARN', 'EXECUTOR', '⏸️ Execution paused - waiting for resume command')
     } else {
       // Send periodic system status
-      sendDebugMessage('INFO', 'STATUS', `System idle - ESP32: ${systemState.esp32Connected ? 'Connected' : 'Disconnected'}, Script: ${systemState.currentScript ? 'Loaded' : 'None'}`)
+      const hasScript = !!(systemState.arm1Script || systemState.arm2Script)
+      sendDebugMessage('INFO', 'STATUS', `System idle - ESP32: ${systemState.esp32Connected ? 'Connected' : 'Disconnected'}, Script: ${hasScript ? 'Loaded' : 'None'}`)
     }
   }, 5000)
 
@@ -381,12 +494,8 @@ app.post('/api/esp32/disconnect', (req, res) => {
   res.json({ success: true, message: 'ESP32 disconnected' })
 })
 
-// For development, auto-connect ESP32 simulation
-setTimeout(() => {
-  systemState.esp32Connected = true
-  systemState.esp32LastPoll = Date.now()
-  console.log('🔗 ESP32 simulation auto-connected for development')
-}, 2000)
+// Note: Auto-connection removed - ESP32 will connect when it polls
+// This ensures accurate connection status based on actual polling
 
 setInterval(() => {
   const now = Date.now()
@@ -394,14 +503,103 @@ setInterval(() => {
     if (systemState.esp32Connected) {
       console.log('❌ ESP32 connection timeout')
       systemState.esp32Connected = false
+      
+      // Send disconnection notification
+      const disconnectMessage = {
+        timestamp: Date.now(),
+        level: 'ERROR',
+        source: 'ESP32',
+        message: '🔌 ESP32 Device Disconnected - Connection timeout'
+      }
+      broadcastDebugMessage(disconnectMessage)
     }
   }
   
-  // Update simulated ESP32 poll for development
-  if (systemState.esp32Connected) {
-    systemState.esp32LastPoll = now
-  }
+  // Note: Removed auto-poll update - only real ESP32 polling updates the status
 }, 10000)
+
+// Debug message storage for SSE
+let debugMessages: Array<{
+  timestamp: number
+  level: string
+  source: string
+  message: string
+}> = []
+
+// SSE clients storage for broadcasting
+let sseClients: Array<any> = []
+
+// Helper function to broadcast debug messages to all SSE clients
+function broadcastDebugMessage(message: any) {
+  debugMessages.push(message)
+  
+  // Keep only last 50 messages
+  if (debugMessages.length > 50) {
+    debugMessages = debugMessages.slice(-50)
+  }
+  
+  // Broadcast to all connected SSE clients
+  sseClients.forEach((client, index) => {
+    try {
+      client.write(`data: ${JSON.stringify(message)}\n\n`)
+    } catch (error) {
+      // Remove disconnected clients
+      sseClients.splice(index, 1)
+    }
+  })
+}
+
+// SSE endpoint for debug terminal
+app.get('/api/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  })
+
+  // Send connection message with current ESP32 status
+  const connectMsg = {
+    timestamp: Date.now(),
+    level: 'INFO',
+    source: 'SYSTEM',
+    message: `Debug terminal ready - ESP32 status: ${systemState.esp32Connected ? 'Connected' : 'Waiting for connection...'}`
+  }
+  res.write(`data: ${JSON.stringify(connectMsg)}\n\n`)
+
+  // Add client to broadcast list
+  sseClients.push(res)
+
+  // Send recent messages
+  debugMessages.slice(-10).forEach(msg => {
+    res.write(`data: ${JSON.stringify(msg)}\n\n`)
+  })
+
+  // Keep connection alive
+  const keepAlive = setInterval(() => {
+    res.write(': heartbeat\n\n')
+  }, 30000)
+
+  req.on('close', () => {
+    clearInterval(keepAlive)
+    // Remove client from broadcast list
+    const index = sseClients.indexOf(res)
+    if (index > -1) {
+      sseClients.splice(index, 1)
+    }
+  })
+})
+
+// Debug message endpoint (used by ESP32 simulator)
+app.post('/api/debug', (req, res) => {
+  const message = req.body
+  
+  // Broadcast message to all SSE clients
+  broadcastDebugMessage(message)
+  
+  res.json({ success: true })
+})
 
 server.listen(PORT, () => {
   console.log(`🚀 Palletizer HTTP Server running on port ${PORT}`)
