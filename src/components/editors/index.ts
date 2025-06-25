@@ -8,7 +8,7 @@ export { SpreadsheetEditor } from './SpreadsheetEditor'
 
 // Re-export types for convenience
 export type { 
-  ScriptCommand,
-  ScriptGenerationOptions,
-  SpreadsheetRow
-} from '@/lib/script-engine'
+  SpreadsheetRow,
+  StepCommandData,
+  ActionType
+} from './types'

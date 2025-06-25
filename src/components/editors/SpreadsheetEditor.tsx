@@ -31,8 +31,8 @@ import {
   Clock
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ScriptEngine } from '@/lib/script-engine'
-import { SpreadsheetRow, StepCommandData } from '@/lib/script-engine/types/ScriptTypes'
+import { SpreadsheetRow, StepCommandData } from './types'
+import { generateScriptFromSpreadsheet } from './scriptGenerator'
 import { 
   MoveCommandModal, 
   GroupMoveModal, 
@@ -62,7 +62,7 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
   const [editingRow, setEditingRow] = useState<SpreadsheetRow | null>(null)
   const [modalType, setModalType] = useState<'MOVE' | 'GROUP_MOVE' | 'SYSTEM' | 'WAIT' | null>(null)
 
-  const scriptEngine = ScriptEngine.getInstance()
+  // Script generation is now handled by generateScriptFromSpreadsheet
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -160,23 +160,17 @@ export function SpreadsheetEditor({ onScriptGenerated, initialRows = [] }: Sprea
 
   const generateScript = useCallback(() => {
     try {
-      const script = scriptEngine.generateFromSpreadsheet(commands, {
-        generatorOptions: {
-          includeComments: true,
-          indentation: '  '
-        }
-      })
-      console.log('Generated script:', script, typeof script)
-      const scriptString = typeof script === 'string' ? script : JSON.stringify(script)
-      onScriptGenerated?.(scriptString)
-      return scriptString
+      const script = generateScriptFromSpreadsheet(commands)
+      console.log('Generated script:', script)
+      onScriptGenerated?.(script)
+      return script
     } catch (error) {
       console.error('Script generation failed:', error)
       const errorScript = '// Error generating script: ' + (error as Error).message
       onScriptGenerated?.(errorScript)
       return errorScript
     }
-  }, [commands, onScriptGenerated, scriptEngine])
+  }, [commands, onScriptGenerated])
 
   const handleDragStart = useCallback((event: any) => {
     setActiveId(event.active.id)

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { StepCommandData } from '@/lib/script-engine/types/ScriptTypes'
+import { StepCommandData } from '../types'
 
 interface SystemCommandModalProps {
   open: boolean
