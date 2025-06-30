@@ -37,7 +37,6 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   const [processingMode1, setProcessingMode1] = useState<'MSL' | 'RAW'>('MSL')
   const [processingMode2, setProcessingMode2] = useState<'MSL' | 'RAW'>('MSL')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting')
-  const [lastNotifiedStatus, setLastNotifiedStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -63,26 +62,11 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
   const checkConnectionStatus = async () => {
     try {
       const status = await api.getStatus()
-      const newStatus = status.esp32Connected ? 'connected' : 'disconnected'
-      setConnectionStatus(newStatus)
-      
-      // Only notify if status changed
-      if (newStatus !== lastNotifiedStatus) {
-        if (newStatus === 'connected') {
-          onNotification?.('🔗 ESP32 Device Connected', 'success')
-        } else {
-          onNotification?.('🔌 ESP32 Device Disconnected', 'warning')
-        }
-        setLastNotifiedStatus(newStatus)
-      }
+      setConnectionStatus(status.esp32Connected ? 'connected' : 'disconnected')
     } catch (error) {
-      const newStatus = 'disconnected'
-      setConnectionStatus(newStatus)
-      
-      // Only notify if status changed
-      if (newStatus !== lastNotifiedStatus) {
+      setConnectionStatus('disconnected')
+      if (connectionStatus !== 'disconnected') {
         onNotification?.('🔌 Control system disconnected', 'warning')
-        setLastNotifiedStatus(newStatus)
       }
     }
   }

@@ -285,10 +285,10 @@ export default function PalletizerInterface() {
                 className={cn(
                   "relative shadow-lg backdrop-blur border-l-4 animate-in slide-in-from-right-full",
                   {
-                    'border-l-destructive bg-destructive/10 dark:bg-destructive/5': error.type === 'error',
-                    'border-l-yellow-500 bg-yellow-500/10 dark:bg-yellow-500/5': error.type === 'warning',
-                    'border-l-green-500 bg-green-500/10 dark:bg-green-500/5': error.type === 'success',
-                    'border-l-blue-500 bg-blue-500/10 dark:bg-blue-500/5': error.type === 'info'
+                    'border-l-destructive bg-destructive/5': error.type === 'error',
+                    'border-l-yellow-500 bg-yellow-50': error.type === 'warning',
+                    'border-l-primary bg-primary/5': error.type === 'success',
+                    'border-l-blue-500 bg-blue-50': error.type === 'info'
                   }
                 )}
               >

@@ -16,7 +16,6 @@ interface CompiledScript {
   timestamp: number
   executed: boolean
   format: 'msl' | 'raw'
-  hybridScript?: any // HybridScript from compiler
 }
 
 interface SystemState {
@@ -45,21 +44,9 @@ const systemState: SystemState = {
 
 app.use(cors())
 app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
-})
-
-app.get('/status', (req, res) => {
-  let status = 'IDLE'
-  if (systemState.isRunning) {
-    status = 'RUNNING'
-  } else if (systemState.isPaused) {
-    status = 'PAUSED'
-  }
-  
-  res.json({ status })
 })
 
 app.get('/api/status', (req, res) => {
@@ -76,74 +63,81 @@ app.get('/api/status', (req, res) => {
     scriptId: systemState.arm1Script?.id || systemState.arm2Script?.id || null,
     lastPoll: systemState.esp32LastPoll,
     connectedAxes: systemState.connectedAxes,
-    efficiency: systemState.efficiency
+    efficiency: systemState.efficiency,
+    // Dual arm status
+    arm1: {
+      hasScript: !!systemState.arm1Script,
+      scriptId: systemState.arm1Script?.id || null,
+      commands: systemState.arm1Script?.commands.length || 0
+    },
+    arm2: {
+      hasScript: !!systemState.arm2Script,
+      scriptId: systemState.arm2Script?.id || null,
+      commands: systemState.arm2Script?.commands.length || 0
+    }
   })
 })
 
-app.post('/command', (req, res) => {
+app.post('/api/script/save', (req, res) => {
   try {
-    const cmd = req.body.cmd || req.query.cmd
-    if (!cmd) {
-      return res.status(400).send('Missing cmd parameter')
-    }
+    const { script, format = 'msl', armId } = req.body
+    console.log(`Compiling script (${format}) for ${armId || 'default'}:`, script.substring(0, 100) + '...')
     
-    console.log('MSL Command received:', cmd)
+    let compiledScript: CompiledScript
     
-    const compiledScript: CompiledScript = {
+    // MSL format compilation to text commands
+    const textCommands = scriptCompiler.compileToText(script)
+    const commandLines = textCommands.split('\n').filter(line => line.trim())
+    
+    compiledScript = {
       id: Date.now().toString(),
-      commands: [cmd],
+      commands: commandLines,
       timestamp: Date.now(),
       executed: false,
       format: 'msl'
     }
     
-    systemState.arm1Script = compiledScript
+    // Store script for specific arm
+    if (armId === 'arm2') {
+      systemState.arm2Script = compiledScript
+    } else {
+      systemState.arm1Script = compiledScript
+    }
     systemState.currentCommandIndex = 0
     systemState.isRunning = false
     systemState.isPaused = false
     
-    res.send(`Command sent: ${cmd}`)
-  } catch (error) {
-    console.error('Command error:', error)
-    res.status(500).send('Internal server error')
-  }
-})
-
-app.post('/write', (req, res) => {
-  try {
-    const text = req.body.text || req.query.text
-    if (!text) {
-      return res.status(400).send('Missing text parameter')
+    console.log(`✅ Script compiled: ${compiledScript.commands.length} commands`)
+    
+    // Return the compiled data for debug output
+    let compiledData: any
+    
+    // For MSL format, return the text commands
+    const textCommands = scriptCompiler.compileToText(script)
+    compiledData = {
+      format: 'text',
+      scriptId: compiledScript.id,
+      textCommands: textCommands,
+      commandLines: compiledScript.commands
     }
     
-    console.log('MSL Script saved:', text.substring(0, 100) + '...')
-    
-    const compiledScript: CompiledScript = {
-      id: Date.now().toString(),
-      commands: [text],
-      timestamp: Date.now(),
-      executed: false,
-      format: 'msl'
+    const response = { 
+      success: true, 
+      scriptId: compiledScript.id,
+      commandCount: compiledScript.commands.length,
+      message: `Script compiled and saved (${format}) for ${armId || 'default'}`,
+      compiledData,
+      armId
     }
     
-    systemState.arm1Script = compiledScript
-    systemState.currentCommandIndex = 0
-    systemState.isRunning = false
-    systemState.isPaused = false
-    
-    res.send('Commands saved successfully. Click PLAY to execute.')
+    console.log('Server response:', JSON.stringify(response, null, 2))
+    res.json(response)
   } catch (error) {
-    console.error('Write error:', error)
-    res.status(500).send('Internal server error')
-  }
-})
-
-app.get('/get_commands', (req, res) => {
-  const script = systemState.arm1Script
-  if (script && script.commands.length > 0) {
-    res.send(script.commands[0])
-  } else {
-    res.send('')
+    console.error('Script compilation error:', error)
+    res.status(400).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Compilation error' 
+    })
   }
 })
 
@@ -253,14 +247,7 @@ app.get('/api/script/poll', (req, res) => {
     
     result.commands = systemState.arm1Script.commands
     result.format = systemState.arm1Script.format
-    
-    // Add hybrid script for ESP32
-    if (systemState.arm1Script.hybridScript) {
-      (result as any).hybridScript = systemState.arm1Script.hybridScript
-      console.log(`📤 ESP32 downloaded hybrid script for arm1: ${systemState.arm1Script.hybridScript.stepCount} steps`)
-    } else {
-      console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
-    }
+    console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
     
     systemState.arm1Script.executed = true
   }
@@ -272,14 +259,7 @@ app.get('/api/script/poll', (req, res) => {
     
     result.commands = systemState.arm2Script.commands
     result.format = systemState.arm2Script.format
-    
-    // Add hybrid script for ESP32
-    if (systemState.arm2Script.hybridScript) {
-      (result as any).hybridScript = systemState.arm2Script.hybridScript
-      console.log(`📤 ESP32 downloaded hybrid script for arm2: ${systemState.arm2Script.hybridScript.stepCount} steps`)
-    } else {
-      console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
-    }
+    console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
     
     systemState.arm2Script.executed = true
   }
