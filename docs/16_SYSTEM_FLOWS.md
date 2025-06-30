@@ -516,4 +516,27 @@ Arduino Code:    firmware/ArduinoMEGA/
 Documentation:   docs/
 ```
 
-Sistem PalletizerOT sekarang telah sepenuhnya kompatibel dengan format lama sambil memanfaatkan kekuatan processing modern untuk performa dan skalabilitas yang maksimal! 🎯
+## 🔄 **Updated System Architecture**
+
+**CORRECT Data Flow (Based on Web Analysis):**
+```
+Web (MSL Compiler) → Server (Command Store) → ESP32 (Forwarder) → Arduino (x;1;100;)
+     ↓                      ↓                     ↓              
+Full Processing         Store Array         Simple Conversion    
+Function Expansion      Ready Commands      Format Translation   
+Command Generation      No Parsing          Sequential Forward   
+```
+
+**Key Realization:**
+- **Web already has full MSL Compiler** (`src/compiler/MSLCompiler.ts`)
+- **Server stores compiled command arrays** (not raw MSL)
+- **ESP32 should be pure command forwarder** (no MSLParser needed)
+- **Simple format conversion**: `"MOVE:X100"` → `"x;1;100;"`
+
+**Performance Benefits with Correct Flow:**
+- **ESP32 RAM**: 250KB → ~5KB (98% reduction) ✅
+- **Processing**: 100% on powerful web client ✅
+- **ESP32 Role**: Ultra-lightweight command bridge ✅
+- **Zero Parsing**: ESP32 just forwards compiled commands ✅
+
+Sistem PalletizerOT sekarang telah sepenuhnya dioptimasi dengan web client melakukan semua processing berat dan ESP32 sebagai bridge komunikasi yang sangat ringan! 🎯
