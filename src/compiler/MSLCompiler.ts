@@ -1,6 +1,6 @@
 import { Command, Function, CompilationResult, CompilerOptions } from './types/CommandTypes';
 import { FunctionManager, LoopManager, ParserRegistry } from './core';
-import { TextGenerator } from './generators';
+import { TextGenerator, HybridGenerator, type HybridScript } from './generators';
 
 /**
  * Modern Script Language Compiler
@@ -17,6 +17,7 @@ export class MSLCompiler {
   private loopManager: LoopManager;
   private parserRegistry: ParserRegistry;
   private textGenerator: TextGenerator;
+  private hybridGenerator: HybridGenerator;
   private options: CompilerOptions;
 
   constructor(options: Partial<CompilerOptions> = {}) {
@@ -24,6 +25,7 @@ export class MSLCompiler {
     this.loopManager = new LoopManager();
     this.parserRegistry = new ParserRegistry();
     this.textGenerator = new TextGenerator();
+    this.hybridGenerator = new HybridGenerator();
     
     this.options = {
       format: 'text',
@@ -128,6 +130,22 @@ export class MSLCompiler {
   public compileToText(script: string): string {
     const commands = this.compileToCommands(script);
     return this.textGenerator.generate(commands);
+  }
+
+  /**
+   * Compile script to hybrid format for ESP32
+   */
+  public compileToHybrid(script: string): HybridScript {
+    const commands = this.compileToCommands(script);
+    return this.hybridGenerator.generate(commands);
+  }
+
+  /**
+   * Compile script to hybrid JSON string
+   */
+  public compileToHybridJson(script: string): string {
+    const hybridScript = this.compileToHybrid(script);
+    return this.hybridGenerator.toJson(hybridScript);
   }
 
   /**

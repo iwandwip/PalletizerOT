@@ -17,6 +17,7 @@
     "start:all": "concurrently \"npm run start:server\" \"npm run start\"",
     "test": "node src/test/esp32-simulator.js",
     "test:all": "concurrently \"npm run start:server\" \"npm run test\"",
+    "test:integration": "node scripts/test-integration.js",
     "lint": "next lint",
     "clean": "rimraf node_modules package-lock.json",
     "reinstall": "npm run clean && npm install"

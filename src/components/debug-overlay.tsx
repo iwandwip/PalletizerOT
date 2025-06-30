@@ -63,7 +63,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
   useEffect(() => {
     if (compileOutput) {
       const newMessage: DebugMessage = {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         timestamp: new Date().toLocaleTimeString(),
         type: compileOutput.includes('error') ? 'error' : 'success',
         source: 'compiler',
@@ -87,7 +87,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
         try {
           const data = JSON.parse(event.data)
           const newMessage: DebugMessage = {
-            id: Date.now().toString(),
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             timestamp: new Date().toLocaleTimeString(),
             type: data.type || 'info',
             source: 'esp32',
@@ -97,7 +97,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
         } catch {
           // If not JSON, treat as plain text
           const newMessage: DebugMessage = {
-            id: Date.now().toString(),
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             timestamp: new Date().toLocaleTimeString(),
             type: 'info',
             source: 'esp32',
@@ -109,7 +109,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
       
       eventSource.onerror = () => {
         const errorMessage: DebugMessage = {
-          id: Date.now().toString(),
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           timestamp: new Date().toLocaleTimeString(),
           type: 'error',
           source: 'system',
@@ -125,7 +125,7 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
       
     } catch (error) {
       const errorMessage: DebugMessage = {
-        id: Date.now().toString(),
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         timestamp: new Date().toLocaleTimeString(),
         type: 'error',
         source: 'system',
@@ -329,8 +329,8 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
               {terminalMessages.length === 0 ? (
                 <div className="text-gray-500 italic">No device messages yet...</div>
               ) : (
-                terminalMessages.map((message) => (
-                  <div key={message.id} className="flex items-start gap-2 mb-1">
+                terminalMessages.map((message, index) => (
+                  <div key={`terminal-${message.id}-${index}`} className="flex items-start gap-2 mb-1">
                     <span className="text-gray-500 text-xs flex-shrink-0">
                       [{message.timestamp}]
                     </span>
@@ -353,8 +353,8 @@ export function DebugOverlay({ isOpen, onClose, compileOutput, onHeightChange, o
               {outputMessages.length === 0 ? (
                 <div className="text-gray-500 italic">No script output yet...</div>
               ) : (
-                outputMessages.map((message) => (
-                  <div key={message.id} className="flex items-start gap-2 mb-1">
+                outputMessages.map((message, index) => (
+                  <div key={`output-${message.id}-${index}`} className="flex items-start gap-2 mb-1">
                     <span className="text-gray-500 text-xs flex-shrink-0">
                       [{message.timestamp}]
                     </span>

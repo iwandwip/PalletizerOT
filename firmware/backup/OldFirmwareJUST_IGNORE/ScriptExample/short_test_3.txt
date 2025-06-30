@@ -1,7 +1,0 @@
-FUNC(HOME_ALL) {
-  GROUP(X(0,d1000), Y(0,d800), Z(200,d1200));
-  GROUP(T(0,d600), G(0,d500));
-}
-
-GROUP(X(300,d800), Y(150,d600));
-CALL(HOME_ALL);

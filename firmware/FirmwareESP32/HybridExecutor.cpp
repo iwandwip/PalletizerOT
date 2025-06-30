@@ -148,7 +148,18 @@ bool HybridExecutor::executeSingleCommand(const HybridStep& step) {
   static bool commandSent = false;
   
   if (!commandSent) {
-    sendSlaveCommand(step.serial_cmd);
+    // Convert to Arduino MEGA format
+    // Old format: x;1;100; -> New format: MOVE:X:100:0
+    String megaCommand = "";
+    
+    if (step.action == "MOVE") {
+      megaCommand = "MOVE:" + step.axis + ":" + String(step.position) + ":0";
+    } else {
+      // Use the serial_cmd as is for system commands
+      megaCommand = step.serial_cmd;
+    }
+    
+    sendSlaveCommand(megaCommand);
     commandSent = true;
     lastSlaveResponse = millis();
     return false; // Wait for response
@@ -164,31 +175,32 @@ bool HybridExecutor::executeSingleCommand(const HybridStep& step) {
 }
 
 bool HybridExecutor::executeGroupCommand(const HybridStep& step) {
-  static bool commandsSent = false;
-  static int responseCount = 0;
+  static bool commandSent = false;
   
-  if (!commandsSent) {
-    // Send all commands in parallel
-    for (JsonVariant cmd : step.commands) {
-      String serialCmd = cmd["serial_cmd"] | "";
-      if (serialCmd.length() > 0) {
-        sendSlaveCommand(serialCmd);
-        delay(50); // Small delay between commands
-      }
+  if (!commandSent) {
+    // Send group command to Arduino MEGA
+    // Format: GROUP:X:100,Y:50,Z:10:0
+    String groupCommand = "GROUP:";
+    
+    for (size_t i = 0; i < step.commands.size(); i++) {
+      JsonVariant cmd = step.commands[i];
+      String axis = cmd["axis"] | "";
+      int position = cmd["position"] | 0;
+      
+      if (i > 0) groupCommand += ",";
+      groupCommand += axis + ":" + String(position);
     }
-    commandsSent = true;
-    responseCount = 0;
+    
+    sendSlaveCommand(groupCommand);
+    commandSent = true;
     lastSlaveResponse = millis();
-    return false; // Wait for responses
+    return false; // Wait for response
   }
   
-  // Wait for all expected responses
-  int expectedCount = step.expect_responses.size();
-  bool allResponsesReceived = waitForMultipleResponses(step.expect_responses, 100);
-  
-  if (allResponsesReceived) {
-    commandsSent = false;
-    responseCount = 0;
+  // Wait for GROUP_DONE response from Arduino MEGA
+  bool responseReceived = waitForSlaveResponse("GROUP_DONE", 100);
+  if (responseReceived) {
+    commandSent = false;
     return true;
   }
   
@@ -199,7 +211,22 @@ bool HybridExecutor::executeSystemCommand(const HybridStep& step) {
   static bool commandSent = false;
   
   if (!commandSent) {
-    sendSlaveCommand(step.serial_cmd);
+    // Convert system commands to Arduino MEGA format
+    String megaCommand = "";
+    
+    if (step.command.startsWith("HOME:")) {
+      megaCommand = step.command; // HOME:X format
+    } else if (step.command == "ZERO") {
+      megaCommand = "ZERO";
+    } else if (step.command.startsWith("SPEED:")) {
+      megaCommand = step.command; // SPEED:X:1500 format
+    } else if (step.command.startsWith("SET:")) {
+      megaCommand = step.command; // SET:13:1 format
+    } else {
+      megaCommand = step.serial_cmd; // Fallback to raw command
+    }
+    
+    sendSlaveCommand(megaCommand);
     commandSent = true;
     lastSlaveResponse = millis();
     return false;
@@ -215,16 +242,20 @@ bool HybridExecutor::executeSystemCommand(const HybridStep& step) {
 }
 
 bool HybridExecutor::executeWaitCommand(const HybridStep& step) {
-  static unsigned long waitStartTime = 0;
+  static bool commandSent = false;
   
-  if (waitStartTime == 0) {
-    waitStartTime = millis();
-    Serial.println("Waiting for " + String(step.duration) + "ms");
+  if (!commandSent) {
+    // Send wait command to Arduino MEGA
+    String waitCommand = "WAIT:" + String(step.duration);
+    sendSlaveCommand(waitCommand);
+    commandSent = true;
+    lastSlaveResponse = millis();
     return false;
   }
   
-  if (millis() - waitStartTime >= step.duration) {
-    waitStartTime = 0;
+  bool responseReceived = waitForSlaveResponse("OK", 100);
+  if (responseReceived) {
+    commandSent = false;
     return true;
   }
   

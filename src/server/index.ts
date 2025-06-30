@@ -16,6 +16,7 @@ interface CompiledScript {
   timestamp: number
   executed: boolean
   format: 'msl' | 'raw'
+  hybridScript?: any // HybridScript from compiler
 }
 
 interface SystemState {
@@ -89,12 +90,16 @@ app.post('/api/script/save', (req, res) => {
     const textCommands = scriptCompiler.compileToText(script)
     const commandLines = textCommands.split('\n').filter(line => line.trim())
     
+    // Generate hybrid format for ESP32
+    const hybridScript = scriptCompiler.compileToHybrid(script)
+    
     compiledScript = {
       id: Date.now().toString(),
       commands: commandLines,
       timestamp: Date.now(),
       executed: false,
-      format: 'msl'
+      format: 'msl',
+      hybridScript: hybridScript // Add hybrid format
     }
     
     // Store script for specific arm
@@ -107,24 +112,25 @@ app.post('/api/script/save', (req, res) => {
     systemState.isRunning = false
     systemState.isPaused = false
     
-    console.log(`✅ Script compiled: ${compiledScript.commands.length} commands`)
+    console.log(`✅ Script compiled: ${compiledScript.commands.length} commands, ${hybridScript.stepCount} hybrid steps`)
     
     // Return the compiled data for debug output
     let compiledData: any
     
-    // For MSL format, return the text commands
-    const textCommands = scriptCompiler.compileToText(script)
     compiledData = {
-      format: 'text',
+      format: 'hybrid',
       scriptId: compiledScript.id,
       textCommands: textCommands,
-      commandLines: compiledScript.commands
+      commandLines: compiledScript.commands,
+      hybridScript: hybridScript,
+      stepCount: hybridScript.stepCount
     }
     
     const response = { 
       success: true, 
       scriptId: compiledScript.id,
       commandCount: compiledScript.commands.length,
+      stepCount: hybridScript.stepCount,
       message: `Script compiled and saved (${format}) for ${armId || 'default'}`,
       compiledData,
       armId
@@ -247,7 +253,14 @@ app.get('/api/script/poll', (req, res) => {
     
     result.commands = systemState.arm1Script.commands
     result.format = systemState.arm1Script.format
-    console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
+    
+    // Add hybrid script for ESP32
+    if (systemState.arm1Script.hybridScript) {
+      (result as any).hybridScript = systemState.arm1Script.hybridScript
+      console.log(`📤 ESP32 downloaded hybrid script for arm1: ${systemState.arm1Script.hybridScript.stepCount} steps`)
+    } else {
+      console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
+    }
     
     systemState.arm1Script.executed = true
   }
@@ -259,7 +272,14 @@ app.get('/api/script/poll', (req, res) => {
     
     result.commands = systemState.arm2Script.commands
     result.format = systemState.arm2Script.format
-    console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
+    
+    // Add hybrid script for ESP32
+    if (systemState.arm2Script.hybridScript) {
+      (result as any).hybridScript = systemState.arm2Script.hybridScript
+      console.log(`📤 ESP32 downloaded hybrid script for arm2: ${systemState.arm2Script.hybridScript.stepCount} steps`)
+    } else {
+      console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
+    }
     
     systemState.arm2Script.executed = true
   }
