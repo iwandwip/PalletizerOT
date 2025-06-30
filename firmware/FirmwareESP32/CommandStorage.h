@@ -11,6 +11,7 @@ private:
 public:
   CommandStorage();
   bool saveScript(const String& scriptId, JsonArray& commands);
+  bool saveScriptText(const String& scriptText);
   bool loadScript(const String& scriptId);
   String getCommand(int index);
   int getCommandCount();

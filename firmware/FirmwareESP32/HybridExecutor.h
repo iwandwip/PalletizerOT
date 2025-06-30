@@ -29,7 +29,7 @@ private:
   bool isExecuting;
   unsigned long stepStartTime;
   unsigned long lastSlaveResponse;
-  
+
   bool parseStep(JsonObject stepObj, HybridStep& step);
   bool executeStep(const HybridStep& step);
   bool executeSingleCommand(const HybridStep& step);
@@ -42,18 +42,18 @@ private:
 public:
   HybridExecutor();
   ~HybridExecutor();
-  
+
   bool loadScript(const String& hybridJson);
   bool startExecution();
   bool pauseExecution();
   bool stopExecution();
   bool processExecution();
-  
+
   bool isRunning();
   int getCurrentStep();
   int getTotalSteps();
   float getProgress();
-  
+
   void clearScript();
   void sendSlaveCommand(const String& command);
   String getLastError();

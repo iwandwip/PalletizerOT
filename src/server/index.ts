@@ -45,9 +45,21 @@ const systemState: SystemState = {
 
 app.use(cors())
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+app.get('/status', (req, res) => {
+  let status = 'IDLE'
+  if (systemState.isRunning) {
+    status = 'RUNNING'
+  } else if (systemState.isPaused) {
+    status = 'PAUSED'
+  }
+  
+  res.json({ status })
 })
 
 app.get('/api/status', (req, res) => {
@@ -64,86 +76,74 @@ app.get('/api/status', (req, res) => {
     scriptId: systemState.arm1Script?.id || systemState.arm2Script?.id || null,
     lastPoll: systemState.esp32LastPoll,
     connectedAxes: systemState.connectedAxes,
-    efficiency: systemState.efficiency,
-    // Dual arm status
-    arm1: {
-      hasScript: !!systemState.arm1Script,
-      scriptId: systemState.arm1Script?.id || null,
-      commands: systemState.arm1Script?.commands.length || 0
-    },
-    arm2: {
-      hasScript: !!systemState.arm2Script,
-      scriptId: systemState.arm2Script?.id || null,
-      commands: systemState.arm2Script?.commands.length || 0
-    }
+    efficiency: systemState.efficiency
   })
 })
 
-app.post('/api/script/save', (req, res) => {
+app.post('/command', (req, res) => {
   try {
-    const { script, format = 'msl', armId } = req.body
-    console.log(`Compiling script (${format}) for ${armId || 'default'}:`, script.substring(0, 100) + '...')
+    const cmd = req.body.cmd || req.query.cmd
+    if (!cmd) {
+      return res.status(400).send('Missing cmd parameter')
+    }
     
-    let compiledScript: CompiledScript
+    console.log('MSL Command received:', cmd)
     
-    // MSL format compilation to text commands
-    const textCommands = scriptCompiler.compileToText(script)
-    const commandLines = textCommands.split('\n').filter(line => line.trim())
-    
-    // Generate hybrid format for ESP32
-    const hybridScript = scriptCompiler.compileToHybrid(script)
-    
-    compiledScript = {
+    const compiledScript: CompiledScript = {
       id: Date.now().toString(),
-      commands: commandLines,
+      commands: [cmd],
       timestamp: Date.now(),
       executed: false,
-      format: 'msl',
-      hybridScript: hybridScript // Add hybrid format
+      format: 'msl'
     }
     
-    // Store script for specific arm
-    if (armId === 'arm2') {
-      systemState.arm2Script = compiledScript
-    } else {
-      systemState.arm1Script = compiledScript
-    }
+    systemState.arm1Script = compiledScript
     systemState.currentCommandIndex = 0
     systemState.isRunning = false
     systemState.isPaused = false
     
-    console.log(`✅ Script compiled: ${compiledScript.commands.length} commands, ${hybridScript.stepCount} hybrid steps`)
-    
-    // Return the compiled data for debug output
-    let compiledData: any
-    
-    compiledData = {
-      format: 'hybrid',
-      scriptId: compiledScript.id,
-      textCommands: textCommands,
-      commandLines: compiledScript.commands,
-      hybridScript: hybridScript,
-      stepCount: hybridScript.stepCount
-    }
-    
-    const response = { 
-      success: true, 
-      scriptId: compiledScript.id,
-      commandCount: compiledScript.commands.length,
-      stepCount: hybridScript.stepCount,
-      message: `Script compiled and saved (${format}) for ${armId || 'default'}`,
-      compiledData,
-      armId
-    }
-    
-    console.log('Server response:', JSON.stringify(response, null, 2))
-    res.json(response)
+    res.send(`Command sent: ${cmd}`)
   } catch (error) {
-    console.error('Script compilation error:', error)
-    res.status(400).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Compilation error' 
-    })
+    console.error('Command error:', error)
+    res.status(500).send('Internal server error')
+  }
+})
+
+app.post('/write', (req, res) => {
+  try {
+    const text = req.body.text || req.query.text
+    if (!text) {
+      return res.status(400).send('Missing text parameter')
+    }
+    
+    console.log('MSL Script saved:', text.substring(0, 100) + '...')
+    
+    const compiledScript: CompiledScript = {
+      id: Date.now().toString(),
+      commands: [text],
+      timestamp: Date.now(),
+      executed: false,
+      format: 'msl'
+    }
+    
+    systemState.arm1Script = compiledScript
+    systemState.currentCommandIndex = 0
+    systemState.isRunning = false
+    systemState.isPaused = false
+    
+    res.send('Commands saved successfully. Click PLAY to execute.')
+  } catch (error) {
+    console.error('Write error:', error)
+    res.status(500).send('Internal server error')
+  }
+})
+
+app.get('/get_commands', (req, res) => {
+  const script = systemState.arm1Script
+  if (script && script.commands.length > 0) {
+    res.send(script.commands[0])
+  } else {
+    res.send('')
   }
 })
 

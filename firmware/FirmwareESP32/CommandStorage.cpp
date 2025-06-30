@@ -33,6 +33,20 @@ bool CommandStorage::saveScript(const String& scriptId, JsonArray& commands) {
   return true;
 }
 
+bool CommandStorage::saveScriptText(const String& scriptText) {
+  File file = LittleFS.open("/queue.txt", "w");
+  if (!file) {
+    Serial.println("Failed to open queue.txt for writing");
+    return false;
+  }
+
+  file.print(scriptText);
+  file.close();
+
+  Serial.println("Script text saved to queue.txt");
+  return true;
+}
+
 bool CommandStorage::loadScript(const String& scriptId) {
   String filename = "/script_" + scriptId + ".json";
 

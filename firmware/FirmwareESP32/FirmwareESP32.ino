@@ -1,6 +1,6 @@
 #include "HttpClient.h"
 #include "CommandStorage.h"
-#include "HybridExecutor.h"
+#include "MSLParser.h"
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
@@ -12,13 +12,14 @@ const int SERVER_PORT = 3006;
 
 HttpClient* httpClient;
 CommandStorage* commandStorage;
-HybridExecutor* hybridExecutor;
+MSLParser* mslParser;
 
 bool isRunning = false;
 unsigned long lastPollTime = 0;
 const unsigned long POLL_INTERVAL = 2000;
 unsigned long lastCommandTime = 0;
-const unsigned long COMMAND_INTERVAL = 100; // Faster processing for hybrid executor
+const unsigned long COMMAND_INTERVAL = 500;
+String currentScript = "";  // Faster processing for hybrid executor
 
 void setup() {
   Serial.begin(115200);
@@ -38,9 +39,9 @@ void setup() {
 
   httpClient = new HttpClient(SERVER_HOST, SERVER_PORT);
   commandStorage = new CommandStorage();
-  hybridExecutor = new HybridExecutor();
+  mslParser = new MSLParser();
 
-  Serial.println("ESP32 Master ready (Hybrid Mode)");
+  Serial.println("ESP32 Master ready (MSL Mode)");
 }
 
 void loop() {
@@ -52,7 +53,7 @@ void loop() {
   }
 
   if (isRunning && (currentTime - lastCommandTime >= COMMAND_INTERVAL)) {
-    hybridExecutor->processExecution();
+    processNextCommand();
     lastCommandTime = currentTime;
   }
 
@@ -61,63 +62,47 @@ void loop() {
 }
 
 void pollForScript() {
-  String response = httpClient->get("/api/script/poll");
+  String response = httpClient->get("/get_commands");
+  if (response.length() > 0 && response != currentScript) {
+    currentScript = response;
+    Serial.println("New MSL script received: " + currentScript.substring(0, 50) + "...");
+
+    mslParser->parseScript(currentScript);
+    Serial.println("MSL script parsed successfully");
+
+    commandStorage->saveScriptText(currentScript);
+  }
+
+  response = httpClient->get("/status");
   if (response.length() > 0) {
-    DynamicJsonDocument doc(8192);
+    DynamicJsonDocument doc(512);
     deserializeJson(doc, response);
 
-    if (doc["hasNewScript"].as<bool>()) {
-      String scriptId = doc["scriptId"].as<String>();
-      
-      // Check for new hybrid format
-      if (doc.containsKey("hybridScript") && !doc["hybridScript"].isNull()) {
-        String hybridJson;
-        serializeJson(doc["hybridScript"], hybridJson);
-        
-        Serial.println("New hybrid script received: " + scriptId);
-        if (hybridExecutor->loadScript(hybridJson)) {
-          Serial.println("Hybrid script loaded successfully");
-        } else {
-          Serial.println("Failed to load hybrid script");
-        }
-      } else if (doc.containsKey("commands")) {
-        // Legacy format fallback
-        JsonArray commands = doc["commands"];
-        Serial.println("Legacy script received: " + scriptId);
-        commandStorage->saveScript(scriptId, commands);
-        Serial.println("Legacy script saved to LittleFS");
-      }
-    }
+    String status = doc["status"].as<String>();
+    bool shouldStart = (status == "RUNNING");
 
-    bool shouldStart = doc["shouldStart"].as<bool>();
     if (shouldStart && !isRunning) {
       isRunning = true;
-      hybridExecutor->startExecution();
+      mslParser->reset();
       Serial.println("Starting script execution");
     } else if (!shouldStart && isRunning) {
       isRunning = false;
-      hybridExecutor->pauseExecution();
-      Serial.println("Pausing script execution");
+      Serial.println("Stopping script execution");
     }
   }
 }
 
 void processNextCommand() {
-  String response = httpClient->get("/api/command/next");
-  if (response.length() > 0) {
-    DynamicJsonDocument doc(1024);
-    deserializeJson(doc, response);
+  if (!mslParser->hasMoreCommands()) {
+    isRunning = false;
+    Serial.println("All commands completed");
+    return;
+  }
 
-    if (doc["hasCommand"].as<bool>()) {
-      String command = doc["command"].as<String>();
-      Serial.println("Executing: " + command);
-
-      Serial2.println(command);
-
-    } else if (doc["isComplete"].as<bool>()) {
-      isRunning = false;
-      Serial.println("All commands completed");
-    }
+  String command = mslParser->getNextCommand();
+  if (command.length() > 0) {
+    Serial.println("Executing: " + command);
+    Serial2.println(command);
   }
 }
 
@@ -128,24 +113,8 @@ void handleSerialResponse() {
 
     if (response == "OK" || response == "DONE") {
       Serial.println("Command acknowledged: " + response);
-
-      DynamicJsonDocument doc(256);
-      doc["success"] = true;
-      String jsonString;
-      serializeJson(doc, jsonString);
-
-      httpClient->post("/api/command/ack", jsonString);
-
     } else if (response.startsWith("ERROR")) {
       Serial.println("Command failed: " + response);
-
-      DynamicJsonDocument doc(256);
-      doc["success"] = false;
-      doc["error"] = response;
-      String jsonString;
-      serializeJson(doc, jsonString);
-
-      httpClient->post("/api/command/ack", jsonString);
       isRunning = false;
     }
   }
