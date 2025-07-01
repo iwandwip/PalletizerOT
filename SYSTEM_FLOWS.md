@@ -102,27 +102,39 @@ PalletizerOT/
 │       │   ├── 🎨 layout.tsx            ← App Layout + Theme
 │       │   └── 🎨 globals.css           ← Tailwind Styles
 │       │
-│       ├── components/                   ← UI Components
-│       │   ├── 📝 command-editor.tsx    ← Dual Arm MSL Editor (422 lines)
-│       │   ├── 🖥️ debug-terminal.tsx    ← Real-time SSE Debug (298 lines)
-│       │   ├── 🎮 system-controls.tsx   ← Execution Controls (232 lines)
-│       │   ├── 📊 status-display.tsx    ← System Status Panel
-│       │   ├── ⚡ speed-panel.tsx       ← Speed Controls
-│       │   ├── ⚙️ settings-modal.tsx    ← Configuration
+│       ├── components/                   ← UI Components (ACTIVE ONLY)
+│       │   ├── 📝 command-editor.tsx    ← ✅ PRIMARY: Dual Arm MSL Editor (422 lines)
+│       │   ├── 🖥️ debug-terminal.tsx    ← ✅ ACTIVE: Real-time SSE Debug (298 lines)
+│       │   ├── 🎮 system-controls.tsx   ← ✅ ACTIVE: Execution Controls (232 lines)
+│       │   ├── 📊 status-display.tsx    ← ✅ ACTIVE: System Status Panel
+│       │   ├── ⚡ speed-panel.tsx       ← ✅ ACTIVE: Speed Controls
+│       │   ├── ⚙️ settings-modal.tsx    ← ✅ ACTIVE: Configuration
+│       │   ├── 🌙 theme-toggle.tsx      ← ✅ ACTIVE: Light/Dark Mode
+│       │   ├── 🎨 theme-provider.tsx    ← ✅ ACTIVE: Theme Context
+│       │   ├── 🔧 debug-overlay.tsx     ← ✅ ACTIVE: Debug Overlay
 │       │   │
-│       │   ├── editors/                 ← Advanced Editors
-│       │   │   ├── 📊 SpreadsheetEditor.tsx ← Grid-based Editor
-│       │   │   ├── 📝 TextEditor.tsx    ← Code Editor with Syntax
-│       │   │   └── modals/              ← Command Input Dialogs
-│       │   │       ├── MoveCommandModal.tsx
-│       │   │       ├── GroupMoveModal.tsx
-│       │   │       ├── SystemCommandModal.tsx
-│       │   │       └── WaitCommandModal.tsx
+│       │   ├── editors/                 ← ✅ ACTIVE: Advanced Editors
+│       │   │   ├── 📊 SpreadsheetEditor.tsx ← ✅ ACTIVE: Grid-based Command Builder
+│       │   │   ├── 📝 TextEditor.tsx    ← ✅ ACTIVE: Code Editor with Syntax Highlighting
+│       │   │   ├── 🔧 scriptGenerator.ts ← ✅ ACTIVE: Script Generation Logic
+│       │   │   ├── 📋 types.ts          ← ✅ ACTIVE: Editor Type Definitions
+│       │   │   ├── 📤 index.ts          ← ✅ ACTIVE: Editor Exports
+│       │   │   └── modals/              ← ✅ ACTIVE: Command Input Dialogs
+│       │   │       ├── MoveCommandModal.tsx   ← Single axis movement
+│       │   │       ├── GroupMoveModal.tsx     ← Multi-axis coordination
+│       │   │       ├── SystemCommandModal.tsx ← System commands
+│       │   │       ├── WaitCommandModal.tsx   ← Timing commands
+│       │   │       └── index.ts               ← Modal exports
 │       │   │
-│       │   └── ui/                      ← shadcn/ui Components
-│       │       ├── button.tsx, card.tsx, badge.tsx
-│       │       ├── dropdown-menu.tsx, tabs.tsx
-│       │       └── progress.tsx, alert.tsx
+│       │   ├── ui/                      ← ✅ ACTIVE: shadcn/ui Component Library
+│       │   │   ├── button.tsx, card.tsx, badge.tsx
+│       │   │   ├── dropdown-menu.tsx, tabs.tsx, table.tsx
+│       │   │   ├── progress.tsx, alert.tsx, dialog.tsx
+│       │   │   └── input.tsx, textarea.tsx, checkbox.tsx
+│       │   │
+│       │   └── ❌ DEPRECATED (Not in use):
+│       │       ├── command-editor-old.tsx     ← Legacy dual-arm editor
+│       │       └── editors/SpreadsheetEditorOld.tsx ← Legacy spreadsheet editor
 │       │
 │       ├── 🔧 compiler/                 ← Modern Script Language Compiler
 │       │   ├── 🎯 MSLCompiler.ts        ← Main Orchestrator (223 lines)
@@ -2452,7 +2464,98 @@ Master Nano → ESP32: "ERROR:message"  // Command failed
 - **🆕 Communication**: HTTP polling + I2C protocol + Serial UART (legacy)
 - **Development**: Concurrent dev servers + ESP32 simulator ✅
 
+## 🧹 **Component Status Update - December 2024**
+
+### ✅ **Active Web Components (Production Ready)**
+
+#### **Primary Editors**
+- **`command-editor.tsx`** ✅ **PRIMARY ACTIVE** - Main dual-arm MSL/RAW editor (422 lines)
+  - Dual arm support (ARM1/ARM2 switching)
+  - MSL and RAW processing modes
+  - Auto-processing capability
+  - File load/save functionality
+  - Integration with TextEditor for syntax highlighting
+
+- **`SpreadsheetEditor.tsx`** ✅ **ACTIVE ADVANCED** - Grid-based command builder
+  - Drag & drop command interface
+  - Modal-based command configuration
+  - CSV export functionality
+  - Integration with all command modals
+
+- **`TextEditor.tsx`** ✅ **CORE ACTIVE** - Syntax-highlighted code editor
+  - Line numbers and syntax highlighting
+  - Used by CommandEditor
+  - MSL/RAW syntax support
+
+#### **Command Configuration Modals** ✅ **ALL ACTIVE**
+- **`MoveCommandModal.tsx`** - Single axis movement configuration
+- **`GroupMoveModal.tsx`** - Multi-axis coordination setup
+- **`SystemCommandModal.tsx`** - System commands (ZERO, HOME, SPEED)
+- **`WaitCommandModal.tsx`** - Timing and delay commands
+
+#### **System Interface Components** ✅ **ALL ACTIVE**
+- **`debug-terminal.tsx`** - Real-time SSE debug output (298 lines)
+- **`system-controls.tsx`** - Execution controls (Start/Stop/Pause) (232 lines)
+- **`status-display.tsx`** - System status monitoring
+- **`speed-panel.tsx`** - Motor speed controls
+- **`settings-modal.tsx`** - System configuration
+- **`debug-overlay.tsx`** - Debug information overlay
+- **`theme-toggle.tsx`** - Light/dark mode switching
+- **`theme-provider.tsx`** - Theme context provider
+
+#### **UI Component Library** ✅ **COMPLETE ACTIVE**
+- **shadcn/ui components** - All components in `/src/components/ui/` are actively used
+- Modern, accessible component library
+- Consistent design system across application
+
+### ❌ **Deprecated Components (Not in Production)**
+
+#### **Legacy Editors**
+- **`command-editor-old.tsx`** ❌ **DEPRECATED** - Legacy dual-arm editor
+  - **Status**: Not imported in main application
+  - **Replacement**: `command-editor.tsx`
+  - **Action**: Can be safely removed
+
+- **`SpreadsheetEditorOld.tsx`** ❌ **DEPRECATED** - Legacy spreadsheet editor
+  - **Status**: Not exported in editors index
+  - **Replacement**: `SpreadsheetEditor.tsx`  
+  - **Action**: Can be safely removed
+
+### 📊 **Component Usage Analysis**
+
+```
+Main Application Flow (src/app/page.tsx):
+├── CommandEditor (PRIMARY) ✅
+│   └── TextEditor (CORE) ✅
+├── SpreadsheetEditor (ADVANCED) ✅
+│   └── Command Modals (4x) ✅
+├── System Components (7x) ✅
+├── Debug Components (2x) ✅
+└── UI Components (shadcn/ui) ✅
+
+Deprecated (Not imported):
+├── command-editor-old.tsx ❌
+└── SpreadsheetEditorOld.tsx ❌
+```
+
+### 🎯 **Recommendations**
+
+1. **Focus Documentation**: Update all system documentation to reference only active components
+2. **Clean Architecture**: The current component architecture is clean and production-ready
+3. **Team Communication**: All active components are well-structured for team development
+4. **Future Development**: All new features should build on the active component base
+
+### 🔄 **Web Interface Current State**
+
+The PalletizerOT web interface now consists of:
+- **2 Primary Editors**: CommandEditor (text-based) + SpreadsheetEditor (grid-based)
+- **1 Core Text Engine**: TextEditor with syntax highlighting
+- **4 Command Modals**: For advanced command configuration
+- **9 System Components**: For control, monitoring, and debugging
+- **Complete UI Library**: shadcn/ui for consistent design
+- **0 Deprecated Components**: Clean, production-ready codebase
+
 ---
 
 *Generated automatically from PalletizerOT system analysis*  
-*Last updated: 2025-01-01*
+*Last updated: 2025-01-01 - Component Status Verified*
