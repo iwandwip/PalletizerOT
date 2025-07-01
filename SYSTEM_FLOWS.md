@@ -9,17 +9,18 @@
 └─────────────────────────────────────────────────────────────────────────────┘
 
 Web Client ──HTTP──► Node.js Server ──HTTP/WiFi──► ESP32 Bridge
-(Next.js)              (Express API)                (I2C Master)
+(Next.js)              (Express API)               (UART Master)
     │                       │                           │
-    │ MSL Compiler           │ Command Storage           │ I2C Distribution
+    │ MSL Compiler           │ Command Storage           │ UART Distribution
     ▼                       ▼                           ▼
-["X(100)", "Y(50)"]    ARM1/ARM2 Scripts         ARM1 Master (0x10)
-                                                 ARM2 Master (0x20)
+["X(100)", "Y(50)"]    ARM1/ARM2 Scripts        ARM1 Master (UART1)
+                                                ARM2 Master (UART2)
                                                         │
-                                               5 Slave Nanos per Arm
+                                            5 Slave Nanos per Arm
+                                            (Shared UART Bus)
                                                (10 Motors Total)
 
-         DISTRIBUTED ARCHITECTURE: ESP32 → 2 Masters → 10 Slaves
+         UART SHARED BUS ARCHITECTURE: ESP32 → 2 Masters → 10 Slaves
 ```
 
 ## 🌐 Web Interface
@@ -78,51 +79,54 @@ Web Client ──HTTP──► Node.js Server ──HTTP/WiFi──► ESP32 Bri
            │ HTTP GET /api/script/poll (every 2 seconds)
            ▼
 
-📡 ESP32 WIFI BRIDGE (I2C Master)
+📡 ESP32 WIFI BRIDGE (UART Master)
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  Command Forwarder (Enhanced)                                               │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────────────┐ │
-│  │ ARM1 Queue  │    │ ARM2 Queue  │    │      I2C Controller             │ │
-│  │ 15 commands │    │ 8 commands  │    │ ARM1 Master (0x10): OK ✅      │ │
-│  │ Index: 3    │    │ Index: 1    │    │ ARM2 Master (0x20): OK ✅      │ │
-│  │ Status: RUN │    │ Status: RUN │    │ Wire.begin() 100kHz ✅         │ │
+│  │ ARM1 Queue  │    │ ARM2 Queue  │    │      UART Controller            │ │
+│  │ 15 commands │    │ 8 commands  │    │ ARM1 Master (UART1): OK ✅     │ │
+│  │ Index: 3    │    │ Index: 1    │    │ ARM2 Master (UART2): OK ✅     │ │
+│  │ Status: RUN │    │ Status: RUN │    │ Serial1/Serial2 115200 ✅      │ │
 │  └─────────────┘    └─────────────┘    └─────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
-           │ I2C Send: "arm1:X:100"           │ I2C Send: "arm2:Y:300"
+           │ UART Send: "arm1:X:100"          │ UART Send: "arm2:Y:300"
            ▼                                  ▼
 
 🤖 ARDUINO NANO MASTERS (Team Development)
 ┌───────────────────────────────────┐  ┌───────────────────────────────────┐
-│        ARM1 MASTER (0x10)         │  │        ARM2 MASTER (0x20)         │
+│        ARM1 MASTER                │  │        ARM2 MASTER                │
 │  ┌─────────────────────────────┐  │  │  ┌─────────────────────────────┐  │
-│  │     I2C Slave Receiver      │  │  │  │     I2C Slave Receiver      │  │
+│  │     UART Receiver           │  │  │  │     UART Receiver           │  │
 │  │  ESP32 → "arm1:X:100"      │  │  │  │  ESP32 → "arm2:Y:300"      │  │
 │  │  Response: "OK" | "ERROR"   │  │  │  │  Response: "OK" | "ERROR"   │  │
 │  └─────────────────────────────┘  │  │  └─────────────────────────────┘  │
 │  ┌─────────────────────────────┐  │  │  ┌─────────────────────────────┐  │
-│  │    I2C Master Distributor   │  │  │  │    I2C Master Distributor   │  │
-│  │  X → Slave 0x11             │  │  │  │  Y → Slave 0x22             │  │
-│  │  Y → Slave 0x12             │  │  │  │  X → Slave 0x21             │  │
-│  │  Z → Slave 0x13             │  │  │  │  Z → Slave 0x23             │  │
-│  │  T → Slave 0x14             │  │  │  │  T → Slave 0x24             │  │
-│  │  G → Slave 0x15             │  │  │  │  G → Slave 0x25             │  │
+│  │   UART Shared Bus Master    │  │  │  │   UART Shared Bus Master    │  │
+│  │  1 TX/RX → All 5 Slaves     │  │  │  │  1 TX/RX → All 5 Slaves     │  │
+│  │  Address: X1,Y1,Z1,T1,G1    │  │  │  │  Address: X2,Y2,Z2,T2,G2    │  │
+│  │  Protocol: Addressing       │  │  │  │  Protocol: Addressing       │  │
 │  └─────────────────────────────┘  │  │  └─────────────────────────────┘  │
 └───────────────────────────────────┘  └───────────────────────────────────┘
-           │ I2C to 5 Slaves                    │ I2C to 5 Slaves
-           ▼                                    ▼
+           │ UART Shared Bus                   │ UART Shared Bus
+           │ (1 TX/RX to 5 slaves)            │ (1 TX/RX to 5 slaves)
+           ▼                                  ▼
 
 ⚙️  ARDUINO NANO SLAVES (Team Development)
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  ARM1 SLAVES                              ARM2 SLAVES                       │
+│  ARM1 SLAVES (Shared UART Bus)           ARM2 SLAVES (Shared UART Bus)      │
 │  ┌──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┐    │
 │  │ X-1  │ Y-1  │ Z-1  │ T-1  │ G-1  │ X-2  │ Y-2  │ Z-2  │ T-2  │ G-2  │    │
-│  │(0x11)│(0x12)│(0x13)│(0x14)│(0x15)│(0x21)│(0x22)│(0x23)│(0x24)│(0x25)│    │
+│  │(ADR1)│(ADR2)│(ADR3)│(ADR4)│(ADR5)│(ADR1)│(ADR2)│(ADR3)│(ADR4)│(ADR5)│    │
 │  │Motor │Motor │Motor │Servo │Servo │Motor │Motor │Motor │Servo │Servo │    │
-│  └──────┴──────┴──────┴──────┴──────┴──────┴──────┴──────┴──────┴──────┘    │
+│  └──┬───┴──┬───┴──┬───┴──┬───┴──┬───┴──┬───┴──┬───┴──┬───┴──┬───┴──┬───┘    │
+│     │      │      │      │      │      │      │      │      │      │        │
+│     └──────┴──────┴──────┴──────┘      └──────┴──────┴──────┴──────┘        │
+│            ARM1 SHARED UART BUS              ARM2 SHARED UART BUS           │
+│            (All connect to 1 TX/RX)          (All connect to 1 TX/RX)       │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 🎯 DATA FLOW:
-Web → Server → ESP32 → 2 Masters → 10 Slaves → 10 Motors
+Web → Server → ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus) → 10 Motors
 Status: Slaves → Masters → ESP32 → Server → Web (SSE)
 ```
 
@@ -131,33 +135,52 @@ Status: Slaves → Masters → ESP32 → Server → Web (SSE)
 ### ✅ **Your Scope (Web Client + ESP32)**
 - **Web Client**: Next.js + React + TypeScript
 - **Server**: Node.js + Express + SSE
-- **ESP32 Firmware**: I2C master with dual-arm support
-- **I2C Protocol**: Command distribution specification
+- **ESP32 Firmware**: Dual UART master with shared bus support
+- **UART Protocol**: Command distribution specification
 
 ### 🤝 **Team Scope (Arduino Nano Network)**
-- **2 Master Nanos**: I2C slave to ESP32, I2C master to slaves
-- **10 Slave Nanos**: Motor control with AccelStepper
-- **I2C Communication**: Master-slave protocol implementation
+- **2 Master Nanos**: UART slave to ESP32, UART master to shared bus
+- **10 Slave Nanos**: Motor control on shared UART bus with addressing
+- **UART Communication**: Shared bus protocol with device addressing
 
-## 📋 I2C Protocol Specification
+## 📋 UART Protocol Specification
 
-### **Command Format:**
+### **ESP32 → Master Communication:**
 ```
-ESP32 → Master: "arm1:X:100"     // ARM1 move X to 100
-ESP32 → Master: "arm2:GROUP:X,Y" // ARM2 group movement
+ESP32 → Master1: "arm1:X:100"     // ARM1 move X to 100
+ESP32 → Master2: "arm2:GROUP:X,Y" // ARM2 group movement
 
-Master → ESP32: "OK"             // Command accepted
-Master → ESP32: "DONE"           // Command completed
-Master → ESP32: "ERROR:msg"      // Command failed
+Master → ESP32: "OK"              // Command accepted
+Master → ESP32: "DONE"            // Command completed
+Master → ESP32: "ERROR:msg"       // Command failed
 ```
 
-### **I2C Addresses:**
+### **Master → Slaves Shared Bus:**
 ```
-ARM1 Master: 0x10
-ARM1 Slaves: 0x11 (X), 0x12 (Y), 0x13 (Z), 0x14 (T), 0x15 (G)
+Master → Shared Bus: "@1:X:100\n"    // Send to slave address 1 (X-axis)
+Master → Shared Bus: "@2:Y:50\n"     // Send to slave address 2 (Y-axis)
+Master → Shared Bus: "@3:Z:10\n"     // Send to slave address 3 (Z-axis)
 
-ARM2 Master: 0x20  
-ARM2 Slaves: 0x21 (X), 0x22 (Y), 0x23 (Z), 0x24 (T), 0x25 (G)
+Slave → Master: "1:OK\n"             // Slave 1 acknowledges
+Slave → Master: "2:DONE\n"           // Slave 2 completed
+Slave → Master: "3:ERROR:msg\n"      // Slave 3 error
+```
+
+### **UART Configuration:**
+```
+ESP32 Ports:
+- Serial1 (GPIO16/17): ARM1 Master  
+- Serial2 (GPIO18/19): ARM2 Master
+- Baudrate: 115200
+
+Nano Master Ports:
+- Hardware Serial: ESP32 communication
+- SoftwareSerial: Shared bus to 5 slaves
+- Baudrate: 115200
+
+Slave Addressing:
+ARM1: Address 1-5 (X,Y,Z,T,G)
+ARM2: Address 1-5 (X,Y,Z,T,G)
 ```
 
 ## 🚀 System Features
@@ -165,19 +188,20 @@ ARM2 Slaves: 0x21 (X), 0x22 (Y), 0x23 (Z), 0x24 (T), 0x25 (G)
 ### ✅ **Completed (Production Ready)**
 1. **Dual Arm Support**: Independent ARM1/ARM2 script execution
 2. **MSL Compiler**: Full TypeScript compiler in web client
-3. **I2C Architecture**: ESP32 dual master with 13-device network
+3. **UART Shared Bus Architecture**: ESP32 dual master with 13-device network
 4. **Real-time Debugging**: SSE terminal with distributed status
 5. **Clean Web Interface**: Active components only, deprecated removed
 
 ### 🎯 **Performance Metrics**
 - **Total Devices**: 13 (1 ESP32 + 2 Masters + 10 Slaves)
 - **Parallel Execution**: Up to 10 motors simultaneously
-- **I2C Speed**: 100kHz reliable communication
+- **UART Speed**: 115200 baud reliable communication
+- **Shared Bus**: 5 slaves per master on single TX/RX
 - **Web Compilation**: <50ms for complex MSL scripts
 - **Real-time Updates**: <100ms SSE latency
 
 ---
 
 *PalletizerOT Distributed Dual-Arm Control System*  
-*Architecture: ESP32 → 2 Arduino Nano Masters → 10 Arduino Nano Slaves*  
+*Architecture: ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
 *Last updated: 2025-01-01*
