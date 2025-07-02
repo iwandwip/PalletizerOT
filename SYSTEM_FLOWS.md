@@ -306,49 +306,48 @@ Detailed planning untuk implementasi sensor integration pada PalletizerOT system
 
                               📱 WEB CLIENT
                     ┌─────────────────────────────────┐
-                    │     Enhanced UI Interface       │
+                    │     Existing UI Interface       │
+                    │        (No Changes)             │
                     │ ┌─────────────┐ ┌─────────────┐ │
                     │ │ ARM1 Editor │ │ ARM2 Editor │ │
                     │ │   + MSL     │ │   + MSL     │ │
                     │ └─────────────┘ └─────────────┘ │
                     │ ┌─────────────────────────────┐ │
-                    │ │   🆕 SENSOR DASHBOARD      │ │
-                    │ │ 📦 Product: [●] GPIO21     │ │
-                    │ │ 🎯 Center:  [○] GPIO22     │ │
-                    │ │ ⚡ Auto:    [●] ENABLED    │ │
+                    │ │    Debug Terminal           │ │
+                    │ │ [ESP32] Connected           │ │
+                    │ │ [ARM1 ] X(100) executed     │ │
+                    │ │ [ARM2 ] Y(50) completed     │ │
                     │ └─────────────────────────────┘ │
                     │ ┌─────────────────────────────┐ │
-                    │ │   🆕 AUTOMATION PANEL      │ │
-                    │ │ 🤖 Smart Mode: ON          │ │
-                    │ │ 🔄 Cycles: 1,247           │ │
-                    │ │ ⚠️  Collisions: 23 avoided │ │
+                    │ │    System Controls          │ │
+                    │ │ ▶️ PLAY  ⏸️ PAUSE  ⏹️ STOP  │ │
+                    │ │ 🏠 ZERO  ⚡ SPEED CONTROL   │ │
                     │ └─────────────────────────────┘ │
                     └─────────────────────────────────┘
                                      │ WiFi
                                      ▼
-                          🖥️  NODE.JS SERVER (Enhanced)
+                          🖥️  NODE.JS SERVER (Existing)
                     ┌─────────────────────────────────┐
-                    │     Enhanced API Endpoints      │
+                    │       Current API Endpoints     │
+                    │          (No Changes)           │
                     │                                 │
                     │ Existing Endpoints:             │
                     │ ├─ /api/script/save             │
                     │ ├─ /api/script/poll             │
                     │ ├─ /api/control/*               │
-                    │ └─ /api/status                  │
+                    │ ├─ /api/status                  │
+                    │ └─ /api/events (SSE)            │
                     │                                 │
-                    │ 🆕 NEW SENSOR ENDPOINTS:        │
-                    │ ├─ /api/sensors/status          │
-                    │ ├─ /api/sensors/update          │
-                    │ ├─ /api/automation/toggle       │
-                    │ ├─ /api/automation/mode         │
-                    │ ├─ /api/safety/emergency        │
-                    │ └─ /api/safety/status           │
+                    │ SSE Debug Stream:               │
+                    │ ├─ [ESP32] System status        │
+                    │ ├─ [ARM1 ] Command execution    │
+                    │ ├─ [ARM2 ] Command execution    │
+                    │ └─ [INFO ] General messages     │
                     │                                 │
-                    │ 🆕 ENHANCED SSE STREAM:         │
-                    │ ├─ [SENS] Product detected      │
-                    │ ├─ [AUTO] ARM1 pickup start     │
-                    │ ├─ [SAFE] Collision avoided     │
-                    │ └─ [STAT] Cycle completed       │
+                    │ 🔄 Existing Communication:      │
+                    │ ├─ ESP32 polling every 1s       │
+                    │ ├─ Command array distribution   │
+                    │ └─ Status reporting via SSE     │
                     └─────────────────────────────────┘
                                      │ WiFi
                                      ▼
@@ -425,13 +424,13 @@ Detailed planning untuk implementasi sensor integration pada PalletizerOT system
                                 │
 💡 Status LED (GPIO2) ──────────┘
 
-🆕 ENHANCED COMMUNICATION FLOW:
+🆕 ENHANCED ESP32 COMMUNICATION FLOW:
 1. ESP32 reads sensors continuously (GPIO21, GPIO22)
-2. Automation engine processes sensor states
+2. Internal automation engine processes sensor states
 3. Smart command generation based on sensor triggers
-4. Priority-based UART command distribution
-5. Real-time safety intervention capabilities
-6. Enhanced status reporting to web client
+4. Priority-based UART command distribution to Arduino masters
+5. Real-time safety intervention capabilities (ESP32 only)
+6. Enhanced debug logging via existing SSE stream
 ```
 
 ## 🎯 **PLANNING PHASE: Sensor Integration Detail**
@@ -589,19 +588,17 @@ Commands                                              │ Y(100) │
 
 🎯 PLANNING IMPLEMENTATION (Sensor Integration):
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ 🆕 ENHANCED WEB CLIENT                                                       │
-│    ├─ Everything from Current +                                             │
-│    ├─ Sensor Dashboard: Real-time GPIO21/GPIO22 status monitoring           │
-│    ├─ Automation Panel: Smart mode controls and cycle statistics            │
-│    ├─ Safety Monitor: Collision detection and emergency stop interface      │
-│    └─ Enhanced Debug: Sensor events + automation decision logging           │
+│ ✅ WEB CLIENT (No Changes Required)                                          │
+│    ├─ Existing MSL Compiler: Continue using current implementation          │
+│    ├─ Existing Dual ARM UI: ARM1/ARM2 script editors unchanged              │
+│    ├─ Existing Debug Terminal: Will receive enhanced ESP32 messages         │
+│    └─ Existing System Controls: PLAY/PAUSE/STOP/RESUME unchanged            │
 │                                                                             │
-│ 🆕 ENHANCED NODE.JS SERVER                                                  │
-│    ├─ Everything from Current +                                             │
-│    ├─ Sensor APIs: /api/sensors/status, /api/sensors/update                 │
-│    ├─ Automation APIs: /api/automation/toggle, /api/automation/mode         │
-│    ├─ Safety APIs: /api/safety/emergency, /api/safety/status                │
-│    └─ Enhanced SSE: [SENS], [AUTO], [SAFE] message categories               │
+│ ✅ NODE.JS SERVER (Minimal Changes)                                         │
+│    ├─ Existing APIs: All current endpoints remain unchanged                 │
+│    ├─ Existing SSE Stream: Enhanced with sensor messages from ESP32         │
+│    ├─ Existing Polling: ESP32 continues polling for commands                │
+│    └─ Optional: Basic sensor status endpoint for debugging only             │
 │                                                                             │
 │ 🆕 ENHANCED ESP32 FIRMWARE                                                  │
 │    ├─ Everything from Current +                                             │
@@ -619,14 +616,15 @@ Commands                                              │ Y(100) │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 🔧 KEY CHANGES SUMMARY:
+├─ Web Client: No changes - continues using existing interface
+├─ Node.js Server: Minimal changes - enhanced SSE messages only
+├─ ESP32 Firmware: Major enhancement - sensor integration + automation logic
+├─ Arduino Masters: No changes - continues receiving UART commands
+├─ Arduino Slaves: No changes - continues motor control functions
 ├─ Current Focus: Manual script execution with dual-arm support
-├─ Planning Focus: Autonomous operation with sensor-driven automation
-├─ Current Complexity: 13-device pure command forwarding network
-├─ Planning Complexity: 15-device intelligent automation system
+├─ Planning Focus: ESP32-based autonomous operation with sensors
 ├─ Current Safety: Manual control and monitoring only
-├─ Planning Safety: Automatic collision detection and intervention
-├─ Current Efficiency: Operator-dependent cycle times
-└─ Planning Efficiency: Optimized automation with <20s cycle times
+└─ Planning Safety: ESP32 automatic collision detection and intervention
 ```
 
 #### **🆕 PLANNING: Physical Hardware Design**
@@ -1241,45 +1239,45 @@ Week 9: Production Deployment
    ├─ Basic automation trigger testing
    └─ UART command generation validation
 
-📅 WEEK 3: Web Interface & User Controls
-├─ 📱 Web Client Enhancement
-│  ├─ Create SensorDashboard.tsx component
-│  ├─ Add real-time sensor status display
-│  ├─ Implement AutomationPanel.tsx component
-│  ├─ Add automation toggle and mode controls
-│  └─ Enhance debug terminal with [SENS] and [AUTO] tags
+📅 WEEK 3: ESP32 Automation Logic & Testing
+├─ 🤖 Advanced Automation Implementation
+│  ├─ Implement full state machine (IDLE → PICKUP → PLACE → COMPLETE)
+│  ├─ Add priority-based command queuing system
+│  ├─ Create adaptive collision avoidance algorithms
+│  ├─ Implement automatic retry mechanisms
+│  └─ Add cycle time optimization logic
 │
-├─ 🎨 UI/UX Implementation
-│  ├─ Design sensor status indicators (LED-style)
-│  ├─ Create automation statistics display
-│  ├─ Add collision risk visual warnings
-│  ├─ Implement emergency stop button
-│  └─ Test real-time sensor data updates
+├─ 🛡️ Safety System Enhancement
+│  ├─ Multi-level risk assessment implementation
+│  ├─ Predictive collision detection algorithms
+│  ├─ Area monitoring with safety zones
+│  ├─ Automatic fault recovery procedures
+│  └─ Emergency stop functionality
 │
-└─ 🔗 End-to-end Integration
-   ├─ Complete sensor-to-web data flow
-   ├─ Automation control from web interface
-   └─ Real-time status monitoring validation
+└─ 🔗 System Integration Testing
+   ├─ Complete sensor-to-automation logic validation
+   ├─ UART command generation accuracy testing
+   └─ Real-time decision making performance testing
 
-📅 WEEK 4: Testing & Optimization
-├─ 🛡️ Safety System Implementation
-│  ├─ Add SafetyState struct to ESP32 firmware
-│  ├─ Implement emergency stop functionality
-│  ├─ Create collision detection with automatic pause
-│  ├─ Add safety intervention logging
-│  └─ Test emergency scenarios
+📅 WEEK 4: ESP32 Performance Optimization & Validation
+├─ ⚡ ESP32 Performance Optimization
+│  ├─ Optimize sensor polling frequency and timing
+│  ├─ Improve automation decision making speed
+│  ├─ Reduce UART command transmission latency
+│  ├─ Memory usage optimization for ESP32
+│  └─ Power consumption optimization
 │
-├─ ⚡ Performance Optimization
-│  ├─ Optimize sensor polling frequency
-│  ├─ Improve automation decision timing
-│  ├─ Reduce UART command latency
-│  ├─ Optimize web interface rendering
-│  └─ Memory usage optimization
+├─ 🧪 Comprehensive ESP32 Testing
+│  ├─ Long-duration stability testing (24+ hours)
+│  ├─ Stress testing with rapid sensor changes
+│  ├─ Edge case scenario validation
+│  ├─ Emergency response time measurement
+│  └─ UART communication reliability testing
 │
-└─ 📋 Documentation & Validation
-   ├─ Update system documentation
-   ├─ Create user operation manual
-   ├─ Performance benchmarking
+└─ 📋 ESP32 Documentation & Validation
+   ├─ Update ESP32 firmware documentation
+   ├─ Create sensor calibration procedures
+   ├─ ESP32 performance benchmarking
    └─ Phase 1 completion verification
 ```
 
