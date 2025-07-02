@@ -295,34 +295,345 @@ ARM2: Address 1-5 (X,Y,Z,T,G)
 ## Overview
 Detailed planning untuk implementasi sensor integration pada PalletizerOT system. Menambahkan 2 digital sensor untuk automation dan collision avoidance sambil mempertahankan arsitektur UART yang sudah optimal.
 
+## 🏗️ **PLANNING: Enhanced System Architecture**
+
+### **Enhanced Dual-Arm System with Sensor Integration**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                PalletizerOT Enhanced System (Planning Phase)               │
+│                    15 Device Network + Sensor Integration                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                              📱 WEB CLIENT
+                    ┌─────────────────────────────────┐
+                    │     Enhanced UI Interface       │
+                    │ ┌─────────────┐ ┌─────────────┐ │
+                    │ │ ARM1 Editor │ │ ARM2 Editor │ │
+                    │ │   + MSL     │ │   + MSL     │ │
+                    │ └─────────────┘ └─────────────┘ │
+                    │ ┌─────────────────────────────┐ │
+                    │ │   🆕 SENSOR DASHBOARD      │ │
+                    │ │ 📦 Product: [●] GPIO21     │ │
+                    │ │ 🎯 Center:  [○] GPIO22     │ │
+                    │ │ ⚡ Auto:    [●] ENABLED    │ │
+                    │ └─────────────────────────────┘ │
+                    │ ┌─────────────────────────────┐ │
+                    │ │   🆕 AUTOMATION PANEL      │ │
+                    │ │ 🤖 Smart Mode: ON          │ │
+                    │ │ 🔄 Cycles: 1,247           │ │
+                    │ │ ⚠️  Collisions: 23 avoided │ │
+                    │ └─────────────────────────────┘ │
+                    └─────────────────────────────────┘
+                                     │ WiFi
+                                     ▼
+                          🖥️  NODE.JS SERVER (Enhanced)
+                    ┌─────────────────────────────────┐
+                    │     Enhanced API Endpoints      │
+                    │                                 │
+                    │ Existing Endpoints:             │
+                    │ ├─ /api/script/save             │
+                    │ ├─ /api/script/poll             │
+                    │ ├─ /api/control/*               │
+                    │ └─ /api/status                  │
+                    │                                 │
+                    │ 🆕 NEW SENSOR ENDPOINTS:        │
+                    │ ├─ /api/sensors/status          │
+                    │ ├─ /api/sensors/update          │
+                    │ ├─ /api/automation/toggle       │
+                    │ ├─ /api/automation/mode         │
+                    │ ├─ /api/safety/emergency        │
+                    │ └─ /api/safety/status           │
+                    │                                 │
+                    │ 🆕 ENHANCED SSE STREAM:         │
+                    │ ├─ [SENS] Product detected      │
+                    │ ├─ [AUTO] ARM1 pickup start     │
+                    │ ├─ [SAFE] Collision avoided     │
+                    │ └─ [STAT] Cycle completed       │
+                    └─────────────────────────────────┘
+                                     │ WiFi
+                                     ▼
+                           📡 ESP32 (ENHANCED SENSOR HUB)
+                    ┌─────────────────────────────────┐
+                    │         Enhanced ESP32          │
+                    │                                 │
+                    │ Existing Functions:             │
+                    │ ├─ WiFi Communication           │
+                    │ ├─ Command Polling              │
+                    │ ├─ UART Command Forwarding      │
+                    │ └─ Dual ARM Management          │
+                    │                                 │
+                    │ 🆕 NEW SENSOR FUNCTIONS:        │
+                    │ ├─ GPIO21 Product Sensor        │
+                    │ ├─ GPIO22 Center Sensor         │
+                    │ ├─ Sensor State Management      │
+                    │ ├─ Automation Logic Engine      │
+                    │ ├─ Collision Detection          │
+                    │ ├─ Safety Intervention          │
+                    │ └─ Real-time Sensor Reporting   │
+                    │                                 │
+                    │ 🆕 ENHANCED UART PROTOCOL:      │
+                    │ ├─ Command Queuing System       │
+                    │ ├─ Priority-based Execution     │
+                    │ ├─ Automatic Pause/Resume       │
+                    │ └─ Smart Arm Coordination       │
+                    └─────────────────────────────────┘
+                         │                    │
+                 UART1   │                    │ UART2
+              (115200)   │                    │ (115200)
+                         ▼                    ▼
+    ┌─────────────────────────┐    ┌─────────────────────────┐
+    │      🆕 ARM1 MASTER     │    │      🆕 ARM2 MASTER     │
+    │     Arduino Nano        │    │     Arduino Nano        │
+    │                         │    │                         │
+    │ Enhanced Functions:     │    │ Enhanced Functions:     │
+    │ ├─ ESP32 Communication  │    │ ├─ ESP32 Communication  │
+    │ ├─ 5-Slave UART Bus     │    │ ├─ 5-Slave UART Bus     │
+    │ ├─ Command Distribution │    │ ├─ Command Distribution │
+    │ ├─ Status Reporting     │    │ ├─ Status Reporting     │
+    │ ├─ 🆕 Priority Handling │    │ ├─ 🆕 Priority Handling │
+    │ ├─ 🆕 Pause/Resume      │    │ ├─ 🆕 Pause/Resume      │
+    │ └─ 🆕 Safety Compliance │    │ └─ 🆕 Safety Compliance │
+    └─────────────────────────┘    └─────────────────────────┘
+              │                              │
+         UART Bus                       UART Bus
+        (Shared)                       (Shared)
+              │                              │
+    ┌─────────┴──────────┐         ┌─────────┴──────────┐
+    │                    │         │                    │
+    ▼     ▼     ▼        ▼         ▼     ▼     ▼        ▼
+┌─────┐┌─────┐┌─────┐┌─────┐   ┌─────┐┌─────┐┌─────┐┌─────┐
+│ARM1 ││ARM1 ││ARM1 ││ARM1 │   │ARM2 ││ARM2 ││ARM2 ││ARM2 │
+│SLAVE││SLAVE││SLAVE││SLAVE│   │SLAVE││SLAVE││SLAVE││SLAVE│
+│  1  ││  2  ││  3  ││  4  │   │  1  ││  2  ││  3  ││  4  │
+│     ││     ││     ││     │   │     ││     ││     ││     │
+│ X   ││ Y   ││ Z   ││ T   │   │ X   ││ Y   ││ Z   ││ T   │
+│Motor││Motor││Motor││Motor│   │Motor││Motor││Motor││Motor│
+└─────┘└─────┘└─────┘└─────┘   └─────┘└─────┘└─────┘└─────┘
+   ┌─────┐                        ┌─────┐
+   │ARM1 │                        │ARM2 │
+   │SLAVE│                        │SLAVE│
+   │  5  │                        │  5  │
+   │     │                        │     │
+   │ G   │                        │ G   │
+   │Motor│                        │Motor│
+   └─────┘                        └─────┘
+
+🆕 PHYSICAL SENSOR CONNECTIONS:
+📦 Product Sensor (GPIO21) ────┐
+                                │
+🎯 Center Sensor (GPIO22) ─────┼──── ESP32 Digital Inputs
+                                │
+💡 Status LED (GPIO2) ──────────┘
+
+🆕 ENHANCED COMMUNICATION FLOW:
+1. ESP32 reads sensors continuously (GPIO21, GPIO22)
+2. Automation engine processes sensor states
+3. Smart command generation based on sensor triggers
+4. Priority-based UART command distribution
+5. Real-time safety intervention capabilities
+6. Enhanced status reporting to web client
+```
+
 ## 🎯 **PLANNING PHASE: Sensor Integration Detail**
 
-### **Hardware Architecture Enhancement**
+### **🆕 PLANNING: Automation Workflow Design**
 
-#### **Enhanced ESP32 Block Diagram**
+#### **Smart Automation State Machine**
 ```
-                              ESP32 Enhanced
-                          ┌─────────────────┐
-                          │                 │
-                          │ GPIO16(TX1) ────┼─── UART1 → ARM1 Master
-                          │ GPIO17(RX1) ────┤
-                          │                 │
-                          │ GPIO18(TX2) ────┼─── UART2 → ARM2 Master
-                          │ GPIO19(RX2) ────┤
-                          │                 │
-                          │ GPIO21(IN)  ────┼─── Product Sensor (Digital)
-                          │ GPIO22(IN)  ────┼─── Center Sensor (Digital)
-                          │                 │
-                          │ GPIO2(OUT)  ────┼─── Status LED (Optional)
-                          │ GPIO4(OUT)  ────┼─── Buzzer (Optional)
-                          │                 │
-                          │ WiFi Module ────┼─── Server Communication
-                          └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ENHANCED AUTOMATION WORKFLOW                             │
+│                         (Planning Phase)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                              🔄 AUTOMATION STATES
+
+    ┌─────────────┐       📦 Product         ┌─────────────────┐
+    │   IDLE      │ ──── Detected (GPIO21) ──│ PICKUP_TRIGGERED │
+    │             │       + Center Clear     │                 │
+    │ 🟡 Waiting  │       (GPIO22 = LOW)     │ 🟢 Preparing    │
+    │ for Product │                          │ ARM1 Movement   │
+    └─────────────┘                          └─────────────────┘
+           ▲                                           │
+           │                                           │
+           │ 📥 Product                                │ 🤖 Execute
+           │ Removed                                   │ Pickup Script
+           │                                           ▼
+    ┌─────────────┐                          ┌─────────────────┐
+    │  COMPLETED  │                          │  ARM1_PICKING   │
+    │             │                          │                 │
+    │ ✅ Cycle    │                          │ 🔄 Executing    │
+    │ Finished    │                          │ X(100)Y(50)Z(10)│
+    └─────────────┘                          └─────────────────┘
+           ▲                                           │
+           │                                           │
+           │ ✅ Place                                  │ ⚠️ Center
+           │ Complete                                  │ Occupied
+           │                                           │ (GPIO22=HIGH)
+           │                                           ▼
+    ┌─────────────┐       🎯 Center         ┌─────────────────┐
+    │ ARM2_PLACING│ ──── Area Clear ─────── │ COLLISION_AVOID │
+    │             │      (GPIO22 = LOW)     │                 │
+    │ 🔄 Executing│                          │ ⏸️ Paused All   │
+    │ Place Script│                          │ Arms Safely     │
+    └─────────────┘                          └─────────────────┘
+                                                       │
+                                                       │ ⏰ Wait
+                                                       │ Timeout
+                                                       │ + Retry
+                                                       ▼
+                                             ┌─────────────────┐
+                                             │  SAFETY_CHECK   │
+                                             │                 │
+                                             │ 🛡️ Verify Safe  │
+                                             │ to Resume       │
+                                             └─────────────────┘
+
+🔄 STATE TRANSITIONS:
+├─ IDLE → PICKUP_TRIGGERED: Product detected + Center clear
+├─ PICKUP_TRIGGERED → ARM1_PICKING: Automation script loaded
+├─ ARM1_PICKING → COLLISION_AVOID: Center occupied during movement
+├─ COLLISION_AVOID → SAFETY_CHECK: Wait timeout reached
+├─ SAFETY_CHECK → ARM1_PICKING: Safe to resume (center clear)
+├─ ARM1_PICKING → ARM2_PLACING: Pickup complete + handoff
+├─ ARM2_PLACING → COLLISION_AVOID: Center occupied during place
+├─ ARM2_PLACING → COMPLETED: Place operation complete
+└─ COMPLETED → IDLE: Ready for next cycle
+
+⚡ AUTOMATION RULES:
+├─ Priority 1: Safety (collision avoidance always wins)
+├─ Priority 2: Product pickup (ARM1 handles pickup tasks)
+├─ Priority 3: Product placement (ARM2 handles placement)
+├─ Priority 4: Efficiency (minimize cycle time)
+└─ Priority 5: Recovery (automatic retry on failures)
 ```
 
-#### **Physical Sensor Wiring Plan**
+#### **🆕 PLANNING: Sensor Timing Diagram**
 ```
-🔌 SENSOR CONNECTIONS:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      SENSOR TIMING & COORDINATION                          │
+│                           (Planning Phase)                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Time →    0s    2s    4s    6s    8s    10s   12s   14s   16s   18s   20s
+
+Product ──┘✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓└──
+Sensor    LOW                      HIGH (Product detected)              LOW
+(GPIO21)                                                        (Product taken)
+
+Center  ──┘✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓└─────────┘✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓✓──
+Sensor    LOW                HIGH      LOW                             LOW
+(GPIO22)             (ARM1 enters) (ARM1 exits)
+
+Automation  [IDLE] │ [PICKUP] │ [PAUSE] │ [RESUME] │ [PLACE] │ [COMPLETE]
+Events              │ TRIGGER  │         │          │ START   │
+                   │          │         │          │         │
+ARM1       ────────┘ X(100)   │ PAUSED  │ Y(50)    │ RETURN  │ HOME ───
+Commands            │ Y(50)    │         │ Z(10)    │ Z(0)    │
+                   │ Z(10)    │         │ G(1)     │ G(0)    │
+
+ARM2       ──────────────────────────────────────────┘ X(200) │ COMPLETE ─
+Commands                                              │ Y(100) │
+                                                     │ Z(20)  │
+                                                     │ G(0)   │
+
+📊 TIMING ANALYSIS:
+├─ Product Detection Response: <100ms
+├─ Collision Detection Response: <50ms
+├─ Automation Decision Time: <200ms
+├─ UART Command Transmission: <20ms
+├─ Safety Intervention Time: <150ms
+└─ Total Automation Cycle: 15-20 seconds
+
+🎯 SENSOR POLLING FREQUENCY:
+├─ Product Sensor: 10Hz (100ms intervals)
+├─ Center Sensor: 20Hz (50ms intervals)
+├─ Debounce Time: 50ms for both sensors
+├─ State Change Detection: Edge-triggered
+└─ Firebase Update Rate: On change + 1Hz heartbeat
+```
+
+### **🔄 PLANNING vs CURRENT: Key Differences**
+
+#### **Architecture Comparison**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     CURRENT vs PLANNING COMPARISON                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📊 CURRENT IMPLEMENTATION (Production Ready):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ✅ WEB CLIENT (Next.js)                                                     │
+│    ├─ MSL Compiler: Complete TypeScript implementation                      │
+│    ├─ Dual ARM UI: Independent ARM1/ARM2 script editors                     │
+│    ├─ Debug Terminal: Real-time SSE with message filtering                  │
+│    └─ System Controls: PLAY/PAUSE/STOP/RESUME/SPEED                         │
+│                                                                             │
+│ ✅ NODE.JS SERVER (Express)                                                 │
+│    ├─ Script APIs: /api/script/save, /api/script/poll                       │
+│    ├─ Control APIs: /api/control/start, /api/control/pause                  │
+│    ├─ Status APIs: /api/status, /api/events (SSE)                           │
+│    └─ Dual ARM Support: Parallel ARM1/ARM2 script distribution              │
+│                                                                             │
+│ ✅ ESP32 FIRMWARE (C++)                                                     │
+│    ├─ CommandForwarder: Object-oriented dual-UART architecture              │
+│    ├─ HttpClient: Server polling and command download                       │
+│    ├─ SerialBridge: UART communication to Arduino masters                   │
+│    └─ Pure Command Forwarding: No sensors, just script execution            │
+│                                                                             │
+│ ✅ COMMUNICATION PROTOCOL                                                    │
+│    ├─ Web → Server: HTTP REST APIs + WebSocket SSE                          │
+│    ├─ Server → ESP32: HTTP polling with JSON command arrays                 │
+│    ├─ ESP32 → Arduino: UART protocol with command conversion                │
+│    └─ Total Devices: 13 (1 ESP32 + 2 Masters + 10 Slaves)                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🎯 PLANNING IMPLEMENTATION (Sensor Integration):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🆕 ENHANCED WEB CLIENT                                                       │
+│    ├─ Everything from Current +                                             │
+│    ├─ Sensor Dashboard: Real-time GPIO21/GPIO22 status monitoring           │
+│    ├─ Automation Panel: Smart mode controls and cycle statistics            │
+│    ├─ Safety Monitor: Collision detection and emergency stop interface      │
+│    └─ Enhanced Debug: Sensor events + automation decision logging           │
+│                                                                             │
+│ 🆕 ENHANCED NODE.JS SERVER                                                  │
+│    ├─ Everything from Current +                                             │
+│    ├─ Sensor APIs: /api/sensors/status, /api/sensors/update                 │
+│    ├─ Automation APIs: /api/automation/toggle, /api/automation/mode         │
+│    ├─ Safety APIs: /api/safety/emergency, /api/safety/status                │
+│    └─ Enhanced SSE: [SENS], [AUTO], [SAFE] message categories               │
+│                                                                             │
+│ 🆕 ENHANCED ESP32 FIRMWARE                                                  │
+│    ├─ Everything from Current +                                             │
+│    ├─ Sensor Management: GPIO21 product + GPIO22 center sensors             │
+│    ├─ Automation Engine: Smart pickup triggers + collision avoidance        │
+│    ├─ Safety System: Emergency stops + area monitoring + priority queuing   │
+│    └─ Enhanced UART: Priority-based command distribution with pause/resume  │
+│                                                                             │
+│ 🆕 ENHANCED COMMUNICATION                                                    │
+│    ├─ Everything from Current +                                             │
+│    ├─ Sensor Data Flow: ESP32 → Server → Web Client (real-time)             │
+│    ├─ Automation Triggers: Sensor states → ESP32 logic → UART commands      │
+│    ├─ Safety Interventions: Collision detection → immediate arm pause       │
+│    └─ Total Devices: 15 (13 current + 2 digital sensors)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🔧 KEY CHANGES SUMMARY:
+├─ Current Focus: Manual script execution with dual-arm support
+├─ Planning Focus: Autonomous operation with sensor-driven automation
+├─ Current Complexity: 13-device pure command forwarding network
+├─ Planning Complexity: 15-device intelligent automation system
+├─ Current Safety: Manual control and monitoring only
+├─ Planning Safety: Automatic collision detection and intervention
+├─ Current Efficiency: Operator-dependent cycle times
+└─ Planning Efficiency: Optimized automation with <20s cycle times
+```
+
+#### **🆕 PLANNING: Physical Hardware Design**
+
+#### **Enhanced Sensor Wiring Plan**
+```
+🔌 ENHANCED SENSOR CONNECTIONS:
 
 Product Sensor (GPIO21):
 ├─ VCC: 3.3V (ESP32)
@@ -882,11 +1193,242 @@ Week 9: Production Deployment
 └─ Recovery procedures
 ```
 
-Dengan planning detail ini, sistem PalletizerOT akan memiliki sensor integration yang sophisticated sambil mempertahankan arsitektur UART yang sudah optimal dan production-ready.
+### **🚀 PLANNING: Implementation Roadmap**
+
+#### **Phase 1: Basic Sensor Integration (3-4 weeks)**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PHASE 1 IMPLEMENTATION PLAN                        │
+│                           (3-4 weeks timeline)                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📅 WEEK 1: Hardware & ESP32 Firmware Foundation
+├─ 🔧 Hardware Setup
+│  ├─ Purchase infrared proximity sensor (product detection)
+│  ├─ Purchase inductive proximity sensor (center monitoring)
+│  ├─ Wire sensors to ESP32 GPIO21 and GPIO22
+│  └─ Test basic sensor readings with multimeter
+│
+├─ 💻 ESP32 Firmware Enhancement
+│  ├─ Add SensorState struct to CommandForwarder.h
+│  ├─ Implement initSensors() and readSensors() functions
+│  ├─ Add sensor debouncing logic (50ms timing)
+│  ├─ Create sensor state change detection
+│  └─ Test sensor reading in ESP32 serial monitor
+│
+└─ 📊 Basic Data Structure
+   ├─ Design Firebase RTDB sensor collection schema
+   ├─ Add sensor state storage to server memory
+   └─ Create sensor update HTTP endpoint prototype
+
+📅 WEEK 2: Server API & Basic Automation
+├─ 🖥️ Server Enhancement
+│  ├─ Implement /api/sensors/status GET endpoint
+│  ├─ Implement /api/sensors/update POST endpoint
+│  ├─ Add sensor state broadcasting via SSE
+│  ├─ Create basic automation toggle endpoint
+│  └─ Test ESP32-to-server sensor communication
+│
+├─ 🤖 Basic Automation Logic
+│  ├─ Add AutomationState struct to ESP32 firmware
+│  ├─ Implement checkPickupConditions() function
+│  ├─ Create basic product detection → ARM1 trigger
+│  ├─ Add simple collision detection logic
+│  └─ Test automation logic with mock sensors
+│
+└─ 🧪 Integration Testing
+   ├─ ESP32 sensor reading + server reporting
+   ├─ Basic automation trigger testing
+   └─ UART command generation validation
+
+📅 WEEK 3: Web Interface & User Controls
+├─ 📱 Web Client Enhancement
+│  ├─ Create SensorDashboard.tsx component
+│  ├─ Add real-time sensor status display
+│  ├─ Implement AutomationPanel.tsx component
+│  ├─ Add automation toggle and mode controls
+│  └─ Enhance debug terminal with [SENS] and [AUTO] tags
+│
+├─ 🎨 UI/UX Implementation
+│  ├─ Design sensor status indicators (LED-style)
+│  ├─ Create automation statistics display
+│  ├─ Add collision risk visual warnings
+│  ├─ Implement emergency stop button
+│  └─ Test real-time sensor data updates
+│
+└─ 🔗 End-to-end Integration
+   ├─ Complete sensor-to-web data flow
+   ├─ Automation control from web interface
+   └─ Real-time status monitoring validation
+
+📅 WEEK 4: Testing & Optimization
+├─ 🛡️ Safety System Implementation
+│  ├─ Add SafetyState struct to ESP32 firmware
+│  ├─ Implement emergency stop functionality
+│  ├─ Create collision detection with automatic pause
+│  ├─ Add safety intervention logging
+│  └─ Test emergency scenarios
+│
+├─ ⚡ Performance Optimization
+│  ├─ Optimize sensor polling frequency
+│  ├─ Improve automation decision timing
+│  ├─ Reduce UART command latency
+│  ├─ Optimize web interface rendering
+│  └─ Memory usage optimization
+│
+└─ 📋 Documentation & Validation
+   ├─ Update system documentation
+   ├─ Create user operation manual
+   ├─ Performance benchmarking
+   └─ Phase 1 completion verification
+```
+
+#### **Phase 2: Advanced Automation & Safety (3-4 weeks)**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PHASE 2 IMPLEMENTATION PLAN                        │
+│                           (3-4 weeks timeline)                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📅 WEEK 5-6: Advanced Automation Engine
+├─ 🧠 Smart Automation Logic
+│  ├─ Implement state machine (IDLE → PICKUP → PLACE → COMPLETE)
+│  ├─ Add priority-based command queuing
+│  ├─ Create adaptive collision avoidance algorithms
+│  ├─ Implement automatic retry mechanisms
+│  └─ Add cycle time optimization logic
+│
+├─ 📈 Performance Analytics
+│  ├─ Add automation statistics tracking
+│  ├─ Implement cycle time measurement
+│  ├─ Create success rate calculation
+│  ├─ Add efficiency reporting
+│  └─ Performance trend analysis
+│
+└─ 🔄 Queue Management
+   ├─ Multi-product queue handling
+   ├─ Priority-based task scheduling
+   └─ Load balancing between arms
+
+📅 WEEK 7-8: Enhanced Safety & Production Features
+├─ 🛡️ Advanced Safety System
+│  ├─ Multi-level risk assessment
+│  ├─ Predictive collision detection
+│  ├─ Area monitoring with multiple zones
+│  ├─ Automatic fault recovery
+│  └─ Safety compliance reporting
+│
+├─ 🏭 Production Integration
+│  ├─ Production statistics dashboard
+│  ├─ Quality control monitoring
+│  ├─ Maintenance scheduling alerts
+│  ├─ Performance optimization suggestions
+│  └─ Production efficiency reporting
+│
+└─ 🧪 Comprehensive Testing
+   ├─ Stress testing with continuous operation
+   ├─ Edge case scenario validation
+   ├─ Long-duration stability testing
+   └─ Production readiness verification
+```
+
+#### **🧪 PLANNING: Testing Strategy**
+
+#### **Comprehensive Validation Plan**
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            TESTING STRATEGY                                │
+│                             (Planning Phase)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🔬 SENSOR VALIDATION TESTING:
+├─ 📡 Hardware Testing
+│  ├─ GPIO functionality verification
+│  ├─ Sensor response time measurement
+│  ├─ Debounce timing accuracy
+│  ├─ Power consumption analysis
+│  └─ Environmental stability testing
+│
+├─ 💾 Data Flow Testing
+│  ├─ ESP32 sensor reading accuracy
+│  ├─ Server communication reliability
+│  ├─ Real-time data synchronization
+│  ├─ Firebase data consistency
+│  └─ Web client update responsiveness
+│
+└─ ⚡ Performance Testing
+   ├─ Sensor polling frequency optimization
+   ├─ State change detection latency
+   ├─ Memory usage monitoring
+   └─ Long-term reliability testing
+
+🤖 AUTOMATION LOGIC TESTING:
+├─ 🧪 Unit Testing
+│  ├─ checkPickupConditions() function validation
+│  ├─ checkCollisionRisk() accuracy testing
+│  ├─ State machine transition verification
+│  ├─ Priority queue functionality
+│  └─ Error handling robustness
+│
+├─ 🔄 Integration Testing
+│  ├─ Sensor-to-automation trigger chain
+│  ├─ Multi-arm coordination testing
+│  ├─ UART command generation accuracy
+│  ├─ Real-time decision making validation
+│  └─ End-to-end automation cycle testing
+│
+└─ 📊 Performance Testing
+   ├─ Automation response time measurement
+   ├─ Cycle time optimization validation
+   ├─ Success rate calculation accuracy
+   └─ Efficiency improvement verification
+
+🛡️ SAFETY SYSTEM TESTING:
+├─ ⚠️ Emergency Scenarios
+│  ├─ Emergency stop functionality
+│  ├─ Collision detection accuracy
+│  ├─ Automatic pause/resume testing
+│  ├─ Fault recovery mechanisms
+│  └─ Safety compliance verification
+│
+├─ 🔍 Edge Case Testing
+│  ├─ Sensor failure scenarios
+│  ├─ Communication timeout handling
+│  ├─ Multiple collision events
+│  ├─ Power loss recovery
+│  └─ Network disconnection scenarios
+│
+└─ 📈 Reliability Testing
+   ├─ 24/7 continuous operation testing
+   ├─ Stress testing with rapid cycles
+   ├─ Long-term stability validation
+   └─ Production environment simulation
+
+🏭 PRODUCTION READINESS TESTING:
+├─ 📊 Performance Benchmarking
+│  ├─ Cycle time consistency measurement
+│  ├─ System throughput analysis
+│  ├─ Resource utilization monitoring
+│  └─ Scalability testing
+│
+├─ 🔧 Maintenance Testing
+│  ├─ Sensor calibration procedures
+│  ├─ System diagnostics validation
+│  ├─ Update/upgrade procedures
+│  └─ Troubleshooting guide verification
+│
+└─ 👥 User Acceptance Testing
+   ├─ Operator interface usability
+   ├─ Training material validation
+   ├─ Documentation completeness
+   └─ Production workflow integration
+```
+
+Dengan planning detail ini, sistem PalletizerOT akan memiliki sensor integration yang sophisticated sambil mempertahankan arsitektur UART yang sudah optimal dan production-ready. Planning phase memberikan roadmap yang jelas dan terstruktur untuk development tim dengan timeline yang realistic dan testing strategy yang komprehensif.
 
 ---
 
 *PalletizerOT Distributed Dual-Arm Control System*  
-*Current Implementation: ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
-*Planning Phase: Sensor Integration + Automation Logic untuk Enhanced Industrial Control*  
-*Last updated: 2025-01-02*
+*✅ Current Implementation: ESP32 → 2 UART Masters → 10 UART Slaves (Production Ready)*  
+*🎯 Planning Phase: Sensor Integration + Automation Logic (6-8 weeks development)*  
+*📋 Last updated: 2025-01-02*
