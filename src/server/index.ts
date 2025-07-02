@@ -229,39 +229,53 @@ app.get('/api/script/poll', (req, res) => {
   }
   
   const result = {
-    hasNewScript: false,
-    scriptId: null as string | null,
-    commands: [] as string[],
-    rawLines: [] as string[],
-    armId: null as string | null,
-    format: null as string | null,
-    shouldStart: systemState.isRunning,
-    currentIndex: systemState.currentCommandIndex
+    arm1: {
+      hasNewScript: false,
+      commands: [] as string[],
+      scriptId: null as string | null,
+      format: 'msl' as 'msl' | 'raw'
+    },
+    arm2: {
+      hasNewScript: false,
+      commands: [] as string[],
+      scriptId: null as string | null,
+      format: 'msl' as 'msl' | 'raw'
+    },
+    shouldStart: systemState.isRunning
   }
-  
-  // Check arm1 script
+
   if (systemState.arm1Script && !systemState.arm1Script.executed) {
-    result.hasNewScript = true
-    result.scriptId = systemState.arm1Script.id
-    result.armId = 'arm1'
-    
-    result.commands = systemState.arm1Script.commands
-    result.format = systemState.arm1Script.format
-    console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.commands.length} commands`)
-    
+    result.arm1.hasNewScript = true
+    result.arm1.commands = systemState.arm1Script.commands
+    result.arm1.scriptId = systemState.arm1Script.id
+    result.arm1.format = systemState.arm1Script.format
     systemState.arm1Script.executed = true
+    
+    const debugMessage = {
+      timestamp: Date.now(),
+      level: 'INFO',
+      source: 'POLL',
+      message: `ESP32 downloaded ARM1 script: ${result.arm1.commands.length} commands (${result.arm1.format.toUpperCase()})`
+    }
+    broadcastDebugMessage(debugMessage)
+    console.log(`📤 ESP32 downloaded ${systemState.arm1Script.format} script for arm1: ${result.arm1.commands.length} commands`)
   }
-  // Check arm2 script (if arm1 script not found)
-  else if (systemState.arm2Script && !systemState.arm2Script.executed) {
-    result.hasNewScript = true
-    result.scriptId = systemState.arm2Script.id
-    result.armId = 'arm2'
-    
-    result.commands = systemState.arm2Script.commands
-    result.format = systemState.arm2Script.format
-    console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.commands.length} commands`)
-    
+
+  if (systemState.arm2Script && !systemState.arm2Script.executed) {
+    result.arm2.hasNewScript = true
+    result.arm2.commands = systemState.arm2Script.commands
+    result.arm2.scriptId = systemState.arm2Script.id
+    result.arm2.format = systemState.arm2Script.format
     systemState.arm2Script.executed = true
+    
+    const debugMessage = {
+      timestamp: Date.now(),
+      level: 'INFO',
+      source: 'POLL',
+      message: `ESP32 downloaded ARM2 script: ${result.arm2.commands.length} commands (${result.arm2.format.toUpperCase()})`
+    }
+    broadcastDebugMessage(debugMessage)
+    console.log(`📤 ESP32 downloaded ${systemState.arm2Script.format} script for arm2: ${result.arm2.commands.length} commands`)
   }
   
   res.json(result)

@@ -6,23 +6,46 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 
+struct CommandStatus {
+  bool isExecuting;
+  bool isComplete;
+  bool hasError;
+  String errorMessage;
+  unsigned long startTime;
+  unsigned long timeout;
+};
+
+struct ArmScript {
+  String commands[50];
+  int commandCount;
+  int currentIndex;
+  String armId;
+  String format;
+  bool isActive;
+  CommandStatus status;
+};
+
 class CommandForwarder {
 private:
   HttpClient* httpClient;
-  SerialBridge* serialBridge;
+  SerialBridge* arm1Master;
+  SerialBridge* arm2Master;
   
   bool isRunning;
   unsigned long lastPollTime;
   unsigned long lastCommandTime;
   
-  String commands[100];
-  int commandCount;
-  int currentCommandIndex;
+  ArmScript arm1Script;
+  ArmScript arm2Script;
   
   void pollForCommands();
   void processNextCommand();
+  void processArmCommands(ArmScript& arm, SerialBridge* serialBridge);
   void handleSerialResponse();
-  String convertToSerial(String webCommand);
+  
+  String convertToUARTProtocol(String webCommand, String armId);
+  void resetArmScript(ArmScript& arm);
+  void logArmActivity(const String& armId, const String& message);
 
 public:
   CommandForwarder();
@@ -32,6 +55,10 @@ public:
   void update();
   bool isWifiConnected();
   void printStatus();
+  void printDetailedStatus();
+  bool isArmActive(const String& armId);
+  int getArmProgress(const String& armId);
+  String getArmStatus(const String& armId);
 };
 
 #endif
