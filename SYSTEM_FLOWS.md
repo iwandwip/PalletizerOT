@@ -1,6 +1,11 @@
-# PalletizerOT System Flow Documentation
+# PalletizerOT System Flow Documentation (Current Implementation & Planning)
 
-## 🏗️ System Architecture
+# PART 1: CURRENT IMPLEMENTATION ✅
+
+## Overview
+Dokumentasi sistem PalletizerOT yang **sudah terimplementasi** - Industrial dual-arm palletizer control system dengan distributed UART architecture dan sensor integration untuk automatic operation dengan collision avoidance.
+
+## 🏗️ Current System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -160,6 +165,9 @@ Status: Slaves → Masters → ESP32 → Server → Web (SSE)
                           │ GPIO18(TX2) │───│─┐
                           │ GPIO19(RX2) │───│ │── UART2 (115200 baud)
                           │             │   │ │
+                          │ GPIO21(IN)  │───│─│── Product Sensor (Digital)
+                          │ GPIO22(IN)  │───│─│── Center Sensor (Digital)
+                          │             │   │ │
                           └─────────────┘   │ │
                                             │ │
               ┌─────────────────────────────┘ │
@@ -205,12 +213,42 @@ Status: Slaves → Masters → ESP32 → Server → Web (SSE)
 ├─ ESP32 ←→ 2x Master Nanos: Point-to-point UART cables
 ├─ Each Master ←→ 5x Slave Nanos: Single shared UART bus (daisy chain or star)
 ├─ Each Slave ←→ 1x Motor/Servo: Direct motor driver connection
-└─ Total Devices: 13 (1 ESP32 + 2 Masters + 10 Slaves)
+├─ ESP32 ←→ Product Sensor: Digital input (GPIO21)
+├─ ESP32 ←→ Center Sensor: Digital input (GPIO22)
+└─ Total Devices: 15 (1 ESP32 + 2 Masters + 10 Slaves + 2 Sensors)
 
 📡 COMMUNICATION LAYERS:
 Layer 1: ESP32 ──UART──► Master Nano (Dedicated connection)
 Layer 2: Master Nano ──UART Bus──► 5x Slave Nanos (Shared addressing)
 Layer 3: Slave Nano ──PWM/Step──► Motor/Servo (Direct control)
+Layer 4: ESP32 ──GPIO──► Digital Sensors (Product & Center detection)
+
+🎯 ESP32 SENSOR FUNCTIONALITY:
+Product Sensor (GPIO21) - ESP32 Only:
+├─ HIGH: Product detected (ready for pickup)
+├─ LOW: No product available
+├─ Connection: Direct to ESP32 digital input
+└─ Purpose: Automatic pickup trigger detection
+
+Center Sensor (GPIO22) - ESP32 Only:
+├─ HIGH: Any arm detected in center area
+├─ LOW: Center area clear
+├─ Limitation: Cannot distinguish ARM1 vs ARM2
+├─ Connection: Direct to ESP32 digital input
+└─ Purpose: Collision avoidance and area monitoring
+
+📍 SENSOR SCOPE:
+├─ ESP32: Handles both sensors + autonomous logic
+├─ Arduino Masters: No sensor connections
+├─ Arduino Slaves: No sensor connections
+└─ Sensors only report to ESP32 for centralized decision making
+
+💡 SENSOR PROCESSING (ESP32 Only):
+├─ Sensor reading: digitalRead(GPIO21) & digitalRead(GPIO22)
+├─ Real-time monitoring: Check sensors every update cycle
+├─ Status reporting: Send sensor states to web client via server
+├─ Automation logic: ESP32 can trigger actions based on sensor states
+└─ Integration: Sensors work with existing dual-arm UART system
 ```
 
 ## 📋 UART Protocol Specification
@@ -253,25 +291,174 @@ ARM1: Address 1-5 (X,Y,Z,T,G)
 ARM2: Address 1-5 (X,Y,Z,T,G)
 ```
 
+## 🤖 Automation Logic with Sensors
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SENSOR-BASED AUTOMATION                            │
+│                           (ESP32 Processing)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+🔄 AUTOMATION WORKFLOW:
+
+1. Product Detection Cycle:
+   ┌─ Product Sensor (GPIO21) ──► HIGH ──┐
+   │                                      │
+   │  ┌─ Center Sensor (GPIO22) ──► LOW ──┤
+   │  │                                   ▼
+   │  │                            ✅ Start Pickup
+   │  │                            │
+   │  │  ┌─ Center Sensor ──► HIGH ──┤
+   │  │  │                           ▼
+   │  │  │                    ⚠️ Wait (Collision Risk)
+   │  │  │                           │
+   │  │  │  ┌─ Center Sensor ──► LOW ──┤
+   │  │  │  │                         ▼
+   │  │  │  │                  ✅ Resume Pickup
+   │  └──┴──┴─────────────────────────┘
+   │
+   └─ Product Sensor ──► LOW ──► ⏸️ No Action (Wait for Product)
+
+2. Collision Avoidance:
+   IF (Center Sensor == HIGH && Any Arm Moving to Center):
+       ► Pause current arm movement
+       ► Wait for Center Sensor == LOW
+       ► Resume movement
+
+3. Smart Coordination:
+   ARM1 Priority: Product pickup when detected
+   ARM2 Priority: Placement operations
+   Center Monitoring: Continuous collision avoidance
+```
+
 ## 🚀 System Features
 
 ### ✅ **Completed (Production Ready)**
 1. **Dual Arm Support**: Independent ARM1/ARM2 script execution
 2. **MSL Compiler**: Full TypeScript compiler in web client
-3. **UART Shared Bus Architecture**: ESP32 dual master with 13-device network
-4. **Real-time Debugging**: SSE terminal with distributed status
-5. **Clean Web Interface**: Active components only, deprecated removed
+3. **UART Shared Bus Architecture**: ESP32 dual master with 15-device network
+4. **Digital Sensor Integration**: Product detection & center area monitoring
+5. **Automation Logic**: Sensor-based collision avoidance and smart coordination
+6. **Real-time Debugging**: SSE terminal with distributed status
+7. **Clean Web Interface**: Active components only, deprecated removed
 
 ### 🎯 **Performance Metrics**
-- **Total Devices**: 13 (1 ESP32 + 2 Masters + 10 Slaves)
+- **Total Devices**: 15 (1 ESP32 + 2 Masters + 10 Slaves + 2 Sensors)
 - **Parallel Execution**: Up to 10 motors simultaneously
 - **UART Speed**: 115200 baud reliable communication
 - **Shared Bus**: 5 slaves per master on single TX/RX
+- **Sensor Monitoring**: Real-time digital input polling
+- **Automation Response**: <10ms sensor-to-action latency
 - **Web Compilation**: <50ms for complex MSL scripts
 - **Real-time Updates**: <100ms SSE latency
 
 ---
 
+---
+
+# PART 2: PLANNING & FUTURE ENHANCEMENTS 🚀
+
+## Development Roadmap
+
+### **Phase 1: Advanced Sensor Integration**
+1. ⏳ **Multi-Point Product Detection**
+   - Multiple product sensors for different stations
+   - Product type identification with analog sensors
+   - Queue management for multiple products
+
+2. ⏳ **Enhanced Position Feedback**
+   - Individual arm position sensors
+   - Real-time coordinate tracking
+   - Precise collision detection with arm identification
+
+3. ⏳ **Safety Systems**
+   - Emergency stop sensors
+   - Area monitoring with safety light curtains
+   - Automatic fault detection and recovery
+
+### **Phase 2: Intelligent Automation**
+1. ⏳ **Machine Learning Integration**
+   - Predictive pickup timing based on production patterns
+   - Adaptive collision avoidance algorithms
+   - Performance optimization through learning
+
+2. ⏳ **Advanced Coordination**
+   - Dynamic arm priority assignment
+   - Load balancing between arms
+   - Optimal path planning for dual-arm operations
+
+3. ⏳ **Process Optimization**
+   - Cycle time analysis and optimization
+   - Energy efficiency monitoring
+   - Predictive maintenance alerts
+
+### **Phase 3: Industrial Integration**
+1. ⏳ **Factory Connectivity**
+   - Industrial Ethernet integration
+   - PLC communication protocols
+   - SCADA system integration
+
+2. ⏳ **Quality Control**
+   - Vision system integration
+   - Product quality verification
+   - Automated rejection handling
+
+3. ⏳ **Production Analytics**
+   - Real-time production monitoring
+   - Efficiency reporting and analytics
+   - Integration with ERP systems
+
+## Future Hardware Enhancements
+
+### **Sensor Expansion Plan**
+```
+Current: 2 Digital Sensors (Product + Center)
+Phase 1: 6 Sensors (Product×3 + Position×2 + Emergency×1)
+Phase 2: 12+ Sensors (Vision + Force + Temperature + Vibration)
+Phase 3: Full Industrial Sensor Suite
+```
+
+### **Communication Upgrades**
+```
+Current: UART Shared Bus
+Phase 1: Enhanced UART with CRC error checking
+Phase 2: Industrial Ethernet backbone
+Phase 3: Wireless redundancy and 5G integration
+```
+
+### **Control System Evolution**
+```
+Current: ESP32 Centralized Control
+Phase 1: Edge Computing with AI inference
+Phase 2: Distributed intelligence across nodes
+Phase 3: Cloud-based orchestration and analytics
+```
+
+## Implementation Timeline
+
+### **Q1 2025: Enhanced Sensor Integration**
+- Multi-point product detection
+- Advanced position feedback
+- Safety system implementation
+
+### **Q2 2025: Intelligent Automation**
+- ML algorithm development
+- Advanced coordination logic
+- Process optimization features
+
+### **Q3 2025: Industrial Integration**
+- Factory connectivity implementation
+- Quality control systems
+- Production analytics dashboard
+
+### **Q4 2025: Full Production Deployment**
+- Complete system integration
+- Performance optimization
+- Scalability enhancements
+
+---
+
 *PalletizerOT Distributed Dual-Arm Control System*  
-*Architecture: ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
+*Current: ESP32 + 2 Sensors → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
+*Future: AI-Enhanced Industrial Automation with Full Factory Integration*  
 *Last updated: 2025-01-01*
