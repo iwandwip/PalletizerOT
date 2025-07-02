@@ -290,109 +290,603 @@ ARM2: Address 1-5 (X,Y,Z,T,G)
 
 ---
 
-# PART 2: PLANNING & FUTURE ENHANCEMENTS 🚀
+# PART 2: PLANNING - SENSOR INTEGRATION & AUTOMATION 🚀
 
-## Development Roadmap
+## Overview
+Detailed planning untuk implementasi sensor integration pada PalletizerOT system. Menambahkan 2 digital sensor untuk automation dan collision avoidance sambil mempertahankan arsitektur UART yang sudah optimal.
 
-### **Phase 1: Physical Sensor Integration** ⏳
-1. **Digital Sensor Hardware**
-   - Product sensor (GPIO21): Detect items ready for pickup
-   - Center sensor (GPIO22): Monitor arm presence in center area
-   - ESP32 sensor processing with real-time monitoring
+## 🎯 **PLANNING PHASE: Sensor Integration Detail**
 
-2. **Sensor-Based Automation**
-   - Automatic pickup triggering when product detected
-   - Collision avoidance based on center area monitoring
-   - Smart arm coordination with sensor feedback
+### **Hardware Architecture Enhancement**
 
-3. **Enhanced Safety Systems**
-   - Emergency stop sensors integration
-   - Safety light curtains for area monitoring
-   - Automatic fault detection and recovery protocols
-
-### **Phase 2: Intelligent Automation**
-1. ⏳ **Machine Learning Integration**
-   - Predictive pickup timing based on production patterns
-   - Adaptive collision avoidance algorithms
-   - Performance optimization through learning
-
-2. ⏳ **Advanced Coordination**
-   - Dynamic arm priority assignment
-   - Load balancing between arms
-   - Optimal path planning for dual-arm operations
-
-3. ⏳ **Process Optimization**
-   - Cycle time analysis and optimization
-   - Energy efficiency monitoring
-   - Predictive maintenance alerts
-
-### **Phase 3: Industrial Integration**
-1. ⏳ **Factory Connectivity**
-   - Industrial Ethernet integration
-   - PLC communication protocols
-   - SCADA system integration
-
-2. ⏳ **Quality Control**
-   - Vision system integration
-   - Product quality verification
-   - Automated rejection handling
-
-3. ⏳ **Production Analytics**
-   - Real-time production monitoring
-   - Efficiency reporting and analytics
-   - Integration with ERP systems
-
-## Future Hardware Enhancements
-
-### **Sensor Expansion Plan**
+#### **Enhanced ESP32 Block Diagram**
 ```
-Phase 1: 2 Digital Sensors (Product + Center) - ESP32 GPIO integration
-Phase 2: 6 Sensors (Product×3 + Position×2 + Emergency×1)
-Phase 3: 12+ Sensors (Vision + Force + Temperature + Vibration)
-Phase 4: Full Industrial Sensor Suite with AI processing
+                              ESP32 Enhanced
+                          ┌─────────────────┐
+                          │                 │
+                          │ GPIO16(TX1) ────┼─── UART1 → ARM1 Master
+                          │ GPIO17(RX1) ────┤
+                          │                 │
+                          │ GPIO18(TX2) ────┼─── UART2 → ARM2 Master
+                          │ GPIO19(RX2) ────┤
+                          │                 │
+                          │ GPIO21(IN)  ────┼─── Product Sensor (Digital)
+                          │ GPIO22(IN)  ────┼─── Center Sensor (Digital)
+                          │                 │
+                          │ GPIO2(OUT)  ────┼─── Status LED (Optional)
+                          │ GPIO4(OUT)  ────┼─── Buzzer (Optional)
+                          │                 │
+                          │ WiFi Module ────┼─── Server Communication
+                          └─────────────────┘
 ```
 
-### **Communication Upgrades**
+#### **Physical Sensor Wiring Plan**
 ```
-Current: UART Shared Bus
-Phase 1: Enhanced UART with CRC error checking
-Phase 2: Industrial Ethernet backbone
-Phase 3: Wireless redundancy and 5G integration
+🔌 SENSOR CONNECTIONS:
+
+Product Sensor (GPIO21):
+├─ VCC: 3.3V (ESP32)
+├─ GND: GND (ESP32)
+├─ OUT: GPIO21 (ESP32)
+└─ Type: Infrared proximity sensor (digital output)
+
+Center Sensor (GPIO22):
+├─ VCC: 3.3V (ESP32)
+├─ GND: GND (ESP32)
+├─ OUT: GPIO22 (ESP32)
+└─ Type: Inductive proximity sensor (digital output)
+
+Optional Status Indicators:
+├─ Status LED (GPIO2): Visual feedback
+├─ Buzzer (GPIO4): Audio alerts
+└─ LCD Display: Sensor status display
 ```
 
-### **Control System Evolution**
+### **Enhanced Data Flow Architecture**
+
+#### **Sensor Data Flow Planning**
 ```
-Current: ESP32 Centralized Control
-Phase 1: Edge Computing with AI inference
-Phase 2: Distributed intelligence across nodes
-Phase 3: Cloud-based orchestration and analytics
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SENSOR-ENHANCED DATA FLOW                               │
+│                        (Planning Phase)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📡 ESP32 (Enhanced Sensor Processing)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ Product     │  │ Center      │  │ UART        │  │ Automation Logic    │ │
+│  │ Sensor      │  │ Sensor      │  │ Command     │  │ Engine              │ │
+│  │ GPIO21      │  │ GPIO22      │  │ Forwarder   │  │                     │ │
+│  │             │  │             │  │             │  │ IF(Product=HIGH &&  │ │
+│  │ HIGH/LOW    │  │ HIGH/LOW    │  │ ARM1/ARM2   │  │    Center=LOW):     │ │
+│  │ Detection   │  │ Presence    │  │ Commands    │  │   → Start ARM1      │ │
+│  │             │  │ Monitor     │  │             │  │                     │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  │ IF(Center=HIGH):    │ │
+│         │                │               │          │   → Pause All Arms  │ │
+│         └─────────┬──────┴───────────────┘          │   → Wait Clear      │ │
+│                   ▼                                 │                     │ │
+│  ┌─────────────────────────────────────────────────┐│ Queue Management:   │ │
+│  │          Sensor State Manager                   ││ - Priority system   │ │
+│  │  Product: {state, timestamp, count}             ││ - Smart coordination │ │
+│  │  Center:  {state, timestamp, duration}          ││ - Collision avoid   │ │
+│  │  Status:  {automation_active, last_action}      │└─────────────────────┘ │
+│  └─────────────────────────────────────────────────┘                        │
+│                             │                                               │
+│                             ▼                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                   Server Communication                                  │ │
+│  │  POST /api/sensors/status: {product, center, automation}               │ │
+│  │  POST /api/automation/trigger: {action, sensor, timestamp}             │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+🖥️  NODE.JS SERVER (Enhanced API)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐   │
+│  │ Sensor Status   │  │ Automation      │  │ Enhanced System State       │   │
+│  │ Management      │  │ Controller      │  │ Manager                     │   │
+│  │                 │  │                 │  │                             │   │
+│  │ GET /sensors    │  │ POST /auto/     │  │ - ARM1: Script + Sensors    │   │
+│  │ POST /sensors   │  │ start/pause     │  │ - ARM2: Script + Sensors    │   │
+│  │ WebSocket SSE   │  │ GET /auto/      │  │ - Automation: Active/Pause  │   │
+│  │                 │  │ status          │  │ - Safety: Collision Status  │   │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+📱 WEB CLIENT (Enhanced UI)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐   │
+│  │ Sensor Monitor  │  │ Automation      │  │ Enhanced Debug Terminal     │   │
+│  │ Dashboard       │  │ Control Panel   │  │                             │   │
+│  │                 │  │                 │  │ [ESP32] Product detected    │   │
+│  │ 🟢 Product: ON  │  │ ⚡ Auto: ON    │  │ [AUTO ] ARM1 pickup start   │   │
+│  │ 🔴 Center: OFF  │  │ 🎯 Queue: 3    │  │ [ARM1 ] X(100) executing    │   │
+│  │ 📊 Stats: 45    │  │ ⏸️ Pause: OFF  │  │ [SENS ] Center area clear   │   │
+│  │                 │  │                 │  │ [AUTO ] Coordination OK     │   │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Implementation Timeline
+### **Firebase RTDB Structure Enhancement**
 
-### **Q1 2025: Enhanced Sensor Integration**
-- Multi-point product detection
-- Advanced position feedback
-- Safety system implementation
+#### **Enhanced Database Schema**
+```javascript
+{
+  // ===== EXISTING STRUCTURES (Unchanged) =====
+  "arm1Script": { /* ... existing script data ... */ },
+  "arm2Script": { /* ... existing script data ... */ },
+  "control": { /* ... existing control data ... */ },
 
-### **Q2 2025: Intelligent Automation**
-- ML algorithm development
-- Advanced coordination logic
-- Process optimization features
+  // ===== NEW: SENSOR INTEGRATION SYSTEM =====
+  "sensors": {
+    "product": {
+      "gpio": 21,                           // number - GPIO pin number
+      "state": false,                       // boolean - Current sensor state (HIGH/LOW)
+      "previous_state": false,              // boolean - Previous state for edge detection
+      "last_change": "2025-01-02T10:30:00Z", // timestamp - When state last changed
+      "change_count": 156,                  // number - Total state changes (for statistics)
+      "enabled": true,                      // boolean - Sensor active/inactive
+      "sensitivity": 100,                   // number - Debounce time in ms
+      "description": "Product detection sensor" // string - Human readable description
+    },
+    "center": {
+      "gpio": 22,                           // number - GPIO pin number
+      "state": false,                       // boolean - Current sensor state
+      "previous_state": false,              // boolean - Previous state
+      "last_change": "2025-01-02T10:29:45Z", // timestamp - When state last changed
+      "presence_duration": 0,               // number - How long area has been occupied (ms)
+      "change_count": 89,                   // number - Total state changes
+      "enabled": true,                      // boolean - Sensor active/inactive
+      "sensitivity": 50,                    // number - Debounce time in ms
+      "description": "Center area monitoring sensor" // string - Description
+    }
+  },
 
-### **Q3 2025: Industrial Integration**
-- Factory connectivity implementation
-- Quality control systems
-- Production analytics dashboard
+  // ===== NEW: AUTOMATION SYSTEM =====
+  "automation": {
+    "enabled": true,                        // boolean - Master automation switch
+    "mode": "smart",                        // string - "manual" | "smart" | "safety_only"
+    "last_action": "2025-01-02T10:30:15Z",  // timestamp - Last automated action
+    "total_cycles": 1247,                   // number - Total automation cycles completed
+    
+    "rules": {
+      "pickup_trigger": {
+        "enabled": true,                    // boolean - Auto-pickup when product detected
+        "conditions": {
+          "product_sensor": "HIGH",         // string - Required product sensor state
+          "center_sensor": "LOW",           // string - Required center sensor state (collision avoid)
+          "system_status": "ready"          // string - System must be ready
+        },
+        "actions": {
+          "target_arm": "ARM1",             // string - Which arm handles pickup
+          "script_template": "auto_pickup", // string - Pre-defined script to execute
+          "priority": "high"                // string - Action priority level
+        }
+      },
+      "collision_avoidance": {
+        "enabled": true,                    // boolean - Auto-pause on collision risk
+        "conditions": {
+          "center_sensor": "HIGH",          // string - Center area occupied
+          "any_arm_moving": true            // boolean - Any arm currently in motion
+        },
+        "actions": {
+          "pause_all": true,                // boolean - Pause all arm movement
+          "wait_duration": 2000,            // number - Wait time in ms before retry
+          "retry_attempts": 3               // number - Max retry attempts
+        }
+      }
+    },
 
-### **Q4 2025: Full Production Deployment**
-- Complete system integration
-- Performance optimization
-- Scalability enhancements
+    "statistics": {
+      "successful_pickups": 156,            // number - Completed pickup cycles
+      "collision_avoids": 23,               // number - Collision avoidance triggers
+      "failed_attempts": 5,                 // number - Failed automation attempts
+      "average_cycle_time": 15.7,           // number - Average pickup cycle time (seconds)
+      "uptime_percentage": 97.3             // number - Automation system uptime
+    }
+  },
+
+  // ===== NEW: ENHANCED SAFETY SYSTEM =====
+  "safety": {
+    "collision_detection": {
+      "enabled": true,                      // boolean - Collision detection active
+      "current_risk_level": "low",          // string - "none" | "low" | "medium" | "high"
+      "last_collision_risk": "2025-01-02T09:45:30Z", // timestamp - Last detected risk
+      "total_interventions": 23             // number - Total safety interventions
+    },
+    "emergency_stop": {
+      "triggered": false,                   // boolean - Emergency stop status
+      "last_trigger": null,                 // timestamp - Last emergency stop
+      "auto_reset": true                    // boolean - Auto-reset after clear
+    },
+    "area_monitoring": {
+      "center_area_clear": true,            // boolean - Center area status
+      "arm1_safe_zone": true,               // boolean - ARM1 safe to operate
+      "arm2_safe_zone": true                // boolean - ARM2 safe to operate
+    }
+  }
+}
+```
+
+### **ESP32 Firmware Enhancement Planning**
+
+#### **Enhanced CommandForwarder Class**
+```cpp
+// Enhanced CommandForwarder.h - Sensor integration planning
+class CommandForwarder {
+private:
+    // ===== EXISTING MEMBERS (Unchanged) =====
+    SerialBridge* arm1Master;
+    SerialBridge* arm2Master;
+    HttpClient* httpClient;
+    
+    // ===== NEW: SENSOR MANAGEMENT =====
+    struct SensorState {
+        int gpio;
+        bool currentState;
+        bool previousState;
+        unsigned long lastChange;
+        unsigned long changeCount;
+        int debounceTime;
+        bool enabled;
+    };
+    
+    SensorState productSensor;
+    SensorState centerSensor;
+    
+    // ===== NEW: AUTOMATION LOGIC =====
+    struct AutomationState {
+        bool enabled;
+        String mode;
+        unsigned long lastAction;
+        int totalCycles;
+        bool productDetected;
+        bool centerAreaClear;
+        String currentAction;
+    };
+    
+    AutomationState automation;
+    
+    // ===== NEW: SAFETY SYSTEM =====
+    struct SafetyState {
+        bool collisionDetectionEnabled;
+        String riskLevel;
+        bool emergencyStop;
+        bool centerAreaSafe;
+        unsigned long lastIntervention;
+    };
+    
+    SafetyState safety;
+
+public:
+    // ===== EXISTING METHODS (Enhanced) =====
+    void init();
+    void loop();
+    void processCommands();
+    
+    // ===== NEW: SENSOR METHODS =====
+    void initSensors();
+    void readSensors();
+    void processSensorChanges();
+    bool debounceRead(int gpio, int debounceTime);
+    void updateSensorFirebase(String sensorType, bool state);
+    
+    // ===== NEW: AUTOMATION METHODS =====
+    void initAutomation();
+    void processAutomation();
+    bool checkPickupConditions();
+    bool checkCollisionRisk();
+    void executeAutomaticPickup();
+    void pauseForCollisionAvoidance();
+    void resumeAfterClear();
+    
+    // ===== NEW: SAFETY METHODS =====
+    void initSafety();
+    void monitorSafety();
+    void triggerEmergencyStop();
+    void calculateRiskLevel();
+    void updateSafetyFirebase();
+    
+    // ===== NEW: ENHANCED UART METHODS =====
+    void sendAutomationCommand(String armId, String command);
+    void pauseArm(String armId);
+    void resumeArm(String armId);
+    String generatePickupScript();
+};
+```
+
+#### **Sensor Processing Logic Planning**
+```cpp
+// Enhanced sensor processing in CommandForwarder.cpp
+void CommandForwarder::readSensors() {
+    // Read product sensor with debouncing
+    bool newProductState = debounceRead(productSensor.gpio, productSensor.debounceTime);
+    if (newProductState != productSensor.currentState) {
+        productSensor.previousState = productSensor.currentState;
+        productSensor.currentState = newProductState;
+        productSensor.lastChange = millis();
+        productSensor.changeCount++;
+        
+        // Update Firebase
+        updateSensorFirebase("product", newProductState);
+        
+        // Log sensor change
+        Serial.println("Product sensor: " + String(newProductState ? "DETECTED" : "CLEAR"));
+    }
+    
+    // Read center sensor with debouncing
+    bool newCenterState = debounceRead(centerSensor.gpio, centerSensor.debounceTime);
+    if (newCenterState != centerSensor.currentState) {
+        centerSensor.previousState = centerSensor.currentState;
+        centerSensor.currentState = newCenterState;
+        centerSensor.lastChange = millis();
+        centerSensor.changeCount++;
+        
+        // Update Firebase
+        updateSensorFirebase("center", newCenterState);
+        
+        // Log sensor change
+        Serial.println("Center sensor: " + String(newCenterState ? "OCCUPIED" : "CLEAR"));
+    }
+}
+
+void CommandForwarder::processAutomation() {
+    if (!automation.enabled) return;
+    
+    // Check for automatic pickup trigger
+    if (checkPickupConditions()) {
+        executeAutomaticPickup();
+        return;
+    }
+    
+    // Check for collision avoidance
+    if (checkCollisionRisk()) {
+        pauseForCollisionAvoidance();
+        return;
+    }
+    
+    // Check for resume after collision clear
+    if (centerSensor.currentState == false && automation.currentAction == "paused") {
+        resumeAfterClear();
+    }
+}
+
+bool CommandForwarder::checkPickupConditions() {
+    return productSensor.currentState == true &&     // Product detected
+           centerSensor.currentState == false &&     // Center area clear
+           automation.currentAction != "picking" &&   // Not already picking
+           safety.emergencyStop == false;            // No emergency stop
+}
+
+bool CommandForwarder::checkCollisionRisk() {
+    return centerSensor.currentState == true &&      // Center area occupied
+           (isArmMoving("ARM1") || isArmMoving("ARM2")); // Any arm moving
+}
+```
+
+### **Web Interface Enhancement Planning**
+
+#### **Enhanced Sensor Dashboard**
+```javascript
+// New component: SensorDashboard.tsx
+const SensorDashboard = () => {
+  const [sensorStatus, setSensorStatus] = useState({
+    product: { state: false, lastChange: null, changeCount: 0 },
+    center: { state: false, lastChange: null, changeCount: 0 }
+  });
+  
+  const [automationStatus, setAutomationStatus] = useState({
+    enabled: false,
+    mode: 'smart',
+    currentAction: 'idle',
+    totalCycles: 0
+  });
+
+  return (
+    <div className="sensor-dashboard">
+      {/* Real-time Sensor Status */}
+      <div className="sensor-status-grid">
+        <SensorCard
+          name="Product Detection"
+          state={sensorStatus.product.state}
+          gpio={21}
+          icon="📦"
+          lastChange={sensorStatus.product.lastChange}
+          changeCount={sensorStatus.product.changeCount}
+        />
+        
+        <SensorCard
+          name="Center Area Monitor"
+          state={sensorStatus.center.state}
+          gpio={22}
+          icon="🎯"
+          lastChange={sensorStatus.center.lastChange}
+          changeCount={sensorStatus.center.changeCount}
+        />
+      </div>
+
+      {/* Automation Control Panel */}
+      <div className="automation-panel">
+        <AutomationToggle
+          enabled={automationStatus.enabled}
+          mode={automationStatus.mode}
+          onToggle={handleAutomationToggle}
+          onModeChange={handleModeChange}
+        />
+        
+        <AutomationStats
+          totalCycles={automationStatus.totalCycles}
+          currentAction={automationStatus.currentAction}
+          successRate={calculateSuccessRate()}
+        />
+      </div>
+
+      {/* Safety Monitor */}
+      <div className="safety-monitor">
+        <CollisionRiskIndicator riskLevel={safety.riskLevel} />
+        <EmergencyStopStatus triggered={safety.emergencyStop} />
+        <AreaMonitorStatus areas={safety.areaStatus} />
+      </div>
+    </div>
+  );
+};
+```
+
+#### **Enhanced Debug Terminal Planning**
+```javascript
+// Enhanced debug messages for sensor system
+const sensorDebugMessages = [
+  "[SENS] Product sensor: HIGH → Item detected at station",
+  "[SENS] Center sensor: LOW → Area clear for movement", 
+  "[AUTO] Pickup trigger: Conditions met, starting ARM1",
+  "[AUTO] ARM1 executing: auto_pickup script (X:100, Y:50, Z:10)",
+  "[SENS] Center sensor: HIGH → Collision risk detected",
+  "[AUTO] Safety pause: All arms stopped, waiting clear",
+  "[SENS] Center sensor: LOW → Area clear, resuming operations",
+  "[AUTO] Cycle complete: Total time 14.2s, success",
+  "[STAT] Automation stats: 157 cycles, 98.7% success rate"
+];
+```
+
+### **Server API Enhancement Planning**
+
+#### **New Sensor Endpoints**
+```javascript
+// Enhanced server/index.ts with sensor endpoints
+
+// Sensor status endpoints
+app.get('/api/sensors', (req, res) => {
+  // Return current sensor states
+  res.json({
+    product: currentSensorState.product,
+    center: currentSensorState.center,
+    automation: currentAutomationState,
+    safety: currentSafetyState
+  });
+});
+
+app.post('/api/sensors/update', (req, res) => {
+  // ESP32 posts sensor updates
+  const { sensorType, state, timestamp } = req.body;
+  updateSensorState(sensorType, state, timestamp);
+  broadcastSensorUpdate(sensorType, state);
+  res.json({ success: true });
+});
+
+// Automation control endpoints
+app.post('/api/automation/toggle', (req, res) => {
+  // Toggle automation on/off
+  const { enabled } = req.body;
+  toggleAutomation(enabled);
+  res.json({ success: true, enabled });
+});
+
+app.post('/api/automation/mode', (req, res) => {
+  // Change automation mode
+  const { mode } = req.body; // 'manual' | 'smart' | 'safety_only'
+  setAutomationMode(mode);
+  res.json({ success: true, mode });
+});
+
+// Safety system endpoints
+app.post('/api/safety/emergency-stop', (req, res) => {
+  // Trigger emergency stop
+  triggerEmergencyStop();
+  res.json({ success: true });
+});
+
+app.get('/api/safety/status', (req, res) => {
+  // Get safety system status
+  res.json(currentSafetyState);
+});
+```
+
+### **Implementation Timeline Planning**
+
+#### **Phase 1: Basic Sensor Integration (2-3 weeks)**
+```
+Week 1: Hardware & Firmware
+├─ ESP32 GPIO configuration for sensors
+├─ Basic sensor reading with debouncing
+├─ Firebase RTDB sensor data structure
+└─ Enhanced CommandForwarder class
+
+Week 2: Server & API
+├─ New sensor endpoints
+├─ Real-time sensor data broadcasting
+├─ Enhanced SSE for sensor updates
+└─ Basic automation logic
+
+Week 3: Web Interface
+├─ Sensor dashboard component
+├─ Real-time sensor status display
+├─ Enhanced debug terminal
+└─ Basic automation controls
+```
+
+#### **Phase 2: Automation Logic (2-3 weeks)**
+```
+Week 4-5: Automation Engine
+├─ Pickup trigger automation
+├─ Collision avoidance system
+├─ Queue management logic
+└─ Safety intervention system
+
+Week 6: Testing & Refinement
+├─ Integration testing
+├─ Safety system validation
+├─ Performance optimization
+└─ User interface polish
+```
+
+#### **Phase 3: Advanced Features (2-3 weeks)**
+```
+Week 7-8: Advanced Automation
+├─ Multiple pickup scenarios
+├─ Learning algorithms
+├─ Performance analytics
+└─ Advanced safety features
+
+Week 9: Production Deployment
+├─ System integration testing
+├─ Documentation completion
+├─ Performance monitoring
+└─ Production deployment
+```
+
+### **Testing Strategy Planning**
+
+#### **Sensor Testing Plan**
+```
+🧪 SENSOR VALIDATION:
+├─ GPIO functionality testing
+├─ Debounce timing validation
+├─ State change detection accuracy
+├─ Firebase sync verification
+└─ Long-duration stability testing
+
+🤖 AUTOMATION TESTING:
+├─ Pickup trigger scenarios
+├─ Collision avoidance testing
+├─ Multi-arm coordination
+├─ Edge case handling
+└─ Performance benchmarking
+
+🛡️ SAFETY TESTING:
+├─ Emergency stop functionality
+├─ Collision detection accuracy
+├─ Area monitoring coverage
+├─ Failsafe mechanisms
+└─ Recovery procedures
+```
+
+Dengan planning detail ini, sistem PalletizerOT akan memiliki sensor integration yang sophisticated sambil mempertahankan arsitektur UART yang sudah optimal dan production-ready.
 
 ---
 
 *PalletizerOT Distributed Dual-Arm Control System*  
-*Current: ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
-*Future: AI-Enhanced Industrial Automation with Full Factory Integration*  
-*Last updated: 2025-01-01*
+*Current Implementation: ESP32 → 2 UART Masters → 10 UART Slaves (Shared Bus)*  
+*Planning Phase: Sensor Integration + Automation Logic untuk Enhanced Industrial Control*  
+*Last updated: 2025-01-02*
