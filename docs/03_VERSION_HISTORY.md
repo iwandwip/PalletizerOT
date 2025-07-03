@@ -490,8 +490,388 @@ Interface: Serial terminal, basic web interface
 
 ## 3.5 Future Development Planning
 
-### **🔮 Coming Soon**
-Future development plans akan diupdate berdasarkan project requirements dan user feedback setelah deployment evaluation.
+### **🚀 v5.0.0 - Distributed Master-Slave Architecture (Planned)**
+
+#### 🆕 **Next-Generation Hardware Architecture**
+Planned evolution dari current Arduino MEGA-based system ke distributed multi-controller architecture untuk enhanced scalability, modularity, dan fault tolerance.
+
+#### **🏗️ Proposed Architecture**
+```
+  ----------------------------------------------------------------------------+
+                    DISTRIBUTED MASTER-SLAVE ARCHITECTURE v5.0              |
+  ----------------------------------------------------------------------------+
+                                                                          |
+|  💻 LAPTOP SERVER           🔌 ESP32 BRIDGE        🤖 DISTRIBUTED HARDWARE    |
+|                                                                         |
+|    ----------------+       ----------------+       ----------------+       |
+|  | Web Interface   |---->| WiFi Bridge     |---->| Master-Slave    |       |
+|  | MSL Compiler    |     | HTTP/UART       |     | Network         |       |
+|  | Dual-Arm UI     |     | Unchanged Logic |     |                 |       |
+|  |                 |     |                 |     | ARM 1 MASTER:   |       |
+|  | UNCHANGED:      |     | Minor Changes:  |     | Arduino Nano    |       |
+|  | • Same Web UI   |     | • Same polling  |     | • 5 Slaves      |       |
+|  | • Same API      |     | • Same UART     |     | • X,Y,Z,T,G     |       |
+|  | • Same MSL      |     | • Target change |     |                 |       |
+|  | • Same RAW      |     |   to Masters    |     | ARM 2 MASTER:   |       |
+|  |                 |     |                 |     | Arduino Nano    |       |
+|  | Backward        |     | ESP32 Code:     |     | • 5 Slaves      |       |
+|  | Compatible      |     | Serial1 → ARM1  |     | • X,Y,Z,T,G     |       |
+|  | Software        |     | Serial2 → ARM2  |     |                 |       |
+|    ----------------+       ----------------+       ----------------+       |
+  ----------------------------------------------------------------------------+
+```
+
+#### **🔧 Detailed Hardware Architecture**
+```
+LAPTOP SERVER → ESP32 → 2 Arduino Nano Master → (5 Arduino Nano Slave × 2)
+                ↓         ↓                      ↓
+            HTTP/WiFi   Shared UART           Shared UART per Motor
+
+Master-Slave Communication:
+├── ARM1 Master (Arduino Nano)
+│   ├── X-Axis Slave (Arduino Nano) 
+│   ├── Y-Axis Slave (Arduino Nano)
+│   ├── Z-Axis Slave (Arduino Nano)
+│   ├── T-Axis Slave (Arduino Nano) 
+│   └── G-Axis Slave (Arduino Nano)
+│
+└── ARM2 Master (Arduino Nano)
+    ├── X-Axis Slave (Arduino Nano)
+    ├── Y-Axis Slave (Arduino Nano) 
+    ├── Z-Axis Slave (Arduino Nano)
+    ├── T-Axis Slave (Arduino Nano)
+    └── G-Axis Slave (Arduino Nano)
+
+Total Hardware: 1 ESP32 + 2 Master + 10 Slaves = 13 Controllers
+```
+
+#### **✅ Software Compatibility**
+- **🖥️ Website Interface**: ZERO changes required
+  - Same MSL editor dengan ARM1/ARM2 selection
+  - Same RAW mode dengan direct command input
+  - Same debug terminal dan real-time monitoring
+  - Same start/stop controls dan status display
+
+- **📡 Server API**: ZERO changes required
+  - Same endpoints: `/api/script/save`, `/api/script/raw`, `/api/script/poll`
+  - Same MSL compilation dan command storage
+  - Same dual-arm support dengan armId routing
+  - Same SSE events untuk real-time debugging
+
+- **🔌 ESP32 Firmware**: MINOR changes only
+  - Same HTTP polling mechanism
+  - Same dual-UART communication (Serial1/Serial2)
+  - Same JSON response parsing
+  - Updated target: Arduino Nano Masters instead of MEGAs
+
+#### **🎯 Architecture Benefits**
+- **Enhanced Modularity**: Each motor axis as independent controller
+- **Improved Fault Tolerance**: Failure isolation per motor/arm
+- **Better Scalability**: Easy expansion ke additional arms
+- **Cost Optimization**: Arduino Nano lebih cost-effective dari MEGA
+- **Distributed Processing**: Load balancing across multiple controllers
+- **Easier Maintenance**: Individual motor replacement tanpa system shutdown
+
+#### **📊 Migration Strategy**
+```
+Phase 1: Single Arm Prototype
+├── 1 Master + 5 Slaves untuk proof of concept
+├── Validate shared UART communication
+├── Test GROUP() command coordination
+└── Performance benchmarking
+
+Phase 2: Dual Master Implementation  
+├── Add second master dengan same slave architecture
+├── Cross-arm communication testing
+├── Dual-arm coordination validation
+└── Load testing dengan complex scripts
+
+Phase 3: Production Deployment
+├── Performance optimization
+├── Error handling refinement  
+├── Monitoring dan debugging tools
+└── Full system integration testing
+```
+
+#### **🔧 Technical Considerations**
+- **Communication Protocol**: Enhanced addressing scheme untuk master-slave routing
+- **Synchronization**: GROUP() command coordination across distributed slaves
+- **Error Handling**: Multi-level error propagation dari slave → master → ESP32 → server
+- **Performance**: UART bandwidth optimization untuk 5-slave communication
+- **Power Management**: Efficient power distribution untuk 13-controller system
+
+#### **⚡ Backward Compatibility Promise**
+Complete software stack remains unchanged:
+- ✅ Web interface unchanged
+- ✅ MSL language unchanged  
+- ✅ API endpoints unchanged
+- ✅ User experience unchanged
+- ✅ Development workflow unchanged
+
+**Hardware upgrade transparent ke software layer!**
+
+#### **🤖 Smart Sensor Integration & Collision Avoidance**
+
+**Sensor Architecture:**
+```
+ARM1 (Kiri) ←────── AREA TENGAH ──────→ ARM2 (Kanan)
+                         ↓
+                 SENSOR PRODUK (1x)     # Product detection
+                 SENSOR COLLISION (1x)  # Center area occupancy
+                         ↓
+                ESP32 Decision Logic
+```
+
+**Intelligent Arm Selection System:**
+
+**A. Operation Modes:**
+- **Auto Mode**: Round-robin dengan immediate timeout fallback
+- **Manual ARM1 Only**: Maintenance/testing mode
+- **Manual ARM2 Only**: Emergency single-arm operation
+
+**B. Round-Robin + Timeout Fallback Logic:**
+```cpp
+// Fair rotation strategy:
+Product 1: ARM1 turn → ARM1 executes → Success → Next: ARM2
+Product 2: ARM2 turn → ARM2 executes → Success → Next: ARM1
+Product 3: ARM1 turn → ARM1 timeout → ARM2 fallback → Success → Next: ARM2
+Product 4: ARM2 turn → ARM2 executes → Success → Next: ARM1
+
+Key Features:
+• Start priority: ARM1 untuk first product
+• Fair rotation: Gantian ARM1 ↔ ARM2 
+• Immediate fallback: Timeout langsung switch ke arm lain
+• Maintain sequence: Urutan gantian tetap terjaga setelah fallback
+• Timeout safety: 10 detik maksimal untuk reach center
+```
+
+**C. ESP32 Master Polling Architecture:**
+```cpp
+// Enhanced ESP32 controller dengan sensor integration:
+class ESP32SensorController {
+    // Dual sensor monitoring
+    bool hasProduct()      { return digitalRead(PRODUCT_SENSOR); }
+    bool isCenterOccupied() { return digitalRead(COLLISION_SENSOR); }
+    
+    // Round-robin state management
+    bool nextTurnIsArm1 = true;  // Fair rotation tracking
+    
+    // Polling cycle: ARM1 → ARM2 → Decision → Repeat
+    void loop() {
+        pollArm1Master();      // Status check ARM1
+        delay(50);
+        pollArm2Master();      // Status check ARM2  
+        delay(50);
+        processProductLogic(); // Sensor-based decisions
+        checkTimeouts();       // Safety monitoring
+    }
+    
+    // Intelligent arm selection
+    void attemptPickSequence() {
+        if (nextTurnIsArm1) {
+            tryArm1WithArm2Fallback();
+        } else {
+            tryArm2WithArm1Fallback(); 
+        }
+    }
+};
+```
+
+**D. Arduino Nano Master Enhanced Response:**
+```cpp
+// Status reporting protocol:
+ESP32 Query: "STATUS?" 
+Master Response: "IDLE" | "AT_CENTER" | "PICKING" | "RETURNING" | "ERROR:details"
+
+ESP32 Command: "MOVE_TO_CENTER"
+Master Action: Execute pick sequence + status updates
+
+// Timeout scenario:
+ARM1 fails to reach center (10s) → ESP32 immediate switch to ARM2
+ARM2 completes task → Turn rotation continues: Next = ARM1
+```
+
+**E. Web Interface Integration:**
+```javascript
+// Enhanced controls:
+- Operation Mode: Auto | ARM1 Only | ARM2 Only
+- Turn Indicator: "Current Turn: ARM2" 
+- Sensor Status: Product [●] | Center [○] (real-time)
+- Fallback Alerts: "ARM1 timeout - switched to ARM2"
+- Statistics: Success rate, average cycle time per arm
+```
+
+**F. Safety & Reliability Features:**
+- **Collision Prevention**: Center sensor blocks concurrent movement
+- **Timeout Protection**: 10-second safety limit prevents system hang
+- **Immediate Fallback**: Zero delay switching pada timeout
+- **Error Recovery**: Automatic retry dengan maintained rotation
+- **Manual Override**: Emergency single-arm mode untuk maintenance
+
+**Benefits:**
+- **Zero Collision Risk**: Physical sensor prevents arm crashes
+- **Maximum Uptime**: Immediate fallback maintains production flow
+- **Fair Load Distribution**: Round-robin ensures balanced arm usage
+- **Predictable Behavior**: Clear turn sequence untuk troubleshooting
+- **Production Continuity**: Single arm failure tidak stop semua operasi
+
+---
+
+### **🎮 Advanced Simulation Mode Integration**
+
+#### **📱 Web Interface Enhancement**
+Enhanced website dengan dedicated simulation tab untuk comprehensive testing dan development workflow.
+
+**A. Navigation Structure:**
+```
+┌─ Main Interface Tabs ─────────────────────────────────────────┐
+│  [🎮 Control]   [🔬 Simulation]   [🐛 Debug]                │
+│     ↓               ↓                ↓                       │
+│  Production     Script Testing    Live Monitoring            │
+│  Hardware       Virtual Hardware  Error Analysis            │
+│  Real-time      Speed Control     Performance Metrics       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**B. Simulation Tab Features:**
+- **Script-Based Execution**: Simulation executes user's actual MSL scripts
+- **Visual Hardware Blocks**: ESP32, 2 Masters, 10 Slaves dengan real-time status
+- **Speed Control**: Real-time, 2x, 5x, 10x speed simulation
+- **Auto Scenario Testing**: Continuous product flow dengan script execution
+- **Data Persistence**: Simulation logs dengan CSV export capability
+
+#### **🎯 Script Execution Simulation Engine**
+
+**Core Features:**
+```javascript
+// Script-based simulation execution:
+1. Load user's ARM1/ARM2 MSL scripts from editor
+2. Compile scripts to command arrays  
+3. Simulate product detection events
+4. Execute round-robin arm selection dengan timeout fallback
+5. Animate hardware blocks sesuai command execution
+6. Track performance metrics dan error scenarios
+7. Generate comprehensive logs untuk analysis
+```
+
+**Visual Command Tracking:**
+- **Real-time Script Display**: Side-by-side ARM1/ARM2 command lists
+- **Execution Progress**: Visual indicators (✓Completed, ⚡Executing, ○Pending)
+- **Command Timing**: Realistic duration per axis movement
+- **Error Simulation**: Timeout scenarios, stuck commands, hardware failures
+
+#### **🔧 Simulation Architecture**
+
+**A. Hardware Block Visualization:**
+```
+ESP32 Bridge Block:
+├── Connection Status: ●Online/○Offline
+├── WiFi Strength: ████░ 85%
+├── Sensor States: Product ●/○, Center ●/○  
+├── Turn Indicator: Next Turn ARM1/ARM2
+└── Timeout Countdown: Real-time countdown display
+
+Master Block (ARM1/ARM2):
+├── Execution Status: ●IDLE, ⚡EXECUTING, ✓COMPLETED, ❌ERROR
+├── Script Status: ✓LOADED/○NONE dengan command count
+├── Current Command: Display currently executing command
+└── Progress Tracking: Commands completed/total
+
+Slave Blocks (X,Y,Z,T,G per arm):
+├── Position Display: Real-time position values
+├── Movement Status: ●Active, ○Idle, ⚡Moving animations
+├── Visual Indicators: Color-coded status per axis
+└── Target Tracking: Current → Target position display
+```
+
+**B. Auto Simulation Flow:**
+```cpp
+// Continuous simulation cycle:
+1. Trigger product sensor detection
+2. ESP32 round-robin decision (ARM1 ↔ ARM2)
+3. Execute selected arm's complete script:
+   - Master state: MOVING_TO_CENTER → AT_CENTER → PICKING → RETURNING → IDLE
+   - Slave animations: Per-command execution dengan realistic timing
+   - Collision sensor: Occupied during center operations
+4. Switch turn untuk next product
+5. Handle timeout scenarios dengan immediate fallback
+6. Log all events untuk analytics
+7. Repeat cycle dengan configurable product interval
+```
+
+#### **📊 Comprehensive Analytics Dashboard**
+
+**A. Real-time Metrics:**
+- **Performance Tracking**: Products processed, cycle times, success rates
+- **Arm Statistics**: Individual ARM1/ARM2 performance comparison
+- **Error Monitoring**: Timeout events, failure scenarios, recovery times
+- **Efficiency Metrics**: Commands per second, utilization rates
+
+**B. Live Event Logging:**
+```
+[14:32:15] ARM2 executing Y(50) - estimated 1.2s
+[14:32:14] ARM2 completed X(150) in 1.2s  
+[14:32:13] ARM2 moving to center
+[14:32:12] Product detected - ARM2 turn (round-robin)
+[14:32:07] ARM1 returned home - cycle complete
+[14:32:05] ARM1 completed G(0) - gripper open
+```
+
+**C. Export & Analysis:**
+- **CSV Export**: Complete simulation logs untuk external analysis
+- **Performance Reports**: Statistical summary dengan charts
+- **Error Analysis**: Detailed failure tracking dengan root cause identification
+
+#### **🎮 User Workflow Integration**
+
+**Development Cycle:**
+```
+1. Write MSL Script → Control Tab
+   ├── ARM1: Complex pick sequence dengan functions/loops
+   └── ARM2: Place sequence dengan error handling
+
+2. Test Script → Simulation Tab  
+   ├── Load scripts from editor
+   ├── Run simulation dengan various speeds
+   ├── Observe visual execution
+   ├── Identify timing issues atau logic errors
+   └── Export performance data
+
+3. Deploy Script → Control Tab
+   ├── Confidence dari simulation results
+   ├── Deploy ke real hardware
+   └── Monitor production dengan debug tab
+```
+
+**Benefits:**
+- **Risk-Free Testing**: Test complex scripts tanpa hardware damage
+- **Rapid Development**: Fast iteration dengan speed control
+- **Performance Optimization**: Identify bottlenecks sebelum deployment  
+- **Training Tool**: Learn system behavior dengan visual feedback
+- **Documentation**: Automatic logging untuk compliance dan analysis
+
+#### **💡 Advanced Simulation Features**
+
+**A. Scenario Testing:**
+- **Normal Operation**: Standard round-robin execution
+- **Timeout Scenarios**: ARM failure simulation dengan fallback testing
+- **Stress Testing**: High-speed continuous operation
+- **Error Recovery**: Multiple failure scenarios untuk robustness testing
+
+**B. Hardware State Persistence:**
+- **Save/Load States**: Capture specific hardware configurations
+- **Replay Capability**: Re-run problematic scenarios untuk debugging
+- **Configuration Presets**: Pre-defined test scenarios untuk different use cases
+
+**C. Integration Testing:**
+- **Multi-Script Testing**: Complex scripts dengan multiple functions/loops
+- **Cross-Arm Coordination**: Test dual-arm coordination scenarios
+- **Performance Benchmarking**: Compare different script approaches
+
+---
+
+### **🔮 Long-term Vision**
+Future development plans akan continue evolving berdasarkan distributed architecture success, sensor integration effectiveness, simulation mode adoption, dan industrial deployment feedback dari comprehensive testing environment.
 
 ---
 
