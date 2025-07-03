@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, Download, Play, Cpu, Loader2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Upload, Download, Play, Cpu, Loader2, MonitorSpeaker, Layers3 } from "lucide-react"
 import { api } from "@/lib/api"
 import { TextEditor } from "./editors"
 
@@ -17,9 +19,16 @@ interface CompilationResult {
 interface CommandEditorProps {
   onNotification?: (message: string, type: 'error' | 'warning' | 'info' | 'success') => void
   onCompileOutput?: (output: string) => void
+  simulationMode?: boolean
+  onSimulationModeChange?: (enabled: boolean) => void
 }
 
-export function CommandEditor({ onNotification, onCompileOutput }: CommandEditorProps) {
+export function CommandEditor({ 
+  onNotification, 
+  onCompileOutput, 
+  simulationMode = false, 
+  onSimulationModeChange 
+}: CommandEditorProps) {
   // Active arm state
   const [activeArm, setActiveArm] = useState<1 | 2>(1)
   
@@ -91,10 +100,27 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     try {
       let result
       
-      if (currentProcessingMode === 'RAW') {
-        result = await api.saveRawScript(textToProcess, `arm${activeArm}`)
+      if (simulationMode) {
+        // Simulation mode - bypass server calls, just do local compilation
+        const commandCount = textToProcess.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length
+        
+        result = {
+          success: true,
+          scriptId: `sim_${Date.now()}`,
+          commandCount: commandCount,
+          compiledData: {
+            format: currentProcessingMode === 'RAW' ? 'raw' : 'text',
+            textCommands: currentProcessingMode === 'RAW' ? textToProcess : `// Simulated MSL compilation\n${textToProcess}`,
+            commandLines: textToProcess.split('\n').filter(line => line.trim())
+          }
+        }
       } else {
-        result = await api.saveScript(textToProcess, 'msl', `arm${activeArm}`)
+        // Hardware mode - normal server calls
+        if (currentProcessingMode === 'RAW') {
+          result = await api.saveRawScript(textToProcess, `arm${activeArm}`)
+        } else {
+          result = await api.saveScript(textToProcess, 'msl', `arm${activeArm}`)
+        }
       }
       
       setCurrentCompilationResult({
@@ -108,8 +134,10 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
       let output = ''
       
       if (result.success) {
+        const modePrefix = simulationMode ? '🎮 [SIMULATION]' : '🔌 [HARDWARE]'
+        
         if (currentProcessingMode === 'RAW') {
-          output = `✅ Raw script sent successfully!\n\nArm: ${activeArm}\nMode: RAW\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}`
+          output = `✅ ${modePrefix} Raw script processed successfully!\n\nArm: ${activeArm}\nMode: RAW\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}`
         } else {
           let textOutput = ''
           if (result.compiledData) {
@@ -121,7 +149,11 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
             }
           }
           
-          output = `✅ Script processed successfully!\n\nArm: ${activeArm}\nMode: MSL\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${textOutput}`
+          output = `✅ ${modePrefix} Script processed successfully!\n\nArm: ${activeArm}\nMode: MSL\nGenerated ${result.commandCount} commands\nScript ID: ${result.scriptId}\n\nInput script:\n${scriptForOutput}\n\n${textOutput}`
+          
+          if (simulationMode) {
+            output += `\n\n💡 Simulation mode active - Script ready for virtual execution`
+          }
         }
       } else {
         const modeText = currentProcessingMode === 'RAW' ? 'Raw script processing' : 'Script compilation'
@@ -152,7 +184,7 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
     } finally {
       setCurrentIsProcessing(false)
     }
-  }, [activeArm, commandText1, commandText2, processingMode1, processingMode2, onCompileOutput])
+  }, [activeArm, commandText1, commandText2, processingMode1, processingMode2, simulationMode, onCompileOutput])
 
   const handleExecuteScript = async () => {
     const scriptToExecute = (getCurrentCommandText() || '').toString()
@@ -280,6 +312,36 @@ export function CommandEditor({ onNotification, onCompileOutput }: CommandEditor
                   >
                     RAW
                   </Button>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Simulation</span>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={simulationMode}
+                    onCheckedChange={onSimulationModeChange}
+                    className="data-[state=checked]:bg-green-600"
+                  />
+                  <Badge 
+                    variant={simulationMode ? "default" : "secondary"}
+                    className={simulationMode 
+                      ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700" 
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                    }
+                  >
+                    {simulationMode ? (
+                      <>
+                        <Layers3 className="h-3 w-3 mr-1" />
+                        Virtual
+                      </>
+                    ) : (
+                      <>
+                        <MonitorSpeaker className="h-3 w-3 mr-1" />
+                        Hardware
+                      </>
+                    )}
+                  </Badge>
                 </div>
               </div>
               

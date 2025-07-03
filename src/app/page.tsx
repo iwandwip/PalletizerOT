@@ -38,6 +38,7 @@ import SpeedPanel from '@/components/speed-panel'
 import { SettingsModal } from '@/components/settings-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { DebugOverlay } from '@/components/debug-overlay'
+import { SimulationInterface } from '@/components/simulation-interface'
 import { api } from '@/lib/api'
 
 interface ErrorNotification {
@@ -49,6 +50,7 @@ interface ErrorNotification {
 export default function PalletizerInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentTab, setCurrentTab] = useState('editor')
+  const [simulationMode, setSimulationMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugHeight, setDebugHeight] = useState(300)
@@ -511,13 +513,20 @@ export default function PalletizerInterface() {
             <Card className="border-0 shadow-xl bg-card/50 backdrop-blur-sm">
               <CardHeader className="border-b bg-muted/30">
                 <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 bg-background/50">
+                  <TabsList className="grid w-full grid-cols-3 bg-background/50">
                     <TabsTrigger 
                       value="editor" 
                       className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                     >
                       <Code className="h-4 w-4" />
                       Script Editor
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="simulation"
+                      className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <Layers3 className="h-4 w-4" />
+                      Simulation
                     </TabsTrigger>
                     <TabsTrigger 
                       value="system"
@@ -544,10 +553,24 @@ export default function PalletizerInterface() {
                       <CommandEditor 
                         onNotification={addNotification}
                         onCompileOutput={setCompileOutput}
+                        simulationMode={simulationMode}
+                        onSimulationModeChange={setSimulationMode}
                       />
                     </div>
                   </TabsContent>
 
+                  <TabsContent value="simulation" className="m-0 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-foreground">Hardware Simulation</h2>
+                        <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700">
+                          Virtual Mode
+                        </Badge>
+                      </div>
+                      <Separator />
+                      <SimulationInterface />
+                    </div>
+                  </TabsContent>
 
                   <TabsContent value="system" className="m-0 p-6">
                     <div className="space-y-4">
