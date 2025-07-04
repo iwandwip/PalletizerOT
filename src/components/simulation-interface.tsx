@@ -35,7 +35,9 @@ import {
   Gauge,
   Eye,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScriptData } from '@/hooks/useScriptData'
@@ -105,6 +107,8 @@ interface EnhancedSimulationState {
   productSensor: boolean
   collisionSensor: boolean
   timeoutCountdown: number | null
+  productsProcessed: number
+  cyclesCompleted: number
 }
 
 // Enhanced ESP32 Bridge Component
@@ -366,12 +370,22 @@ const EnhancedSlaveController = ({ slave }: { slave: SlaveState }) => {
 const LiveEventLogs = ({ 
   logs, 
   onClear, 
-  onExport 
+  onExport,
+  onCopy
 }: { 
   logs: SimulationLog[]
   onClear: () => void
   onExport: () => void
+  onCopy: () => void
 }) => {
+  const [isCopied, setIsCopied] = useState(false)
+  
+  const handleCopy = async () => {
+    await onCopy()
+    setIsCopied(true)
+    setTimeout(() => setIsCopied(false), 2000) // Reset after 2 seconds
+  }
+  
   const getLogIcon = (type: string) => {
     switch (type) {
       case 'success': return '✅'
@@ -403,6 +417,14 @@ const LiveEventLogs = ({
               <Trash2 className="h-4 w-4 mr-1" />
               Clear
             </Button>
+            <Button size="sm" variant="outline" onClick={handleCopy}>
+              {isCopied ? (
+                <Check className="h-4 w-4 mr-1 text-green-600" />
+              ) : (
+                <Copy className="h-4 w-4 mr-1" />
+              )}
+              Copy
+            </Button>
             <Button size="sm" variant="outline" onClick={onExport}>
               <Download className="h-4 w-4 mr-1" />
               Export CSV
@@ -417,9 +439,9 @@ const LiveEventLogs = ({
               No events logged yet. Start simulation to see logs.
             </div>
           ) : (
-            logs.map((log) => (
+            logs.map((log, index) => (
               <div 
-                key={log.id}
+                key={`${log.id}-${index}`}
                 className="flex items-start gap-2 p-2 rounded text-xs border-l-2 border-l-blue-200 bg-muted/30"
               >
                 <span className="text-sm">{getLogIcon(log.type)}</span>
@@ -572,7 +594,9 @@ export const SimulationInterface = () => {
     esp32Connected: true,
     productSensor: false,
     collisionSensor: false,
-    timeoutCountdown: null
+    timeoutCountdown: null,
+    productsProcessed: 0,
+    cyclesCompleted: 0
   })
 
   const [simulationLogs, setSimulationLogs] = useState<SimulationLog[]>([])
@@ -625,7 +649,7 @@ export const SimulationInterface = () => {
 
   const addLog = useCallback((type: SimulationLog['type'], message: string, arm?: 'ARM1' | 'ARM2', command?: string, duration?: number) => {
     const log: SimulationLog = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique ID
       timestamp: new Date().toLocaleTimeString(),
       type,
       message,
@@ -682,6 +706,39 @@ export const SimulationInterface = () => {
     addLog('success', 'Simulation logs exported to CSV')
   }
 
+  const copyLogs = async () => {
+    const textContent = simulationLogs.map(log => {
+      const parts = [
+        `[${log.timestamp}]`,
+        log.type.toUpperCase(),
+        log.arm ? `(${log.arm})` : '',
+        log.duration ? `(${log.duration.toFixed(1)}s)` : '',
+        log.message,
+        log.command ? `Command: ${log.command}` : ''
+      ].filter(Boolean).join(' ')
+      
+      return parts
+    }).join('\n')
+    
+    try {
+      await navigator.clipboard.writeText(textContent)
+      // Don't add log entry for copy success
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = textContent
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        // Don't add log entry for copy success
+      } catch (fallbackError) {
+        addLog('error', 'Failed to copy logs to clipboard')
+      }
+      document.body.removeChild(textArea)
+    }
+  }
+
   // Script execution engine
   const getArmCommands = (armId: 'ARM1' | 'ARM2') => {
     const script = armId === 'ARM1' ? scriptData.arm1Script : scriptData.arm2Script
@@ -697,28 +754,39 @@ export const SimulationInterface = () => {
     
     if (simulationState.operationMode === 'arm1_only') {
       executingArm = 'ARM1'
+      addLog('info', 'ARM1 Only mode - executing ARM1', 'ARM1')
     } else if (simulationState.operationMode === 'arm2_only') {
       executingArm = 'ARM2'
+      addLog('info', 'ARM2 Only mode - executing ARM2', 'ARM2')
     } else {
       // Auto round-robin mode
       executingArm = simulationState.nextTurnIsArm1 ? 'ARM1' : 'ARM2'
+      addLog('info', `Round-robin: ${executingArm} turn (next will be ${simulationState.nextTurnIsArm1 ? 'ARM2' : 'ARM1'})`, executingArm)
     }
 
     const armCommands = getArmCommands(executingArm)
     
     if (armCommands.length === 0) {
-      addLog('warning', `No script loaded for ${executingArm}`, executingArm)
+      addLog('warning', `No script loaded for ${executingArm} - skipping turn`, executingArm)
+      
+      // Switch turn even if no script
+      if (simulationState.operationMode === 'auto') {
+        setSimulationState(prev => ({ 
+          ...prev, 
+          nextTurnIsArm1: !prev.nextTurnIsArm1
+        }))
+        addLog('info', `Turn switched to ${simulationState.nextTurnIsArm1 ? 'ARM2' : 'ARM1'} for next product`)
+      }
       return
     }
 
     // Start execution
     setSimulationState(prev => ({ 
       ...prev, 
-      currentExecutingArm: executingArm,
-      nextTurnIsArm1: !prev.nextTurnIsArm1 // Switch turn for next cycle
+      currentExecutingArm: executingArm
     }))
     
-    addLog('info', `${executingArm} starting execution sequence (${armCommands.length} commands)`, executingArm)
+    addLog('success', `${executingArm} starting execution sequence (${armCommands.length} commands)`, executingArm)
     
     // Update master state
     const setMaster = executingArm === 'ARM1' ? setArm1Master : setArm2Master
@@ -733,73 +801,7 @@ export const SimulationInterface = () => {
     executeArmCommands(executingArm, armCommands, 0)
   }
 
-  const executeArmCommands = (armId: 'ARM1' | 'ARM2', commands: string[], commandIndex: number) => {
-    if (commandIndex >= commands.length) {
-      // Execution complete
-      completeArmExecution(armId)
-      return
-    }
-
-    const command = commands[commandIndex]
-    const setMaster = armId === 'ARM1' ? setArm1Master : setArm2Master
-    
-    // Parse command to determine axis and target
-    const match = command.match(/([XYZTG])\((\d+)\)/)
-    if (!match) {
-      addLog('error', `Invalid command format: ${command}`, armId, command)
-      executeArmCommands(armId, commands, commandIndex + 1)
-      return
-    }
-
-    const [, axis, target] = match
-    const targetValue = parseInt(target)
-    const executionTime = Math.random() * 2 + 1 // 1-3 seconds
-
-    addLog('info', `Executing command: ${command}`, armId, command, executionTime)
-    
-    // Update master state
-    setMaster(prev => ({
-      ...prev,
-      status: commandIndex === 0 ? 'AT_CENTER' : 'PICKING',
-      currentCommand: command,
-      currentCommandIndex: commandIndex + 1,
-      slaves: prev.slaves.map(slave => 
-        slave.axis === axis ? {
-          ...slave,
-          moving: true,
-          targetPosition: targetValue,
-          lastCommand: command,
-          status: 'MOVING'
-        } : slave
-      )
-    }))
-
-    // Simulate command execution
-    setTimeout(() => {
-      // Complete command
-      setMaster(prev => ({
-        ...prev,
-        slaves: prev.slaves.map(slave => 
-          slave.axis === axis ? {
-            ...slave,
-            moving: false,
-            position: targetValue,
-            status: 'COMPLETED'
-          } : slave
-        )
-      }))
-      
-      addLog('success', `Completed: ${command} (${executionTime.toFixed(1)}s)`, armId, command, executionTime)
-      
-      // Execute next command
-      setTimeout(() => {
-        executeArmCommands(armId, commands, commandIndex + 1)
-      }, 200 / simulationState.speed) // Delay between commands affected by speed
-      
-    }, (executionTime * 1000) / simulationState.speed) // Execution time affected by speed
-  }
-
-  const completeArmExecution = (armId: 'ARM1' | 'ARM2') => {
+  const completeArmExecution = useCallback((armId: 'ARM1' | 'ARM2') => {
     const setMaster = armId === 'ARM1' ? setArm1Master : setArm2Master
     
     setMaster(prev => ({
@@ -844,34 +846,138 @@ export const SimulationInterface = () => {
         }
       })
       
-      setSimulationState(prev => ({ 
-        ...prev, 
-        currentExecutingArm: null,
-        productsProcessed: prev.productsProcessed + 1,
-        cyclesCompleted: prev.cyclesCompleted + 1
-      }))
+      // Switch turn for round-robin AFTER completion
+      setSimulationState(prev => {
+        const newNextTurn = !prev.nextTurnIsArm1 // Always switch turn after completion
+        const nextArm = newNextTurn ? 'ARM1' : 'ARM2'
+        
+        // Log next turn
+        addLog('info', `Next turn: ${nextArm} (Round-robin rotation)`)
+        
+        return {
+          ...prev, 
+          currentExecutingArm: null,
+          productsProcessed: prev.productsProcessed + 1,
+          cyclesCompleted: prev.cyclesCompleted + 1,
+          nextTurnIsArm1: newNextTurn
+        }
+      })
       
       addLog('success', `${armId} cycle completed - ready for next product`, armId)
       
     }, 2000 / simulationState.speed) // Return time affected by speed
-  }
+  }, [addLog, getArmCommands, setArm1Master, setArm2Master, setPerformanceMetrics, setSimulationState, simulationState.speed])
+
+  const executeArmCommands = useCallback((armId: 'ARM1' | 'ARM2', commands: string[], commandIndex: number) => {
+    if (commandIndex >= commands.length) {
+      // Execution complete
+      completeArmExecution(armId)
+      return
+    }
+
+    const command = commands[commandIndex]
+    const setMaster = armId === 'ARM1' ? setArm1Master : setArm2Master
+    const armMode = armId === 'ARM1' ? scriptData.arm1Mode : scriptData.arm2Mode
+    
+    let axis = '', targetValue = 0, executionTime = 0.8 + (Math.random() * 1.0)
+    
+    if (armMode === 'MSL') {
+      // MSL mode: Parse command format X(100);
+      const match = command.match(/([XYZTG])\((\d+)\)/)
+      if (!match) {
+        addLog('error', `Invalid MSL command format: ${command}`, armId, command)
+        setTimeout(() => executeArmCommands(armId, commands, commandIndex + 1), 100)
+        return
+      }
+      [, axis, targetValue] = [match[1], match[1], parseInt(match[2])]
+    } else {
+      // RAW mode: Accept any command format
+      addLog('info', `Executing RAW command: ${command}`, armId, command)
+      
+      // Simple simulation for RAW commands - just execute without parsing
+      setTimeout(() => {
+        addLog('success', `Completed RAW: ${command} (${executionTime.toFixed(1)}s)`, armId, command, executionTime)
+        
+        // Execute next command after a short delay
+        setTimeout(() => {
+          executeArmCommands(armId, commands, commandIndex + 1)
+        }, 300)
+      }, executionTime * 1000)
+      return
+    }
+
+    addLog('info', `Executing: ${command}`, armId, command)
+    
+    // Update master state (only for MSL mode with valid axis)
+    setMaster(prev => ({
+      ...prev,
+      status: commandIndex === 0 ? 'AT_CENTER' : 'PICKING',
+      currentCommand: command,
+      currentCommandIndex: commandIndex + 1,
+      slaves: prev.slaves.map(slave => 
+        slave.axis === axis ? {
+          ...slave,
+          moving: true,
+          targetPosition: targetValue,
+          lastCommand: command,
+          status: 'MOVING'
+        } : slave
+      )
+    }))
+
+    // Simulate command execution with fixed timeout
+    setTimeout(() => {
+      // Complete command (only for MSL mode)
+      setMaster(prev => ({
+        ...prev,
+        slaves: prev.slaves.map(slave => 
+          slave.axis === axis ? {
+            ...slave,
+            moving: false,
+            position: targetValue,
+            status: 'COMPLETED'
+          } : slave
+        )
+      }))
+      
+      addLog('success', `Completed: ${command} (${executionTime.toFixed(1)}s)`, armId, command, executionTime)
+      
+      // Execute next command after a short delay (sequential execution)
+      setTimeout(() => {
+        executeArmCommands(armId, commands, commandIndex + 1)
+      }, 300)
+      
+    }, executionTime * 1000) // Convert to milliseconds
+    
+  }, [addLog, completeArmExecution, scriptData.arm1Mode, scriptData.arm2Mode])
+
 
   // Auto scenario effect
   useEffect(() => {
     let interval: NodeJS.Timeout
     
     if (simulationState.autoScenarioRunning) {
+      addLog('info', `Auto scenario started - product every ${simulationState.productInterval}s`)
+      
       interval = setInterval(() => {
         if (!simulationState.currentExecutingArm) {
+          addLog('info', 'Auto scenario triggered product detection')
           triggerProductSensor()
+        } else {
+          addLog('info', `Waiting for ${simulationState.currentExecutingArm} to complete before next product`)
         }
       }, simulationState.productInterval * 1000)
     }
     
     return () => {
-      if (interval) clearInterval(interval)
+      if (interval) {
+        clearInterval(interval)
+        if (simulationState.autoScenarioRunning) {
+          addLog('info', 'Auto scenario stopped')
+        }
+      }
     }
-  }, [simulationState.autoScenarioRunning, simulationState.productInterval, simulationState.currentExecutingArm])
+  }, [simulationState.autoScenarioRunning, simulationState.productInterval])
 
   // Update master states when script data changes
   useEffect(() => {
@@ -899,6 +1005,26 @@ export const SimulationInterface = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {/* Primary Manual Controls */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-sm font-medium">Manual Control:</span>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={triggerProductSensor}
+                disabled={!!simulationState.currentExecutingArm}
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Radio className="h-4 w-4 mr-1" />
+                Trigger Product Sensor
+              </Button>
+              {simulationState.currentExecutingArm && (
+                <Badge variant="outline" className="text-orange-600">
+                  {simulationState.currentExecutingArm} Executing...
+                </Badge>
+              )}
+            </div>
+
             {/* Operation Mode Selection */}
             <div className="flex items-center gap-4 flex-wrap">
               <span className="text-sm font-medium">Operation Mode:</span>
@@ -917,7 +1043,7 @@ export const SimulationInterface = () => {
               </div>
             </div>
 
-            {/* Speed and Auto Scenario Controls */}
+            {/* Speed and Auto Testing Controls */}
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Speed:</span>
@@ -935,7 +1061,7 @@ export const SimulationInterface = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Auto Scenario:</span>
+                <span className="text-sm font-medium text-muted-foreground">Auto Testing:</span>
                 <Select value={simulationState.productInterval.toString()} onValueChange={(v) => setSimulationState(prev => ({ ...prev, productInterval: parseInt(v) }))}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
@@ -949,7 +1075,7 @@ export const SimulationInterface = () => {
                 </Select>
                 <Button
                   size="sm"
-                  variant={simulationState.autoScenarioRunning ? 'destructive' : 'default'}
+                  variant={simulationState.autoScenarioRunning ? 'destructive' : 'outline'}
                   onClick={() => setSimulationState(prev => ({ ...prev, autoScenarioRunning: !prev.autoScenarioRunning }))}
                 >
                   {simulationState.autoScenarioRunning ? (
@@ -974,6 +1100,12 @@ export const SimulationInterface = () => {
               </Badge>
               <Badge variant="outline">
                 Mode: {simulationState.operationMode.toUpperCase().replace('_', ' ')}
+              </Badge>
+              <Badge variant="outline" className="text-blue-600">
+                ARM1: {scriptData.arm1Mode}
+              </Badge>
+              <Badge variant="outline" className="text-orange-600">
+                ARM2: {scriptData.arm2Mode}
               </Badge>
               {simulationState.autoScenarioRunning && (
                 <Badge variant="outline" className="text-green-600">
@@ -1014,6 +1146,7 @@ export const SimulationInterface = () => {
       <LiveEventLogs 
         logs={simulationLogs}
         onClear={clearLogs}
+        onCopy={copyLogs}
         onExport={exportLogs}
       />
 

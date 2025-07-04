@@ -7,6 +7,8 @@ interface ScriptData {
   arm2CompiledCommands: string[]
   arm1CommandCount: number
   arm2CommandCount: number
+  arm1Mode: 'MSL' | 'RAW'
+  arm2Mode: 'MSL' | 'RAW'
 }
 
 // Simple global script state management
@@ -16,7 +18,9 @@ let globalScriptData: ScriptData = {
   arm1CompiledCommands: [],
   arm2CompiledCommands: [],
   arm1CommandCount: 0,
-  arm2CommandCount: 0
+  arm2CommandCount: 0,
+  arm1Mode: 'MSL',
+  arm2Mode: 'MSL'
 }
 
 const listeners = new Set<() => void>()
@@ -63,6 +67,20 @@ export const useScriptData = () => {
     notifyListeners()
   }, [])
 
+  const setArm1Mode = useCallback((mode: 'MSL' | 'RAW') => {
+    if (globalScriptData.arm1Mode !== mode) {
+      globalScriptData.arm1Mode = mode
+      notifyListeners()
+    }
+  }, [])
+
+  const setArm2Mode = useCallback((mode: 'MSL' | 'RAW') => {
+    if (globalScriptData.arm2Mode !== mode) {
+      globalScriptData.arm2Mode = mode
+      notifyListeners()
+    }
+  }, [])
+
   const reset = useCallback(() => {
     globalScriptData = {
       arm1Script: '',
@@ -70,7 +88,9 @@ export const useScriptData = () => {
       arm1CompiledCommands: [],
       arm2CompiledCommands: [],
       arm1CommandCount: 0,
-      arm2CommandCount: 0
+      arm2CommandCount: 0,
+      arm1Mode: 'MSL',
+      arm2Mode: 'MSL'
     }
     notifyListeners()
   }, [])
@@ -82,6 +102,8 @@ export const useScriptData = () => {
     setArm2Script,
     setArm1CompiledCommands,
     setArm2CompiledCommands,
+    setArm1Mode,
+    setArm2Mode,
     reset
-  }), [updateCounter, setArm1Script, setArm2Script, setArm1CompiledCommands, setArm2CompiledCommands, reset])
+  }), [updateCounter, setArm1Script, setArm2Script, setArm1CompiledCommands, setArm2CompiledCommands, setArm1Mode, setArm2Mode, reset])
 }

@@ -76,8 +76,15 @@ export function CommandEditor({
   const setCurrentAutoCompile = (auto: boolean) => 
     activeArm === 1 ? setAutoCompile1(auto) : setAutoCompile2(auto)
   const getCurrentProcessingMode = () => activeArm === 1 ? processingMode1 : processingMode2
-  const setCurrentProcessingMode = (mode: 'MSL' | 'RAW') => 
-    activeArm === 1 ? setProcessingMode1(mode) : setProcessingMode2(mode)
+  const setCurrentProcessingMode = (mode: 'MSL' | 'RAW') => {
+    if (activeArm === 1) {
+      setProcessingMode1(mode)
+      scriptData.setArm1Mode(mode) // Sync to global state
+    } else {
+      setProcessingMode2(mode)
+      scriptData.setArm2Mode(mode) // Sync to global state
+    }
+  }
 
   const checkConnectionStatus = async () => {
     try {
