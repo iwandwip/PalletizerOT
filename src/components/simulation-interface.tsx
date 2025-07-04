@@ -25,7 +25,19 @@ import {
   ChevronRight,
   ChevronLeft,
   SkipForward,
-  SkipBack
+  SkipBack,
+  Radio,
+  Target,
+  Timer,
+  TrendingUp,
+  BarChart3,
+  FileBarChart,
+  Cpu,
+  HardDrive,
+  Workflow,
+  CircuitBoard,
+  Gauge,
+  Eye
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScriptData } from '@/hooks/useScriptData'
@@ -44,6 +56,40 @@ interface SimulationState {
   mode: 'auto' | 'manual'
   currentStep: number
   totalSteps: number
+  operationMode: 'auto' | 'arm1_only' | 'arm2_only'
+  autoScenarioRunning: boolean
+  productInterval: number
+  nextTurnIsArm1: boolean
+  currentExecutingArm: 'ARM1' | 'ARM2' | null
+  armTimeoutTimer: number | null
+}
+
+interface SimulationLog {
+  id: string
+  timestamp: string
+  type: 'info' | 'success' | 'warning' | 'error'
+  message: string
+  arm?: 'ARM1' | 'ARM2'
+  command?: string
+  duration?: number
+}
+
+interface PerformanceMetrics {
+  arm1Stats: {
+    successRate: number
+    averageCycleTime: number
+    commandsExecuted: number
+    timeouts: number
+  }
+  arm2Stats: {
+    successRate: number
+    averageCycleTime: number
+    commandsExecuted: number
+    timeouts: number
+  }
+  totalProducts: number
+  totalCycles: number
+  uptime: number
 }
 
 interface ArmState {
@@ -55,9 +101,27 @@ interface ArmState {
 }
 
 interface SlaveState {
+  id: string
+  axis: string
   position: number
+  targetPosition: number
   moving: boolean
   status: 'IDLE' | 'MOVING' | 'COMPLETED' | 'ERROR'
+  lastCommand: string | null
+  executionTime: number
+}
+
+interface MasterState {
+  id: string
+  armId: 'ARM1' | 'ARM2'
+  status: 'IDLE' | 'MOVING_TO_CENTER' | 'AT_CENTER' | 'PICKING' | 'RETURNING' | 'ERROR' | 'TIMEOUT'
+  hasScript: boolean
+  commandCount: number
+  currentCommandIndex: number
+  currentCommand: string | null
+  slaves: SlaveState[]
+  cycleStartTime: number | null
+  timeoutStartTime: number | null
 }
 
 const ESP32Block = ({ state }: { state: SimulationState }) => {
@@ -414,17 +478,42 @@ export const SimulationInterface = () => {
   const [simulationState, setSimulationState] = useState<SimulationState>({
     isRunning: false,
     speed: 1,
-    productsProcessed: 15,
-    cyclesCompleted: 7,
-    errors: 1,
-    currentTurn: 'ARM2',
+    productsProcessed: 0,
+    cyclesCompleted: 0,
+    errors: 0,
+    currentTurn: 'ARM1',
     esp32Connected: true,
-    productSensor: true,
+    productSensor: false,
     collisionSensor: false,
     timeoutCountdown: null,
     mode: 'auto',
     currentStep: 0,
-    totalSteps: 0
+    totalSteps: 0,
+    operationMode: 'auto',
+    autoScenarioRunning: false,
+    productInterval: 10,
+    nextTurnIsArm1: true,
+    currentExecutingArm: null,
+    armTimeoutTimer: null
+  })
+
+  const [simulationLogs, setSimulationLogs] = useState<SimulationLog[]>([])
+  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics>({
+    arm1Stats: {
+      successRate: 0,
+      averageCycleTime: 0,
+      commandsExecuted: 0,
+      timeouts: 0
+    },
+    arm2Stats: {
+      successRate: 0,
+      averageCycleTime: 0,
+      commandsExecuted: 0,
+      timeouts: 0
+    },
+    totalProducts: 0,
+    totalCycles: 0,
+    uptime: 0
   })
 
   // Calculate total steps from both arm scripts
@@ -532,6 +621,76 @@ export const SimulationInterface = () => {
 
   const handleLastStep = () => {
     setSimulationState(prev => ({ ...prev, currentStep: allCommands.length - 1 }))
+  }
+
+  // Enhanced sensor and automation controls
+  const addLog = useCallback((type: SimulationLog['type'], message: string, arm?: 'ARM1' | 'ARM2', command?: string, duration?: number) => {
+    const log: SimulationLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleTimeString(),
+      type,
+      message,
+      arm,
+      command,
+      duration
+    }
+    setSimulationLogs(prev => [log, ...prev.slice(0, 99)]) // Keep last 100 logs
+  }, [])
+
+  const triggerProductSensor = () => {
+    if (!simulationState.productSensor) {
+      setSimulationState(prev => ({ ...prev, productSensor: true }))
+      addLog('info', 'Product detected - starting cycle sequence')
+      
+      // Auto-clear after 2 seconds
+      setTimeout(() => {
+        setSimulationState(prev => ({ ...prev, productSensor: false }))
+      }, 2000)
+    }
+  }
+
+  const triggerCollisionSensor = () => {
+    setSimulationState(prev => ({ ...prev, collisionSensor: !prev.collisionSensor }))
+    addLog(simulationState.collisionSensor ? 'info' : 'warning', 
+          simulationState.collisionSensor ? 'Center area cleared' : 'Center area occupied')
+  }
+
+  const handleOperationModeChange = (mode: 'auto' | 'arm1_only' | 'arm2_only') => {
+    setSimulationState(prev => ({ ...prev, operationMode: mode, isRunning: false }))
+    addLog('info', `Operation mode changed to: ${mode.toUpperCase().replace('_', ' ')}`)
+  }
+
+  const startAutoScenario = () => {
+    setSimulationState(prev => ({ ...prev, autoScenarioRunning: true }))
+    addLog('success', `Auto scenario started - product every ${simulationState.productInterval}s`)
+  }
+
+  const stopAutoScenario = () => {
+    setSimulationState(prev => ({ ...prev, autoScenarioRunning: false }))
+    addLog('info', 'Auto scenario stopped')
+  }
+
+  const clearLogs = () => {
+    setSimulationLogs([])
+    addLog('info', 'Simulation logs cleared')
+  }
+
+  const exportLogs = () => {
+    const csvContent = simulationLogs.map(log => 
+      `${log.timestamp},${log.type},${log.arm || ''},${log.command || ''},${log.duration || ''},"${log.message}"`
+    ).join('\n')
+    
+    const header = 'Timestamp,Type,Arm,Command,Duration,Message\n'
+    const blob = new Blob([header + csvContent], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `simulation-logs-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    
+    URL.revokeObjectURL(url)
+    addLog('success', 'Simulation logs exported to CSV')
   }
 
   return (
@@ -716,6 +875,29 @@ export const SimulationInterface = () => {
           <MasterBlock armId="ARM1" state={arm1State} />
           <MasterBlock armId="ARM2" state={arm2State} />
         </div>
+      </div>
+
+      {/* Enhanced Features Preview */}
+      <div className="space-y-4">
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>📍 You're in Basic Mode</strong>
+              <br />
+              Switch to Enhanced Mode (button di atas) untuk features:
+              <br />
+              ✨ Distributed hardware architecture visualization
+              <br />
+              🎯 Smart sensor controls with manual triggers  
+              <br />
+              🤖 Round-robin logic with timeout fallback
+              <br />
+              📊 Advanced analytics and live event logging
+              <br />
+              🔗 Visual wiring connections between components
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Script Execution Panel */}

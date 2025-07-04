@@ -39,6 +39,7 @@ import { SettingsModal } from '@/components/settings-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { DebugOverlay } from '@/components/debug-overlay'
 import { SimulationInterface } from '@/components/simulation-interface'
+import { EnhancedSimulationInterface } from '@/components/simulation-interface-enhanced'
 import { api } from '@/lib/api'
 
 interface ErrorNotification {
@@ -51,6 +52,12 @@ export default function PalletizerInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentTab, setCurrentTab] = useState('editor')
   const [simulationMode, setSimulationMode] = useState(false)
+  const [enhancedSimulation, setEnhancedSimulation] = useState(false)
+  
+  // Debug log untuk enhanced simulation state
+  useEffect(() => {
+    console.log('Enhanced simulation state changed:', enhancedSimulation)
+  }, [enhancedSimulation])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugHeight, setDebugHeight] = useState(300)
@@ -561,12 +568,38 @@ export default function PalletizerInterface() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h2 className="text-2xl font-bold text-foreground">Hardware Simulation</h2>
-                        <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700">
-                          Virtual Mode
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant={enhancedSimulation ? 'default' : 'outline'}
+                            onClick={() => {
+                              console.log('Toggle enhanced simulation:', !enhancedSimulation)
+                              setEnhancedSimulation(!enhancedSimulation)
+                            }}
+                          >
+                            {enhancedSimulation ? '🚀 Enhanced Mode' : '⚡ Basic Mode'}
+                          </Button>
+                          <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700">
+                            Virtual Mode
+                          </Badge>
+                        </div>
                       </div>
                       <Separator />
-                      <SimulationInterface />
+                      {enhancedSimulation ? (
+                        <div>
+                          <div className="mb-2 p-2 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded">
+                            🚀 Enhanced Simulation Mode Active
+                          </div>
+                          <EnhancedSimulationInterface />
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="mb-2 p-2 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
+                            ⚡ Basic Simulation Mode Active
+                          </div>
+                          <SimulationInterface />
+                        </div>
+                      )}
                     </div>
                   </TabsContent>
 
