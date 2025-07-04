@@ -22,10 +22,6 @@ import {
   CheckCircle2,
   Settings,
   MonitorSpeaker,
-  ChevronRight,
-  ChevronLeft,
-  SkipForward,
-  SkipBack,
   Radio,
   Target,
   Timer,
@@ -37,32 +33,12 @@ import {
   Workflow,
   CircuitBoard,
   Gauge,
-  Eye
+  Eye,
+  Trash2,
+  RefreshCw
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScriptData } from '@/hooks/useScriptData'
-
-interface SimulationState {
-  isRunning: boolean
-  speed: number
-  productsProcessed: number
-  cyclesCompleted: number
-  errors: number
-  currentTurn: 'ARM1' | 'ARM2'
-  esp32Connected: boolean
-  productSensor: boolean
-  collisionSensor: boolean
-  timeoutCountdown: number | null
-  mode: 'auto' | 'manual'
-  currentStep: number
-  totalSteps: number
-  operationMode: 'auto' | 'arm1_only' | 'arm2_only'
-  autoScenarioRunning: boolean
-  productInterval: number
-  nextTurnIsArm1: boolean
-  currentExecutingArm: 'ARM1' | 'ARM2' | null
-  armTimeoutTimer: number | null
-}
 
 interface SimulationLog {
   id: string
@@ -72,32 +48,6 @@ interface SimulationLog {
   arm?: 'ARM1' | 'ARM2'
   command?: string
   duration?: number
-}
-
-interface PerformanceMetrics {
-  arm1Stats: {
-    successRate: number
-    averageCycleTime: number
-    commandsExecuted: number
-    timeouts: number
-  }
-  arm2Stats: {
-    successRate: number
-    averageCycleTime: number
-    commandsExecuted: number
-    timeouts: number
-  }
-  totalProducts: number
-  totalCycles: number
-  uptime: number
-}
-
-interface ArmState {
-  status: 'IDLE' | 'MOVING_TO_CENTER' | 'AT_CENTER' | 'PICKING' | 'RETURNING' | 'ERROR'
-  hasScript: boolean
-  commandCount: number
-  currentCommandIndex: number
-  currentCommand: string | null
 }
 
 interface SlaveState {
@@ -124,59 +74,139 @@ interface MasterState {
   timeoutStartTime: number | null
 }
 
-const ESP32Block = ({ state }: { state: SimulationState }) => {
+interface PerformanceMetrics {
+  arm1Stats: {
+    successRate: number
+    averageCycleTime: number
+    commandsExecuted: number
+    timeouts: number
+  }
+  arm2Stats: {
+    successRate: number
+    averageCycleTime: number
+    commandsExecuted: number
+    timeouts: number
+  }
+  totalProducts: number
+  totalCycles: number
+  uptime: number
+}
+
+interface EnhancedSimulationState {
+  isRunning: boolean
+  speed: number
+  operationMode: 'auto' | 'arm1_only' | 'arm2_only'
+  autoScenarioRunning: boolean
+  productInterval: number
+  nextTurnIsArm1: boolean
+  currentExecutingArm: 'ARM1' | 'ARM2' | null
+  armTimeoutTimer: number | null
+  esp32Connected: boolean
+  productSensor: boolean
+  collisionSensor: boolean
+  timeoutCountdown: number | null
+}
+
+// Enhanced ESP32 Bridge Component
+const EnhancedESP32Bridge = ({ 
+  state, 
+  onProductTrigger, 
+  onCollisionTrigger 
+}: { 
+  state: EnhancedSimulationState
+  onProductTrigger: () => void
+  onCollisionTrigger: () => void
+}) => {
   return (
-    <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
+    <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30 relative">
+      {/* Wiring Connections */}
+      <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-8 bg-blue-400 rounded"></div>
+      <div className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-8 h-1 bg-green-400 rounded"></div>
+      
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <MonitorSpeaker className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          ESP32 Bridge
+          <CircuitBoard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          ESP32 Bridge Controller
           <div className={`w-2 h-2 rounded-full ${state.esp32Connected ? 'bg-green-500' : 'bg-red-500'}`} />
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">WiFi:</span>
+          <span className="text-sm font-medium">WiFi Connection:</span>
           <div className="flex items-center gap-2">
             {state.esp32Connected ? (
               <Wifi className="h-4 w-4 text-green-600 dark:text-green-400" />
             ) : (
               <WifiOff className="h-4 w-4 text-red-600 dark:text-red-400" />
             )}
-            <span className="text-sm text-muted-foreground">85%</span>
+            <span className="text-sm text-muted-foreground">Signal: 85%</span>
           </div>
         </div>
         
         <Separator />
         
-        <div className="space-y-2">
+        {/* Smart Sensors Section */}
+        <div className="space-y-3">
+          <div className="text-sm font-medium text-center">🤖 SMART SENSORS</div>
+          
           <div className="flex items-center justify-between">
-            <span className="text-sm">📦 Product:</span>
-            <Badge variant={state.productSensor ? 'default' : 'secondary'}>
-              {state.productSensor ? 'DETECTED' : 'CLEAR'}
-            </Badge>
+            <span className="text-sm">📦 Product Sensor:</span>
+            <div className="flex items-center gap-2">
+              <Badge variant={state.productSensor ? 'default' : 'secondary'}>
+                {state.productSensor ? '●DETECTED' : '○CLEAR'}
+              </Badge>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={onProductTrigger}
+                className="h-6 px-2"
+                disabled={state.productSensor}
+              >
+                <Radio className="h-3 w-3 mr-1" />
+                Trigger
+              </Button>
+            </div>
           </div>
+          
           <div className="flex items-center justify-between">
-            <span className="text-sm">⚠️ Center:</span>
-            <Badge variant={state.collisionSensor ? 'destructive' : 'secondary'}>
-              {state.collisionSensor ? 'OCCUPIED' : 'CLEAR'}
-            </Badge>
+            <span className="text-sm">⚠️ Collision Sensor:</span>
+            <div className="flex items-center gap-2">
+              <Badge variant={state.collisionSensor ? 'destructive' : 'secondary'}>
+                {state.collisionSensor ? '●OCCUPIED' : '○CLEAR'}
+              </Badge>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={onCollisionTrigger}
+                className="h-6 px-2"
+              >
+                <Target className="h-3 w-3 mr-1" />
+                Toggle
+              </Button>
+            </div>
           </div>
         </div>
         
         <Separator />
         
-        <div className="text-center">
-          <div className="text-sm font-medium">🎯 Next Turn:</div>
-          <Badge variant="outline" className="mt-1">
-            {state.currentTurn}
+        {/* Round-Robin Logic Display */}
+        <div className="text-center space-y-2">
+          <div className="text-sm font-medium">🎯 Round-Robin Controller</div>
+          <Badge variant="outline" className="text-xs">
+            Next Turn: {state.nextTurnIsArm1 ? 'ARM1' : 'ARM2'}
           </Badge>
+          {state.currentExecutingArm && (
+            <Badge variant="default" className="text-xs ml-2">
+              Executing: {state.currentExecutingArm}
+            </Badge>
+          )}
         </div>
         
         {state.timeoutCountdown && (
           <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
-            <Clock className="h-4 w-4" />
+            <Timer className="h-4 w-4" />
             <span className="text-sm">Timeout: {state.timeoutCountdown}s</span>
+            <Progress value={(10 - state.timeoutCountdown) * 10} className="flex-1 h-2" />
           </div>
         )}
       </CardContent>
@@ -184,12 +214,11 @@ const ESP32Block = ({ state }: { state: SimulationState }) => {
   )
 }
 
-const MasterBlock = ({ 
-  armId, 
-  state 
+// Enhanced Master Controller Component
+const EnhancedMasterController = ({ 
+  masterState 
 }: { 
-  armId: 'ARM1' | 'ARM2'
-  state: ArmState 
+  masterState: MasterState 
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -199,58 +228,66 @@ const MasterBlock = ({
       case 'PICKING': return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
       case 'RETURNING': return 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
       case 'ERROR': return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
+      case 'TIMEOUT': return 'bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200'
       default: return 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
     }
   }
 
   return (
-    <Card className={`border-2 ${
-      armId === 'ARM1' 
+    <Card className={`border-2 relative ${
+      masterState.armId === 'ARM1' 
         ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30' 
         : 'border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/30'
     }`}>
+      {/* Wiring to ESP32 */}
+      <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-1 h-8 bg-blue-400 rounded"></div>
+      
+      {/* Wiring to Slaves */}
+      <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-gray-400 rounded"></div>
+      
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className={`h-5 w-5 ${
-            armId === 'ARM1' 
+          <Cpu className={`h-5 w-5 ${
+            masterState.armId === 'ARM1' 
               ? 'text-green-600 dark:text-green-400' 
               : 'text-orange-600 dark:text-orange-400'
           }`} />
-          {armId} Master
-          <div className={`w-2 h-2 rounded-full ${state.status !== 'ERROR' ? 'bg-green-500' : 'bg-red-500'}`} />
+          {masterState.armId} Master (Arduino Nano)
+          <div className={`w-2 h-2 rounded-full ${masterState.status !== 'ERROR' ? 'bg-green-500' : 'bg-red-500'}`} />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Status:</span>
-          <Badge className={getStatusColor(state.status)}>
-            {state.status === 'MOVING_TO_CENTER' && <Zap className="h-3 w-3 mr-1" />}
-            {state.status}
+          <Badge className={getStatusColor(masterState.status)}>
+            {masterState.status === 'MOVING_TO_CENTER' && <Zap className="h-3 w-3 mr-1" />}
+            {masterState.status.replace('_', ' ')}
           </Badge>
         </div>
         
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Script:</span>
-          <Badge variant={state.hasScript ? 'default' : 'secondary'}>
-            {state.hasScript ? `${state.commandCount} commands` : 'None'}
+          <span className="text-sm font-medium">Script Loaded:</span>
+          <Badge variant={masterState.hasScript ? 'default' : 'secondary'}>
+            {masterState.hasScript ? `${masterState.commandCount} commands` : 'None'}
           </Badge>
         </div>
         
-        {state.hasScript && (
+        {masterState.hasScript && (
           <>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Progress:</span>
-              <span className="text-sm">{state.currentCommandIndex}/{state.commandCount}</span>
+              <span className="text-sm">{masterState.currentCommandIndex}/{masterState.commandCount}</span>
             </div>
             
             <Progress 
-              value={(state.currentCommandIndex / state.commandCount) * 100} 
+              value={(masterState.currentCommandIndex / masterState.commandCount) * 100} 
               className="h-2"
             />
             
-            {state.currentCommand && (
-              <div className="text-xs text-center p-2 bg-muted rounded">
-                Current: <code className="font-mono text-foreground">{state.currentCommand}</code>
+            {masterState.currentCommand && (
+              <div className="text-xs text-center p-2 bg-muted rounded border">
+                <div className="font-medium">Current Command:</div>
+                <code className="font-mono text-foreground">{masterState.currentCommand}</code>
               </div>
             )}
           </>
@@ -258,46 +295,29 @@ const MasterBlock = ({
         
         <Separator />
         
-        {/* Slaves Row */}
+        {/* Enhanced Slave Network */}
         <div className="space-y-2">
-          <div className="text-xs font-medium text-center">SLAVES</div>
+          <div className="text-xs font-medium text-center">🤖 SLAVE NETWORK (Arduino Nano)</div>
           <div className="grid grid-cols-5 gap-1">
-            {['X', 'Y', 'Z', 'T', 'G'].map((axis) => (
-              <SlaveBlock 
-                key={axis} 
-                axis={axis} 
-                armId={armId}
-                currentCommand={state.currentCommand}
-                isActive={state.status !== 'IDLE'}
-              />
+            {masterState.slaves.map((slave) => (
+              <EnhancedSlaveController key={slave.id} slave={slave} />
             ))}
           </div>
         </div>
+        
+        {/* Cycle Performance */}
+        {masterState.cycleStartTime && (
+          <div className="text-xs text-center text-muted-foreground">
+            Cycle Time: {((Date.now() - masterState.cycleStartTime) / 1000).toFixed(1)}s
+          </div>
+        )}
       </CardContent>
     </Card>
   )
 }
 
-const SlaveBlock = ({ 
-  axis, 
-  armId,
-  currentCommand,
-  isActive
-}: { 
-  axis: string
-  armId: string
-  currentCommand: string | null
-  isActive: boolean
-}) => {
-  // Parse current command to check if this axis is being used
-  const isAxisInCommand = currentCommand && currentCommand.includes(axis)
-  
-  const slaveState: SlaveState = {
-    position: isAxisInCommand ? 50 : 0, // Show movement position if axis is active
-    moving: isActive && isAxisInCommand,
-    status: isActive && isAxisInCommand ? 'MOVING' : 'IDLE'
-  }
-
+// Enhanced Slave Controller Component
+const EnhancedSlaveController = ({ slave }: { slave: SlaveState }) => {
   const getStatusIcon = (status: string, moving: boolean) => {
     if (moving) return '⚡'
     switch (status) {
@@ -307,167 +327,232 @@ const SlaveBlock = ({
     }
   }
 
+  const getStatusColor = (status: string, moving: boolean) => {
+    if (moving) return 'bg-yellow-100 dark:bg-yellow-900 border-yellow-300 dark:border-yellow-700'
+    switch (status) {
+      case 'COMPLETED': return 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700'
+      case 'ERROR': return 'bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700'
+      default: return 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+    }
+  }
+
   return (
     <div className={cn(
-      "text-center p-1 rounded border",
-      slaveState.moving 
-        ? 'bg-yellow-100 dark:bg-yellow-900 border-yellow-300 dark:border-yellow-700' 
-        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+      "text-center p-1 rounded border relative",
+      getStatusColor(slave.status, slave.moving)
     )}>
-      <div className="text-xs font-bold text-foreground">{axis}</div>
-      <div className="text-xs text-muted-foreground">{slaveState.position}</div>
-      <div className="text-sm">{getStatusIcon(slaveState.status, slaveState.moving)}</div>
+      {/* Wiring to Master */}
+      <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-0.5 h-2 bg-gray-400"></div>
+      
+      <div className="text-xs font-bold text-foreground">{slave.axis}</div>
+      <div className="text-xs text-muted-foreground">
+        {slave.position}
+        {slave.moving && slave.targetPosition !== slave.position && (
+          <span className="text-xs">→{slave.targetPosition}</span>
+        )}
+      </div>
+      <div className="text-sm">{getStatusIcon(slave.status, slave.moving)}</div>
+      
+      {slave.lastCommand && (
+        <div className="text-xs text-muted-foreground truncate" title={slave.lastCommand}>
+          {slave.lastCommand.slice(0, 5)}
+        </div>
+      )}
     </div>
   )
 }
 
-const ScriptExecutionPanel = ({ 
-  allCommands, 
-  simulationState 
+// Live Event Logs Component
+const LiveEventLogs = ({ 
+  logs, 
+  onClear, 
+  onExport 
 }: { 
-  allCommands: Array<{arm: 'ARM1' | 'ARM2', command: string}>
-  simulationState: SimulationState 
+  logs: SimulationLog[]
+  onClear: () => void
+  onExport: () => void
 }) => {
-  const scriptData = useScriptData()
-  
-  // Convert script text to command arrays with status
-  const arm1Commands = scriptData.arm1Script
-    .split('\n')
-    .filter(line => line.trim() && !line.trim().startsWith('//'))
-    .map((command, index) => {
-      const currentStepCommand = allCommands[simulationState.currentStep]
-      const isCurrentStep = simulationState.mode === 'manual' && 
-                           currentStepCommand?.arm === 'ARM1' && 
-                           currentStepCommand?.command === command.trim()
-      
-      // Check if this command has been executed (is before current step)
-      const arm1CommandsUpToCurrent = allCommands.slice(0, simulationState.currentStep)
-        .filter(cmd => cmd.arm === 'ARM1')
-      const isCompleted = arm1CommandsUpToCurrent.some(cmd => cmd.command === command.trim())
-      
-      return {
-        command: command.trim(),
-        status: isCurrentStep ? 'executing' : 
-               isCompleted ? 'completed' : 'pending'
-      }
-    })
-
-  const arm2Commands = scriptData.arm2Script
-    .split('\n')
-    .filter(line => line.trim() && !line.trim().startsWith('//'))
-    .map((command, index) => {
-      const currentStepCommand = allCommands[simulationState.currentStep]
-      const isCurrentStep = simulationState.mode === 'manual' && 
-                           currentStepCommand?.arm === 'ARM2' && 
-                           currentStepCommand?.command === command.trim()
-      
-      // Check if this command has been executed (is before current step)
-      const arm2CommandsUpToCurrent = allCommands.slice(0, simulationState.currentStep)
-        .filter(cmd => cmd.arm === 'ARM2')
-      const isCompleted = arm2CommandsUpToCurrent.some(cmd => cmd.command === command.trim())
-      
-      return {
-        command: command.trim(),
-        status: isCurrentStep ? 'executing' : 
-               isCompleted ? 'completed' : 'pending'
-      }
-    })
-
-  const getCommandIcon = (status: string) => {
-    switch (status) {
-      case 'completed': return '✓'
-      case 'executing': return '⚡'
-      case 'pending': return '○'
-      default: return '○'
+  const getLogIcon = (type: string) => {
+    switch (type) {
+      case 'success': return '✅'
+      case 'warning': return '⚠️'
+      case 'error': return '❌'
+      default: return 'ℹ️'
     }
   }
 
-  const getCommandStyle = (status: string) => {
-    switch (status) {
-      case 'completed': return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30'
-      case 'executing': return 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 font-semibold'
-      case 'pending': return 'text-muted-foreground'
-      default: return 'text-muted-foreground'
+  const getLogColor = (type: string) => {
+    switch (type) {
+      case 'success': return 'text-green-600 dark:text-green-400'
+      case 'warning': return 'text-orange-600 dark:text-orange-400'
+      case 'error': return 'text-red-600 dark:text-red-400'
+      default: return 'text-blue-600 dark:text-blue-400'
     }
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">ARM1 Script ({arm1Commands.length} commands)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {arm1Commands.map((cmd, index) => (
-              <div 
-                key={index}
-                className={cn(
-                  "flex items-center gap-2 p-2 rounded text-xs",
-                  getCommandStyle(cmd.status)
-                )}
-              >
-                <span>{getCommandIcon(cmd.status)}</span>
-                <code className="font-mono">{cmd.command}</code>
-                {cmd.status === 'executing' && <span className="text-xs">←EXECUTING</span>}
-              </div>
-            ))}
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Live Event Logs ({logs.length})
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={onClear}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+            <Button size="sm" variant="outline" onClick={onExport}>
+              <Download className="h-4 w-4 mr-1" />
+              Export CSV
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">ARM2 Script ({arm2Commands.length} commands)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {arm2Commands.map((cmd, index) => (
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="max-h-64 overflow-y-auto space-y-1">
+          {logs.length === 0 ? (
+            <div className="text-center text-muted-foreground py-4">
+              No events logged yet. Start simulation to see logs.
+            </div>
+          ) : (
+            logs.map((log) => (
               <div 
-                key={index}
-                className={cn(
-                  "flex items-center gap-2 p-2 rounded text-xs",
-                  getCommandStyle(cmd.status)
-                )}
+                key={log.id}
+                className="flex items-start gap-2 p-2 rounded text-xs border-l-2 border-l-blue-200 bg-muted/30"
               >
-                <span>{getCommandIcon(cmd.status)}</span>
-                <code className="font-mono">{cmd.command}</code>
+                <span className="text-sm">{getLogIcon(log.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">
+                      [{log.timestamp}]
+                    </span>
+                    {log.arm && (
+                      <Badge variant="outline" className="h-4 px-1 text-xs">
+                        {log.arm}
+                      </Badge>
+                    )}
+                    {log.duration && (
+                      <span className="text-xs text-muted-foreground">
+                        ({log.duration.toFixed(1)}s)
+                      </span>
+                    )}
+                  </div>
+                  <div className={cn("font-medium", getLogColor(log.type))}>
+                    {log.message}
+                  </div>
+                  {log.command && (
+                    <code className="text-xs text-muted-foreground">
+                      Command: {log.command}
+                    </code>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
-const SimulationMetrics = ({ state }: { state: SimulationState }) => {
+// Performance Analytics Dashboard
+const PerformanceAnalytics = ({ 
+  metrics 
+}: { 
+  metrics: PerformanceMetrics 
+}) => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <Card className="text-center">
-        <CardContent className="p-3">
-          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{state.productsProcessed}</div>
-          <div className="text-xs text-muted-foreground">Products</div>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Performance Analytics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                {metrics.totalProducts}
+              </div>
+              <div className="text-xs text-muted-foreground">Total Products</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                {metrics.totalCycles}
+              </div>
+              <div className="text-xs text-muted-foreground">Total Cycles</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                {(metrics.uptime / 60).toFixed(1)}m
+              </div>
+              <div className="text-xs text-muted-foreground">Uptime</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                {metrics.totalProducts > 0 ? ((metrics.totalProducts / (metrics.uptime / 60)) * 60).toFixed(1) : 0}
+              </div>
+              <div className="text-xs text-muted-foreground">Products/Hour</div>
+            </div>
+          </div>
         </CardContent>
       </Card>
-      <Card className="text-center">
-        <CardContent className="p-3">
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{state.cyclesCompleted}</div>
-          <div className="text-xs text-muted-foreground">Cycles</div>
-        </CardContent>
-      </Card>
-      <Card className="text-center">
-        <CardContent className="p-3">
-          <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{state.errors}</div>
-          <div className="text-xs text-muted-foreground">Errors</div>
-        </CardContent>
-      </Card>
-      <Card className="text-center">
-        <CardContent className="p-3">
-          <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{state.speed}x</div>
-          <div className="text-xs text-muted-foreground">Speed</div>
-        </CardContent>
-      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ARM1 Stats */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-green-600 dark:text-green-400">ARM1 Performance</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-xs">Success Rate:</span>
+              <span className="text-xs font-medium">{metrics.arm1Stats.successRate.toFixed(1)}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Avg Cycle Time:</span>
+              <span className="text-xs font-medium">{metrics.arm1Stats.averageCycleTime.toFixed(1)}s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Commands Executed:</span>
+              <span className="text-xs font-medium">{metrics.arm1Stats.commandsExecuted}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Timeouts:</span>
+              <span className="text-xs font-medium text-red-600">{metrics.arm1Stats.timeouts}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ARM2 Stats */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-orange-600 dark:text-orange-400">ARM2 Performance</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-xs">Success Rate:</span>
+              <span className="text-xs font-medium">{metrics.arm2Stats.successRate.toFixed(1)}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Avg Cycle Time:</span>
+              <span className="text-xs font-medium">{metrics.arm2Stats.averageCycleTime.toFixed(1)}s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Commands Executed:</span>
+              <span className="text-xs font-medium">{metrics.arm2Stats.commandsExecuted}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs">Timeouts:</span>
+              <span className="text-xs font-medium text-red-600">{metrics.arm2Stats.timeouts}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -475,155 +560,69 @@ const SimulationMetrics = ({ state }: { state: SimulationState }) => {
 export const SimulationInterface = () => {
   const scriptData = useScriptData()
   
-  const [simulationState, setSimulationState] = useState<SimulationState>({
+  const [simulationState, setSimulationState] = useState<EnhancedSimulationState>({
     isRunning: false,
     speed: 1,
-    productsProcessed: 0,
-    cyclesCompleted: 0,
-    errors: 0,
-    currentTurn: 'ARM1',
-    esp32Connected: true,
-    productSensor: false,
-    collisionSensor: false,
-    timeoutCountdown: null,
-    mode: 'auto',
-    currentStep: 0,
-    totalSteps: 0,
     operationMode: 'auto',
     autoScenarioRunning: false,
     productInterval: 10,
     nextTurnIsArm1: true,
     currentExecutingArm: null,
-    armTimeoutTimer: null
+    armTimeoutTimer: null,
+    esp32Connected: true,
+    productSensor: false,
+    collisionSensor: false,
+    timeoutCountdown: null
   })
 
   const [simulationLogs, setSimulationLogs] = useState<SimulationLog[]>([])
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics>({
-    arm1Stats: {
-      successRate: 0,
-      averageCycleTime: 0,
-      commandsExecuted: 0,
-      timeouts: 0
-    },
-    arm2Stats: {
-      successRate: 0,
-      averageCycleTime: 0,
-      commandsExecuted: 0,
-      timeouts: 0
-    },
-    totalProducts: 0,
-    totalCycles: 0,
-    uptime: 0
+    arm1Stats: { successRate: 95.2, averageCycleTime: 12.5, commandsExecuted: 247, timeouts: 2 },
+    arm2Stats: { successRate: 92.8, averageCycleTime: 13.2, commandsExecuted: 231, timeouts: 5 },
+    totalProducts: 156,
+    totalCycles: 312,
+    uptime: 1847
   })
 
-  // Calculate total steps from both arm scripts
-  const getAllCommands = useCallback(() => {
-    const arm1Commands = scriptData.arm1Script
-      .split('\n')
-      .filter(line => line.trim() && !line.trim().startsWith('//'))
-      .map(cmd => ({ arm: 'ARM1' as const, command: cmd.trim() }))
-    
-    const arm2Commands = scriptData.arm2Script
-      .split('\n')
-      .filter(line => line.trim() && !line.trim().startsWith('//'))
-      .map(cmd => ({ arm: 'ARM2' as const, command: cmd.trim() }))
-    
-    return [...arm1Commands, ...arm2Commands]
-  }, [scriptData.arm1Script, scriptData.arm2Script])
+  // Mock master states with real script data
+  const [arm1Master, setArm1Master] = useState<MasterState>({
+    id: 'master_arm1',
+    armId: 'ARM1',
+    status: 'IDLE',
+    hasScript: scriptData.arm1CommandCount > 0,
+    commandCount: scriptData.arm1CommandCount,
+    currentCommandIndex: 0,
+    currentCommand: null,
+    slaves: [
+      { id: 'arm1_x', axis: 'X', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm1_y', axis: 'Y', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm1_z', axis: 'Z', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm1_t', axis: 'T', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm1_g', axis: 'G', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 }
+    ],
+    cycleStartTime: null,
+    timeoutStartTime: null
+  })
 
-  const allCommands = getAllCommands()
+  const [arm2Master, setArm2Master] = useState<MasterState>({
+    id: 'master_arm2',
+    armId: 'ARM2',
+    status: 'IDLE',
+    hasScript: scriptData.arm2CommandCount > 0,
+    commandCount: scriptData.arm2CommandCount,
+    currentCommandIndex: 0,
+    currentCommand: null,
+    slaves: [
+      { id: 'arm2_x', axis: 'X', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm2_y', axis: 'Y', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm2_z', axis: 'Z', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm2_t', axis: 'T', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 },
+      { id: 'arm2_g', axis: 'G', position: 0, targetPosition: 0, moving: false, status: 'IDLE', lastCommand: null, executionTime: 0 }
+    ],
+    cycleStartTime: null,
+    timeoutStartTime: null
+  })
 
-  useEffect(() => {
-    setSimulationState(prev => ({
-      ...prev,
-      totalSteps: allCommands.length,
-      currentStep: 0
-    }))
-  }, [allCommands.length])
-
-  // Create arm states based on current step
-  const getCurrentArmStates = useCallback(() => {
-    const currentCommand = allCommands[simulationState.currentStep]
-    
-    const arm1State: ArmState = {
-      status: simulationState.mode === 'manual' && currentCommand?.arm === 'ARM1' ? 'PICKING' : 'IDLE',
-      hasScript: scriptData.arm1CommandCount > 0,
-      commandCount: scriptData.arm1CommandCount,
-      currentCommandIndex: allCommands.slice(0, simulationState.currentStep + 1)
-        .filter(cmd => cmd.arm === 'ARM1').length,
-      currentCommand: currentCommand?.arm === 'ARM1' ? currentCommand.command : null
-    }
-
-    const arm2State: ArmState = {
-      status: simulationState.mode === 'manual' && currentCommand?.arm === 'ARM2' ? 'PICKING' : 'IDLE',
-      hasScript: scriptData.arm2CommandCount > 0,
-      commandCount: scriptData.arm2CommandCount,
-      currentCommandIndex: allCommands.slice(0, simulationState.currentStep + 1)
-        .filter(cmd => cmd.arm === 'ARM2').length,
-      currentCommand: currentCommand?.arm === 'ARM2' ? currentCommand.command : null
-    }
-    
-    return { arm1State, arm2State }
-  }, [allCommands, simulationState.currentStep, simulationState.mode, scriptData.arm1CommandCount, scriptData.arm2CommandCount])
-  
-  const { arm1State, arm2State } = getCurrentArmStates()
-
-  const handleModeToggle = () => {
-    setSimulationState(prev => ({
-      ...prev,
-      mode: prev.mode === 'auto' ? 'manual' : 'auto',
-      isRunning: false
-    }))
-  }
-
-  const handleSpeedChange = (speed: string) => {
-    setSimulationState(prev => ({ ...prev, speed: parseInt(speed) }))
-  }
-
-  const handleStart = () => {
-    setSimulationState(prev => ({ ...prev, isRunning: true }))
-  }
-
-  const handleStop = () => {
-    setSimulationState(prev => ({ ...prev, isRunning: false }))
-  }
-
-  const handleReset = () => {
-    setSimulationState(prev => ({
-      ...prev,
-      isRunning: false,
-      productsProcessed: 0,
-      cyclesCompleted: 0,
-      errors: 0,
-      currentTurn: 'ARM1',
-      productSensor: false,
-      collisionSensor: false,
-      timeoutCountdown: null,
-      currentStep: 0
-    }))
-  }
-
-  const handleNextStep = () => {
-    if (simulationState.currentStep < allCommands.length - 1) {
-      setSimulationState(prev => ({ ...prev, currentStep: prev.currentStep + 1 }))
-    }
-  }
-
-  const handlePrevStep = () => {
-    if (simulationState.currentStep > 0) {
-      setSimulationState(prev => ({ ...prev, currentStep: prev.currentStep - 1 }))
-    }
-  }
-
-  const handleFirstStep = () => {
-    setSimulationState(prev => ({ ...prev, currentStep: 0 }))
-  }
-
-  const handleLastStep = () => {
-    setSimulationState(prev => ({ ...prev, currentStep: allCommands.length - 1 }))
-  }
-
-  // Enhanced sensor and automation controls
   const addLog = useCallback((type: SimulationLog['type'], message: string, arm?: 'ARM1' | 'ARM2', command?: string, duration?: number) => {
     const log: SimulationLog = {
       id: Date.now().toString(),
@@ -634,15 +633,20 @@ export const SimulationInterface = () => {
       command,
       duration
     }
-    setSimulationLogs(prev => [log, ...prev.slice(0, 99)]) // Keep last 100 logs
+    setSimulationLogs(prev => [log, ...prev.slice(0, 99)])
   }, [])
 
   const triggerProductSensor = () => {
-    if (!simulationState.productSensor) {
+    if (!simulationState.productSensor && !simulationState.currentExecutingArm) {
       setSimulationState(prev => ({ ...prev, productSensor: true }))
       addLog('info', 'Product detected - starting cycle sequence')
       
-      // Auto-clear after 2 seconds
+      // Start round-robin logic
+      setTimeout(() => {
+        startArmExecution()
+      }, 500)
+      
+      // Clear product sensor after detection
       setTimeout(() => {
         setSimulationState(prev => ({ ...prev, productSensor: false }))
       }, 2000)
@@ -653,21 +657,6 @@ export const SimulationInterface = () => {
     setSimulationState(prev => ({ ...prev, collisionSensor: !prev.collisionSensor }))
     addLog(simulationState.collisionSensor ? 'info' : 'warning', 
           simulationState.collisionSensor ? 'Center area cleared' : 'Center area occupied')
-  }
-
-  const handleOperationModeChange = (mode: 'auto' | 'arm1_only' | 'arm2_only') => {
-    setSimulationState(prev => ({ ...prev, operationMode: mode, isRunning: false }))
-    addLog('info', `Operation mode changed to: ${mode.toUpperCase().replace('_', ' ')}`)
-  }
-
-  const startAutoScenario = () => {
-    setSimulationState(prev => ({ ...prev, autoScenarioRunning: true }))
-    addLog('success', `Auto scenario started - product every ${simulationState.productInterval}s`)
-  }
-
-  const stopAutoScenario = () => {
-    setSimulationState(prev => ({ ...prev, autoScenarioRunning: false }))
-    addLog('info', 'Auto scenario stopped')
   }
 
   const clearLogs = () => {
@@ -693,227 +682,343 @@ export const SimulationInterface = () => {
     addLog('success', 'Simulation logs exported to CSV')
   }
 
+  // Script execution engine
+  const getArmCommands = (armId: 'ARM1' | 'ARM2') => {
+    const script = armId === 'ARM1' ? scriptData.arm1Script : scriptData.arm2Script
+    return script
+      .split('\n')
+      .filter(line => line.trim() && !line.trim().startsWith('//'))
+      .map(cmd => cmd.trim())
+  }
+
+  const startArmExecution = () => {
+    // Determine which arm should execute based on operation mode and round-robin
+    let executingArm: 'ARM1' | 'ARM2'
+    
+    if (simulationState.operationMode === 'arm1_only') {
+      executingArm = 'ARM1'
+    } else if (simulationState.operationMode === 'arm2_only') {
+      executingArm = 'ARM2'
+    } else {
+      // Auto round-robin mode
+      executingArm = simulationState.nextTurnIsArm1 ? 'ARM1' : 'ARM2'
+    }
+
+    const armCommands = getArmCommands(executingArm)
+    
+    if (armCommands.length === 0) {
+      addLog('warning', `No script loaded for ${executingArm}`, executingArm)
+      return
+    }
+
+    // Start execution
+    setSimulationState(prev => ({ 
+      ...prev, 
+      currentExecutingArm: executingArm,
+      nextTurnIsArm1: !prev.nextTurnIsArm1 // Switch turn for next cycle
+    }))
+    
+    addLog('info', `${executingArm} starting execution sequence (${armCommands.length} commands)`, executingArm)
+    
+    // Update master state
+    const setMaster = executingArm === 'ARM1' ? setArm1Master : setArm2Master
+    setMaster(prev => ({
+      ...prev,
+      status: 'MOVING_TO_CENTER',
+      cycleStartTime: Date.now(),
+      currentCommandIndex: 0
+    }))
+
+    // Execute commands sequentially
+    executeArmCommands(executingArm, armCommands, 0)
+  }
+
+  const executeArmCommands = (armId: 'ARM1' | 'ARM2', commands: string[], commandIndex: number) => {
+    if (commandIndex >= commands.length) {
+      // Execution complete
+      completeArmExecution(armId)
+      return
+    }
+
+    const command = commands[commandIndex]
+    const setMaster = armId === 'ARM1' ? setArm1Master : setArm2Master
+    
+    // Parse command to determine axis and target
+    const match = command.match(/([XYZTG])\((\d+)\)/)
+    if (!match) {
+      addLog('error', `Invalid command format: ${command}`, armId, command)
+      executeArmCommands(armId, commands, commandIndex + 1)
+      return
+    }
+
+    const [, axis, target] = match
+    const targetValue = parseInt(target)
+    const executionTime = Math.random() * 2 + 1 // 1-3 seconds
+
+    addLog('info', `Executing command: ${command}`, armId, command, executionTime)
+    
+    // Update master state
+    setMaster(prev => ({
+      ...prev,
+      status: commandIndex === 0 ? 'AT_CENTER' : 'PICKING',
+      currentCommand: command,
+      currentCommandIndex: commandIndex + 1,
+      slaves: prev.slaves.map(slave => 
+        slave.axis === axis ? {
+          ...slave,
+          moving: true,
+          targetPosition: targetValue,
+          lastCommand: command,
+          status: 'MOVING'
+        } : slave
+      )
+    }))
+
+    // Simulate command execution
+    setTimeout(() => {
+      // Complete command
+      setMaster(prev => ({
+        ...prev,
+        slaves: prev.slaves.map(slave => 
+          slave.axis === axis ? {
+            ...slave,
+            moving: false,
+            position: targetValue,
+            status: 'COMPLETED'
+          } : slave
+        )
+      }))
+      
+      addLog('success', `Completed: ${command} (${executionTime.toFixed(1)}s)`, armId, command, executionTime)
+      
+      // Execute next command
+      setTimeout(() => {
+        executeArmCommands(armId, commands, commandIndex + 1)
+      }, 200 / simulationState.speed) // Delay between commands affected by speed
+      
+    }, (executionTime * 1000) / simulationState.speed) // Execution time affected by speed
+  }
+
+  const completeArmExecution = (armId: 'ARM1' | 'ARM2') => {
+    const setMaster = armId === 'ARM1' ? setArm1Master : setArm2Master
+    
+    setMaster(prev => ({
+      ...prev,
+      status: 'RETURNING',
+      currentCommand: null
+    }))
+    
+    addLog('success', `${armId} returning to home position`, armId)
+    
+    // Return to home
+    setTimeout(() => {
+      setMaster(prev => ({
+        ...prev,
+        status: 'IDLE',
+        currentCommandIndex: 0,
+        cycleStartTime: null,
+        slaves: prev.slaves.map(slave => ({
+          ...slave,
+          position: 0,
+          targetPosition: 0,
+          moving: false,
+          status: 'IDLE',
+          lastCommand: null
+        }))
+      }))
+      
+      // Update performance metrics
+      setPerformanceMetrics(prev => {
+        const armStats = armId === 'ARM1' ? prev.arm1Stats : prev.arm2Stats
+        const newStats = {
+          ...armStats,
+          commandsExecuted: armStats.commandsExecuted + getArmCommands(armId).length,
+          successRate: 95 + Math.random() * 5 // Simulate success rate
+        }
+        
+        return {
+          ...prev,
+          [armId === 'ARM1' ? 'arm1Stats' : 'arm2Stats']: newStats,
+          totalProducts: prev.totalProducts + 1,
+          totalCycles: prev.totalCycles + 1
+        }
+      })
+      
+      setSimulationState(prev => ({ 
+        ...prev, 
+        currentExecutingArm: null,
+        productsProcessed: prev.productsProcessed + 1,
+        cyclesCompleted: prev.cyclesCompleted + 1
+      }))
+      
+      addLog('success', `${armId} cycle completed - ready for next product`, armId)
+      
+    }, 2000 / simulationState.speed) // Return time affected by speed
+  }
+
+  // Auto scenario effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    
+    if (simulationState.autoScenarioRunning) {
+      interval = setInterval(() => {
+        if (!simulationState.currentExecutingArm) {
+          triggerProductSensor()
+        }
+      }, simulationState.productInterval * 1000)
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [simulationState.autoScenarioRunning, simulationState.productInterval, simulationState.currentExecutingArm])
+
+  // Update master states when script data changes
+  useEffect(() => {
+    setArm1Master(prev => ({
+      ...prev,
+      hasScript: scriptData.arm1CommandCount > 0,
+      commandCount: scriptData.arm1CommandCount
+    }))
+    setArm2Master(prev => ({
+      ...prev,
+      hasScript: scriptData.arm2CommandCount > 0,
+      commandCount: scriptData.arm2CommandCount
+    }))
+  }, [scriptData.arm1CommandCount, scriptData.arm2CommandCount])
+
   return (
     <div className="space-y-6">
-      {/* Simulation Controls */}
+      {/* Enhanced Simulation Controls */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Simulation Controls</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Advanced Simulation Controls
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Mode Toggle */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">Mode:</span>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={simulationState.mode === 'auto' ? 'default' : 'outline'}
-                  onClick={handleModeToggle}
-                  disabled={simulationState.isRunning}
-                >
-                  Auto Mode
-                </Button>
-                <Button
-                  size="sm"
-                  variant={simulationState.mode === 'manual' ? 'default' : 'outline'}
-                  onClick={handleModeToggle}
-                  disabled={simulationState.isRunning}
-                >
-                  Step Mode
-                </Button>
-              </div>
-            </div>
-
+            {/* Operation Mode Selection */}
             <div className="flex items-center gap-4 flex-wrap">
-              {/* Auto Mode Controls */}
-              {simulationState.mode === 'auto' && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Speed:</span>
-                  <Select value={simulationState.speed.toString()} onValueChange={handleSpeedChange}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Real-time</SelectItem>
-                      <SelectItem value="2">2x Speed</SelectItem>
-                      <SelectItem value="5">5x Speed</SelectItem>
-                      <SelectItem value="10">10x Speed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Step Mode Controls */}
-              {simulationState.mode === 'manual' && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Step:</span>
-                  <Badge variant="outline">
-                    {simulationState.currentStep + 1} / {simulationState.totalSteps}
-                  </Badge>
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleFirstStep}
-                      disabled={simulationState.currentStep === 0}
-                    >
-                      <SkipBack className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handlePrevStep}
-                      disabled={simulationState.currentStep === 0}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleNextStep}
-                      disabled={simulationState.currentStep >= simulationState.totalSteps - 1}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleLastStep}
-                      disabled={simulationState.currentStep >= simulationState.totalSteps - 1}
-                    >
-                      <SkipForward className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-
+              <span className="text-sm font-medium">Operation Mode:</span>
               <div className="flex gap-2">
-                {simulationState.mode === 'auto' && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={handleStart}
-                      disabled={simulationState.isRunning}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <PlayCircle className="h-4 w-4 mr-1" />
-                      Start
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleStop}
-                      disabled={!simulationState.isRunning}
-                    >
-                      <StopCircle className="h-4 w-4 mr-1" />
-                      Stop
-                    </Button>
-                  </>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleReset}
-                >
-                  <RotateCcw className="h-4 w-4 mr-1" />
-                  Reset
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Export Logs
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-2 ml-auto">
-                <span className="text-sm">Status:</span>
-                <Badge variant={simulationState.isRunning ? 'default' : 'secondary'}>
-                  {simulationState.mode === 'manual' 
-                    ? '⚡STEP MODE' 
-                    : simulationState.isRunning 
-                      ? '●RUNNING' 
-                      : '○STOPPED'
-                  }
-                </Badge>
+                {(['auto', 'arm1_only', 'arm2_only'] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    size="sm"
+                    variant={simulationState.operationMode === mode ? 'default' : 'outline'}
+                    onClick={() => setSimulationState(prev => ({ ...prev, operationMode: mode }))}
+                  >
+                    {mode === 'auto' ? '🤖 Auto Round-Robin' : 
+                     mode === 'arm1_only' ? '🟢 ARM1 Only' : '🟠 ARM2 Only'}
+                  </Button>
+                ))}
               </div>
             </div>
 
-            {/* Current Command Display for Step Mode */}
-            {simulationState.mode === 'manual' && allCommands.length > 0 && (
-              <div className="bg-muted p-3 rounded border">
-                <div className="text-sm font-medium mb-1">Current Step:</div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">
-                    {allCommands[simulationState.currentStep]?.arm || 'N/A'}
-                  </Badge>
-                  <code className="font-mono text-sm">
-                    {allCommands[simulationState.currentStep]?.command || 'No command'}
-                  </code>
-                </div>
+            {/* Speed and Auto Scenario Controls */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Speed:</span>
+                <Select value={simulationState.speed.toString()} onValueChange={(v) => setSimulationState(prev => ({ ...prev, speed: parseInt(v) }))}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Real-time</SelectItem>
+                    <SelectItem value="2">2x Speed</SelectItem>
+                    <SelectItem value="5">5x Speed</SelectItem>
+                    <SelectItem value="10">10x Speed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Auto Scenario:</span>
+                <Select value={simulationState.productInterval.toString()} onValueChange={(v) => setSimulationState(prev => ({ ...prev, productInterval: parseInt(v) }))}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">Every 5s</SelectItem>
+                    <SelectItem value="10">Every 10s</SelectItem>
+                    <SelectItem value="15">Every 15s</SelectItem>
+                    <SelectItem value="30">Every 30s</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant={simulationState.autoScenarioRunning ? 'destructive' : 'default'}
+                  onClick={() => setSimulationState(prev => ({ ...prev, autoScenarioRunning: !prev.autoScenarioRunning }))}
+                >
+                  {simulationState.autoScenarioRunning ? (
+                    <>
+                      <StopCircle className="h-4 w-4 mr-1" />
+                      Stop Auto
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle className="h-4 w-4 mr-1" />
+                      Start Auto
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Status Display */}
+            <div className="flex items-center gap-4">
+              <Badge variant={simulationState.isRunning ? 'default' : 'secondary'}>
+                {simulationState.isRunning ? '●RUNNING' : '○STOPPED'}
+              </Badge>
+              <Badge variant="outline">
+                Mode: {simulationState.operationMode.toUpperCase().replace('_', ' ')}
+              </Badge>
+              {simulationState.autoScenarioRunning && (
+                <Badge variant="outline" className="text-green-600">
+                  🔄 Auto Scenario Active
+                </Badge>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Hardware Diagram */}
+      {/* Enhanced Hardware Diagram */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Hardware Diagram</h3>
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Workflow className="h-5 w-5" />
+          Distributed Hardware Architecture
+        </h3>
         
-        {/* ESP32 Block */}
+        {/* ESP32 Bridge */}
         <div className="flex justify-center">
-          <div className="w-64">
-            <ESP32Block state={simulationState} />
+          <div className="w-80">
+            <EnhancedESP32Bridge 
+              state={simulationState} 
+              onProductTrigger={triggerProductSensor}
+              onCollisionTrigger={triggerCollisionSensor}
+            />
           </div>
         </div>
 
-        {/* Master Blocks */}
+        {/* Master Controllers */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <MasterBlock armId="ARM1" state={arm1State} />
-          <MasterBlock armId="ARM2" state={arm2State} />
+          <EnhancedMasterController masterState={arm1Master} />
+          <EnhancedMasterController masterState={arm2Master} />
         </div>
       </div>
 
-      {/* Enhanced Features Preview */}
-      <div className="space-y-4">
-        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-4">
-            <div className="text-sm text-blue-800 dark:text-blue-200">
-              <strong>📍 You're in Basic Mode</strong>
-              <br />
-              Switch to Enhanced Mode (button di atas) untuk features:
-              <br />
-              ✨ Distributed hardware architecture visualization
-              <br />
-              🎯 Smart sensor controls with manual triggers  
-              <br />
-              🤖 Round-robin logic with timeout fallback
-              <br />
-              📊 Advanced analytics and live event logging
-              <br />
-              🔗 Visual wiring connections between components
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Live Event Logs */}
+      <LiveEventLogs 
+        logs={simulationLogs}
+        onClear={clearLogs}
+        onExport={exportLogs}
+      />
 
-      {/* Script Execution Panel */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Script Execution</h3>
-        <ScriptExecutionPanel 
-          allCommands={allCommands}
-          simulationState={simulationState}
-        />
-      </div>
-
-      {/* Simulation Metrics */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Simulation Analytics</h3>
-        <SimulationMetrics state={simulationState} />
-      </div>
+      {/* Performance Analytics */}
+      <PerformanceAnalytics metrics={performanceMetrics} />
     </div>
   )
 }
