@@ -21,9 +21,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   Settings,
-  MonitorSpeaker
+  MonitorSpeaker,
+  ChevronRight,
+  ChevronLeft,
+  SkipForward,
+  SkipBack
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useScriptData } from '@/hooks/useScriptData'
 
 interface SimulationState {
   isRunning: boolean
@@ -36,6 +41,9 @@ interface SimulationState {
   productSensor: boolean
   collisionSensor: boolean
   timeoutCountdown: number | null
+  mode: 'auto' | 'manual'
+  currentStep: number
+  totalSteps: number
 }
 
 interface ArmState {
@@ -191,7 +199,13 @@ const MasterBlock = ({
           <div className="text-xs font-medium text-center">SLAVES</div>
           <div className="grid grid-cols-5 gap-1">
             {['X', 'Y', 'Z', 'T', 'G'].map((axis) => (
-              <SlaveBlock key={axis} axis={axis} armId={armId} />
+              <SlaveBlock 
+                key={axis} 
+                axis={axis} 
+                armId={armId}
+                currentCommand={state.currentCommand}
+                isActive={state.status !== 'IDLE'}
+              />
             ))}
           </div>
         </div>
@@ -202,16 +216,22 @@ const MasterBlock = ({
 
 const SlaveBlock = ({ 
   axis, 
-  armId 
+  armId,
+  currentCommand,
+  isActive
 }: { 
   axis: string
-  armId: string 
+  armId: string
+  currentCommand: string | null
+  isActive: boolean
 }) => {
-  // Mock slave state - in real implementation, this would come from simulation state
-  const mockState: SlaveState = {
-    position: axis === 'X' ? 100 : 0,
-    moving: axis === 'X' && armId === 'ARM1',
-    status: axis === 'X' && armId === 'ARM1' ? 'MOVING' : 'IDLE'
+  // Parse current command to check if this axis is being used
+  const isAxisInCommand = currentCommand && currentCommand.includes(axis)
+  
+  const slaveState: SlaveState = {
+    position: isAxisInCommand ? 50 : 0, // Show movement position if axis is active
+    moving: isActive && isAxisInCommand,
+    status: isActive && isAxisInCommand ? 'MOVING' : 'IDLE'
   }
 
   const getStatusIcon = (status: string, moving: boolean) => {
@@ -226,33 +246,68 @@ const SlaveBlock = ({
   return (
     <div className={cn(
       "text-center p-1 rounded border",
-      mockState.moving 
+      slaveState.moving 
         ? 'bg-yellow-100 dark:bg-yellow-900 border-yellow-300 dark:border-yellow-700' 
         : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
     )}>
       <div className="text-xs font-bold text-foreground">{axis}</div>
-      <div className="text-xs text-muted-foreground">{mockState.position}</div>
-      <div className="text-sm">{getStatusIcon(mockState.status, mockState.moving)}</div>
+      <div className="text-xs text-muted-foreground">{slaveState.position}</div>
+      <div className="text-sm">{getStatusIcon(slaveState.status, slaveState.moving)}</div>
     </div>
   )
 }
 
-const ScriptExecutionPanel = () => {
-  // Mock script data - in real implementation, this would come from actual MSL scripts
-  const arm1Commands = [
-    { command: 'X(100);', status: 'completed' },
-    { command: 'Y(50);', status: 'executing' },
-    { command: 'Z(10);', status: 'pending' },
-    { command: 'G(1);', status: 'pending' },
-    { command: 'Z(50);', status: 'pending' }
-  ]
+const ScriptExecutionPanel = ({ 
+  allCommands, 
+  simulationState 
+}: { 
+  allCommands: Array<{arm: 'ARM1' | 'ARM2', command: string}>
+  simulationState: SimulationState 
+}) => {
+  const scriptData = useScriptData()
+  
+  // Convert script text to command arrays with status
+  const arm1Commands = scriptData.arm1Script
+    .split('\n')
+    .filter(line => line.trim() && !line.trim().startsWith('//'))
+    .map((command, index) => {
+      const currentStepCommand = allCommands[simulationState.currentStep]
+      const isCurrentStep = simulationState.mode === 'manual' && 
+                           currentStepCommand?.arm === 'ARM1' && 
+                           currentStepCommand?.command === command.trim()
+      
+      // Check if this command has been executed (is before current step)
+      const arm1CommandsUpToCurrent = allCommands.slice(0, simulationState.currentStep)
+        .filter(cmd => cmd.arm === 'ARM1')
+      const isCompleted = arm1CommandsUpToCurrent.some(cmd => cmd.command === command.trim())
+      
+      return {
+        command: command.trim(),
+        status: isCurrentStep ? 'executing' : 
+               isCompleted ? 'completed' : 'pending'
+      }
+    })
 
-  const arm2Commands = [
-    { command: 'X(150);', status: 'pending' },
-    { command: 'Y(75);', status: 'pending' },
-    { command: 'Z(5);', status: 'pending' },
-    { command: 'G(0);', status: 'pending' }
-  ]
+  const arm2Commands = scriptData.arm2Script
+    .split('\n')
+    .filter(line => line.trim() && !line.trim().startsWith('//'))
+    .map((command, index) => {
+      const currentStepCommand = allCommands[simulationState.currentStep]
+      const isCurrentStep = simulationState.mode === 'manual' && 
+                           currentStepCommand?.arm === 'ARM2' && 
+                           currentStepCommand?.command === command.trim()
+      
+      // Check if this command has been executed (is before current step)
+      const arm2CommandsUpToCurrent = allCommands.slice(0, simulationState.currentStep)
+        .filter(cmd => cmd.arm === 'ARM2')
+      const isCompleted = arm2CommandsUpToCurrent.some(cmd => cmd.command === command.trim())
+      
+      return {
+        command: command.trim(),
+        status: isCurrentStep ? 'executing' : 
+               isCompleted ? 'completed' : 'pending'
+      }
+    })
 
   const getCommandIcon = (status: string) => {
     switch (status) {
@@ -354,6 +409,8 @@ const SimulationMetrics = ({ state }: { state: SimulationState }) => {
 }
 
 export const SimulationInterface = () => {
+  const scriptData = useScriptData()
+  
   const [simulationState, setSimulationState] = useState<SimulationState>({
     isRunning: false,
     speed: 1,
@@ -364,24 +421,71 @@ export const SimulationInterface = () => {
     esp32Connected: true,
     productSensor: true,
     collisionSensor: false,
-    timeoutCountdown: null
+    timeoutCountdown: null,
+    mode: 'auto',
+    currentStep: 0,
+    totalSteps: 0
   })
 
-  const [arm1State] = useState<ArmState>({
-    status: 'IDLE',
-    hasScript: true,
-    commandCount: 12,
-    currentCommandIndex: 12,
-    currentCommand: null
-  })
+  // Calculate total steps from both arm scripts
+  const getAllCommands = useCallback(() => {
+    const arm1Commands = scriptData.arm1Script
+      .split('\n')
+      .filter(line => line.trim() && !line.trim().startsWith('//'))
+      .map(cmd => ({ arm: 'ARM1' as const, command: cmd.trim() }))
+    
+    const arm2Commands = scriptData.arm2Script
+      .split('\n')
+      .filter(line => line.trim() && !line.trim().startsWith('//'))
+      .map(cmd => ({ arm: 'ARM2' as const, command: cmd.trim() }))
+    
+    return [...arm1Commands, ...arm2Commands]
+  }, [scriptData.arm1Script, scriptData.arm2Script])
 
-  const [arm2State] = useState<ArmState>({
-    status: 'MOVING_TO_CENTER',
-    hasScript: true,
-    commandCount: 8,
-    currentCommandIndex: 3,
-    currentCommand: 'Y(50);'
-  })
+  const allCommands = getAllCommands()
+
+  useEffect(() => {
+    setSimulationState(prev => ({
+      ...prev,
+      totalSteps: allCommands.length,
+      currentStep: 0
+    }))
+  }, [allCommands.length])
+
+  // Create arm states based on current step
+  const getCurrentArmStates = useCallback(() => {
+    const currentCommand = allCommands[simulationState.currentStep]
+    
+    const arm1State: ArmState = {
+      status: simulationState.mode === 'manual' && currentCommand?.arm === 'ARM1' ? 'PICKING' : 'IDLE',
+      hasScript: scriptData.arm1CommandCount > 0,
+      commandCount: scriptData.arm1CommandCount,
+      currentCommandIndex: allCommands.slice(0, simulationState.currentStep + 1)
+        .filter(cmd => cmd.arm === 'ARM1').length,
+      currentCommand: currentCommand?.arm === 'ARM1' ? currentCommand.command : null
+    }
+
+    const arm2State: ArmState = {
+      status: simulationState.mode === 'manual' && currentCommand?.arm === 'ARM2' ? 'PICKING' : 'IDLE',
+      hasScript: scriptData.arm2CommandCount > 0,
+      commandCount: scriptData.arm2CommandCount,
+      currentCommandIndex: allCommands.slice(0, simulationState.currentStep + 1)
+        .filter(cmd => cmd.arm === 'ARM2').length,
+      currentCommand: currentCommand?.arm === 'ARM2' ? currentCommand.command : null
+    }
+    
+    return { arm1State, arm2State }
+  }, [allCommands, simulationState.currentStep, simulationState.mode, scriptData.arm1CommandCount, scriptData.arm2CommandCount])
+  
+  const { arm1State, arm2State } = getCurrentArmStates()
+
+  const handleModeToggle = () => {
+    setSimulationState(prev => ({
+      ...prev,
+      mode: prev.mode === 'auto' ? 'manual' : 'auto',
+      isRunning: false
+    }))
+  }
 
   const handleSpeedChange = (speed: string) => {
     setSimulationState(prev => ({ ...prev, speed: parseInt(speed) }))
@@ -405,8 +509,29 @@ export const SimulationInterface = () => {
       currentTurn: 'ARM1',
       productSensor: false,
       collisionSensor: false,
-      timeoutCountdown: null
+      timeoutCountdown: null,
+      currentStep: 0
     }))
+  }
+
+  const handleNextStep = () => {
+    if (simulationState.currentStep < allCommands.length - 1) {
+      setSimulationState(prev => ({ ...prev, currentStep: prev.currentStep + 1 }))
+    }
+  }
+
+  const handlePrevStep = () => {
+    if (simulationState.currentStep > 0) {
+      setSimulationState(prev => ({ ...prev, currentStep: prev.currentStep - 1 }))
+    }
+  }
+
+  const handleFirstStep = () => {
+    setSimulationState(prev => ({ ...prev, currentStep: 0 }))
+  }
+
+  const handleLastStep = () => {
+    setSimulationState(prev => ({ ...prev, currentStep: allCommands.length - 1 }))
   }
 
   return (
@@ -417,64 +542,160 @@ export const SimulationInterface = () => {
           <CardTitle className="text-lg">Simulation Controls</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Speed:</span>
-              <Select value={simulationState.speed.toString()} onValueChange={handleSpeedChange}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Real-time</SelectItem>
-                  <SelectItem value="2">2x Speed</SelectItem>
-                  <SelectItem value="5">5x Speed</SelectItem>
-                  <SelectItem value="10">10x Speed</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-4">
+            {/* Mode Toggle */}
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium">Mode:</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={simulationState.mode === 'auto' ? 'default' : 'outline'}
+                  onClick={handleModeToggle}
+                  disabled={simulationState.isRunning}
+                >
+                  Auto Mode
+                </Button>
+                <Button
+                  size="sm"
+                  variant={simulationState.mode === 'manual' ? 'default' : 'outline'}
+                  onClick={handleModeToggle}
+                  disabled={simulationState.isRunning}
+                >
+                  Step Mode
+                </Button>
+              </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handleStart}
-                disabled={simulationState.isRunning}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <PlayCircle className="h-4 w-4 mr-1" />
-                Start
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleStop}
-                disabled={!simulationState.isRunning}
-              >
-                <StopCircle className="h-4 w-4 mr-1" />
-                Stop
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleReset}
-              >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                Reset
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Export Logs
-              </Button>
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Auto Mode Controls */}
+              {simulationState.mode === 'auto' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Speed:</span>
+                  <Select value={simulationState.speed.toString()} onValueChange={handleSpeedChange}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Real-time</SelectItem>
+                      <SelectItem value="2">2x Speed</SelectItem>
+                      <SelectItem value="5">5x Speed</SelectItem>
+                      <SelectItem value="10">10x Speed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Step Mode Controls */}
+              {simulationState.mode === 'manual' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Step:</span>
+                  <Badge variant="outline">
+                    {simulationState.currentStep + 1} / {simulationState.totalSteps}
+                  </Badge>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleFirstStep}
+                      disabled={simulationState.currentStep === 0}
+                    >
+                      <SkipBack className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handlePrevStep}
+                      disabled={simulationState.currentStep === 0}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleNextStep}
+                      disabled={simulationState.currentStep >= simulationState.totalSteps - 1}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleLastStep}
+                      disabled={simulationState.currentStep >= simulationState.totalSteps - 1}
+                    >
+                      <SkipForward className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {simulationState.mode === 'auto' && (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={handleStart}
+                      disabled={simulationState.isRunning}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <PlayCircle className="h-4 w-4 mr-1" />
+                      Start
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleStop}
+                      disabled={!simulationState.isRunning}
+                    >
+                      <StopCircle className="h-4 w-4 mr-1" />
+                      Stop
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleReset}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Reset
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Export Logs
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-sm">Status:</span>
+                <Badge variant={simulationState.isRunning ? 'default' : 'secondary'}>
+                  {simulationState.mode === 'manual' 
+                    ? '⚡STEP MODE' 
+                    : simulationState.isRunning 
+                      ? '●RUNNING' 
+                      : '○STOPPED'
+                  }
+                </Badge>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-sm">Status:</span>
-              <Badge variant={simulationState.isRunning ? 'default' : 'secondary'}>
-                {simulationState.isRunning ? '●RUNNING' : '○STOPPED'}
-              </Badge>
-            </div>
+            {/* Current Command Display for Step Mode */}
+            {simulationState.mode === 'manual' && allCommands.length > 0 && (
+              <div className="bg-muted p-3 rounded border">
+                <div className="text-sm font-medium mb-1">Current Step:</div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    {allCommands[simulationState.currentStep]?.arm || 'N/A'}
+                  </Badge>
+                  <code className="font-mono text-sm">
+                    {allCommands[simulationState.currentStep]?.command || 'No command'}
+                  </code>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -500,7 +721,10 @@ export const SimulationInterface = () => {
       {/* Script Execution Panel */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold">Script Execution</h3>
-        <ScriptExecutionPanel />
+        <ScriptExecutionPanel 
+          allCommands={allCommands}
+          simulationState={simulationState}
+        />
       </div>
 
       {/* Simulation Metrics */}

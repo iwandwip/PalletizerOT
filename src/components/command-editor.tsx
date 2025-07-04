@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Upload, Download, Play, Cpu, Loader2, MonitorSpeaker, Layers3 } from "lucide-react"
 import { api } from "@/lib/api"
 import { TextEditor } from "./editors"
+import { useScriptData } from "@/hooks/useScriptData"
 
 interface CompilationResult {
   success: boolean
@@ -29,12 +30,14 @@ export function CommandEditor({
   simulationMode = false, 
   onSimulationModeChange 
 }: CommandEditorProps) {
+  const scriptData = useScriptData()
+  
   // Active arm state
   const [activeArm, setActiveArm] = useState<1 | 2>(1)
   
-  // Separate states for each arm
-  const [commandText1, setCommandText1] = useState('')
-  const [commandText2, setCommandText2] = useState('')
+  // Separate states for each arm - initialize from global store
+  const [commandText1, setCommandText1] = useState(scriptData.arm1Script)
+  const [commandText2, setCommandText2] = useState(scriptData.arm2Script)
   const [compilationResult1, setCompilationResult1] = useState<CompilationResult | null>(null)
   const [compilationResult2, setCompilationResult2] = useState<CompilationResult | null>(null)
   const [isProcessing1, setIsProcessing1] = useState(false)
@@ -51,7 +54,15 @@ export function CommandEditor({
 
   // Helper functions to get current arm state
   const getCurrentCommandText = () => activeArm === 1 ? commandText1 : commandText2
-  const setCurrentCommandText = (text: string) => activeArm === 1 ? setCommandText1(text) : setCommandText2(text)
+  const setCurrentCommandText = (text: string) => {
+    if (activeArm === 1) {
+      setCommandText1(text)
+      scriptData.setArm1Script(text)
+    } else {
+      setCommandText2(text)
+      scriptData.setArm2Script(text)
+    }
+  }
   const getCurrentCompilationResult = () => activeArm === 1 ? compilationResult1 : compilationResult2
   const setCurrentCompilationResult = (result: CompilationResult | null) => 
     activeArm === 1 ? setCompilationResult1(result) : setCompilationResult2(result)
@@ -186,6 +197,12 @@ export function CommandEditor({
     }
   }, [activeArm, commandText1, commandText2, processingMode1, processingMode2, simulationMode, onCompileOutput])
 
+  // Sync local state with global store
+  useEffect(() => {
+    setCommandText1(scriptData.arm1Script)
+    setCommandText2(scriptData.arm2Script)
+  }, [scriptData.arm1Script, scriptData.arm2Script])
+
   const handleExecuteScript = async () => {
     const scriptToExecute = (getCurrentCommandText() || '').toString()
     if (!scriptToExecute.trim()) {
@@ -195,16 +212,29 @@ export function CommandEditor({
 
     setCurrentIsExecuting(true)
     try {
-      const result = await api.executeScript(scriptToExecute, `arm${activeArm}`)
-      
-      if (result.success) {
-        onNotification?.(`Arm ${activeArm} script executed successfully`, 'success')
+      if (simulationMode) {
+        // Simulation mode - mock execution
+        const modePrefix = '🎮 [SIMULATION]'
+        onNotification?.(`${modePrefix} Arm ${activeArm} script execution started`, 'info')
+        
+        // Simulate execution time
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        onNotification?.(`${modePrefix} Arm ${activeArm} script executed successfully (simulated)`, 'success')
       } else {
-        throw new Error(result.error || 'Execution failed')
+        // Hardware mode - real execution
+        const result = await api.executeScript(scriptToExecute, `arm${activeArm}`)
+        
+        if (result.success) {
+          onNotification?.(`🔌 [HARDWARE] Arm ${activeArm} script executed successfully`, 'success')
+        } else {
+          throw new Error(result.error || 'Execution failed')
+        }
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Script execution error'
-      onNotification?.(`Arm ${activeArm}: ${errorMsg}`, 'error')
+      const modePrefix = simulationMode ? '🎮 [SIMULATION]' : '🔌 [HARDWARE]'
+      onNotification?.(`${modePrefix} Arm ${activeArm}: ${errorMsg}`, 'error')
     } finally {
       setCurrentIsExecuting(false)
     }
@@ -237,11 +267,22 @@ export function CommandEditor({
     onNotification?.(`Arm ${activeArm} script saved to file`, 'success')
   }
 
+  // Sync script changes to global script data
   useEffect(() => {
-    checkConnectionStatus()
-    const interval = setInterval(checkConnectionStatus, 3000)
-    return () => clearInterval(interval)
-  }, [])
+    scriptData.setArm1Script(commandText1)
+  }, [commandText1, scriptData.setArm1Script])
+
+  useEffect(() => {
+    scriptData.setArm2Script(commandText2)
+  }, [commandText2, scriptData.setArm2Script])
+
+  useEffect(() => {
+    if (!simulationMode) {
+      checkConnectionStatus()
+      const interval = setInterval(checkConnectionStatus, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [simulationMode])
 
   useEffect(() => {
     const textToCheck = (getCurrentCommandText() || '').toString()
@@ -442,7 +483,7 @@ CALL(pickup);
 
         <Button
           onClick={handleExecuteScript}
-          disabled={getCurrentIsExecuting() || !getCurrentCompilationResult()?.success || connectionStatus !== 'connected'}
+          disabled={getCurrentIsExecuting() || !getCurrentCompilationResult()?.success || (!simulationMode && connectionStatus !== 'connected')}
           className="h-12 flex-col gap-1 bg-primary hover:bg-primary/90"
         >
           {getCurrentIsExecuting() ? (

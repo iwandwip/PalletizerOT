@@ -511,8 +511,8 @@ export default function PalletizerInterface() {
           {/* Main Content Area */}
           <div className="lg:col-span-3">
             <Card className="border-0 shadow-xl bg-card/50 backdrop-blur-sm">
-              <CardHeader className="border-b bg-muted/30">
-                <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+              <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+                <CardHeader className="border-b bg-muted/30">
                   <TabsList className="grid w-full grid-cols-3 bg-background/50">
                     <TabsTrigger 
                       value="editor" 
@@ -536,11 +536,9 @@ export default function PalletizerInterface() {
                       Configuration
                     </TabsTrigger>
                   </TabsList>
-                </Tabs>
-              </CardHeader>
+                </CardHeader>
 
-              <CardContent className="p-0">
-                <Tabs value={currentTab} className="w-full">
+                <CardContent className="p-0">
                   <TabsContent value="editor" className="m-0 p-6">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -587,8 +585,8 @@ export default function PalletizerInterface() {
                       />
                     </div>
                   </TabsContent>
-                </Tabs>
-              </CardContent>
+                </CardContent>
+              </Tabs>
             </Card>
           </div>
         </div>

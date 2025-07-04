@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 
 interface ScriptData {
   arm1Script: string
@@ -26,39 +26,44 @@ const notifyListeners = () => {
 }
 
 export const useScriptData = () => {
-  const [, forceUpdate] = useState({})
+  const [updateCounter, setUpdateCounter] = useState(0)
   
   useEffect(() => {
-    const listener = () => forceUpdate({})
+    const listener = () => setUpdateCounter(prev => prev + 1)
     listeners.add(listener)
     return () => listeners.delete(listener)
   }, [])
 
-  const setArm1Script = (script: string) => {
-    globalScriptData.arm1Script = script
-    globalScriptData.arm1CommandCount = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length
-    notifyListeners()
-  }
+  // Memoize the setter functions to prevent infinite re-renders
+  const setArm1Script = useCallback((script: string) => {
+    if (globalScriptData.arm1Script !== script) {
+      globalScriptData.arm1Script = script
+      globalScriptData.arm1CommandCount = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length
+      notifyListeners()
+    }
+  }, [])
 
-  const setArm2Script = (script: string) => {
-    globalScriptData.arm2Script = script
-    globalScriptData.arm2CommandCount = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length
-    notifyListeners()
-  }
+  const setArm2Script = useCallback((script: string) => {
+    if (globalScriptData.arm2Script !== script) {
+      globalScriptData.arm2Script = script
+      globalScriptData.arm2CommandCount = script.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length
+      notifyListeners()
+    }
+  }, [])
 
-  const setArm1CompiledCommands = (commands: string[]) => {
+  const setArm1CompiledCommands = useCallback((commands: string[]) => {
     globalScriptData.arm1CompiledCommands = commands
     globalScriptData.arm1CommandCount = commands.length
     notifyListeners()
-  }
+  }, [])
 
-  const setArm2CompiledCommands = (commands: string[]) => {
+  const setArm2CompiledCommands = useCallback((commands: string[]) => {
     globalScriptData.arm2CompiledCommands = commands
     globalScriptData.arm2CommandCount = commands.length
     notifyListeners()
-  }
+  }, [])
 
-  const reset = () => {
+  const reset = useCallback(() => {
     globalScriptData = {
       arm1Script: '',
       arm2Script: '',
@@ -68,14 +73,15 @@ export const useScriptData = () => {
       arm2CommandCount: 0
     }
     notifyListeners()
-  }
+  }, [])
 
-  return {
+  // Memoize the returned object to prevent unnecessary re-renders
+  return useMemo(() => ({
     ...globalScriptData,
     setArm1Script,
     setArm2Script,
     setArm1CompiledCommands,
     setArm2CompiledCommands,
     reset
-  }
+  }), [updateCounter, setArm1Script, setArm2Script, setArm1CompiledCommands, setArm2CompiledCommands, reset])
 }
